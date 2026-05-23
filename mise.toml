@@ -1,0 +1,104 @@
+[tools]
+go = "latest"
+node = "lts"
+pnpm = "latest"
+"go:github.com/air-verse/air" = "latest"
+
+[env]
+_.file = ".env"
+
+[tasks.install]
+description = "Install workspace dependencies"
+run = "pnpm install"
+
+[tasks.dev]
+description = "Run API and client dev servers"
+depends = ["dev:api", "dev:client"]
+
+[tasks."dev:api"]
+description = "Run Go API dev server with hot-reload (ensures Redis is running)"
+run = [
+  "docker start my-redis 2>/dev/null || docker run -d --name my-redis -p 6379:6379 redis:7-alpine",
+  "air"
+]
+dir = "apps/api"
+
+[tasks."dev:mail"]
+description = "Run Mailpit for local email testing (UI on :8025)"
+run = "docker start my-mailpit 2>/dev/null || docker run -d --name my-mailpit -p 1025:1025 -p 8025:8025 axllent/mailpit"
+
+[tasks."dev:client"]
+description = "Run Vite client dev server with HMR"
+run = "pnpm dev --host 0.0.0.0 --port 5173 --strictPort"
+dir = "apps/web"
+
+[tasks.build]
+description = "Build client assets, copy them into Go embed directory, then build Go binary"
+run = [
+  "mise run build:client",
+  "bash scripts/copy-web-assets.sh",
+  "mise run build:api"
+]
+
+[tasks."build:client"]
+description = "Build React/Vite client"
+run = "pnpm build"
+dir = "apps/web"
+
+[tasks."build:api"]
+description = "Build Go binary with embedded frontend assets"
+run = "mkdir -p ../../bin && go build -o ../../bin/my ./cmd/api"
+dir = "apps/api"
+
+[tasks.test]
+description = "Run all tests"
+run = [
+  "mise run test:api",
+  "mise run test:client"
+]
+
+[tasks."test:api"]
+description = "Run Go tests"
+run = "go test ./..."
+dir = "apps/api"
+
+[tasks."test:client"]
+description = "Run frontend tests"
+run = "pnpm test -- --run"
+dir = "apps/web"
+
+[tasks.lint]
+description = "Run all linters"
+run = [
+  "mise run lint:api",
+  "mise run lint:client"
+]
+
+[tasks."lint:api"]
+description = "Run Go lint checks"
+run = "go vet ./..."
+dir = "apps/api"
+
+[tasks."lint:client"]
+description = "Run frontend lint"
+run = "pnpm lint"
+dir = "apps/web"
+
+[tasks.typecheck]
+description = "Run frontend typecheck"
+run = "pnpm typecheck"
+dir = "apps/web"
+
+[tasks.migrate]
+description = "Run database migrations"
+run = "go run ./cmd/migrate"
+dir = "apps/api"
+
+[tasks.seed]
+description = "Insert dummy seed data (habits + transactions)"
+run = "sqlite3 my_dev.db < scripts/seed_dev.sql"
+dir = "apps/api"
+
+[tasks.clean]
+description = "Clean build outputs"
+run = "rm -rf bin apps/web/dist apps/api/internal/platform/web/static"

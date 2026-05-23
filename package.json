@@ -1,0 +1,17 @@
+{
+  "name": "my",
+  "private": true,
+  "packageManager": "pnpm@10.33.0",
+  "scripts": {
+    "dev": "mise run dev",
+    "build": "mise run build",
+    "test": "mise run test",
+    "lint": "mise run lint",
+    "typecheck": "mise run typecheck",
+    "schema:check": "pnpm --filter @my/web schema:check",
+    "openapi:check": "pnpm --filter @my/web openapi:check"
+  },
+  "pnpm": {
+    "onlyBuiltDependencies": ["msw", "@playwright/test"]
+  }
+}

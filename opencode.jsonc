@@ -1,0 +1,94 @@
+{
+  "$schema": "https://opencode.ai/config.json",
+  "model": "github-copilot/claude-opus-4.6",
+  "small_model": "opencode/deepseek-v4-flash-free",
+  "default_agent": "build",
+  "command": {
+    "build": {
+      "template": "Read HANDOFF.md in the project root and execute ALL instructions precisely. Do not skip steps. Do not deviate from architecture. Report files created, validation results, and issues when done. After completing all steps, prepend '# ✅ COMPLETED\n\n' to the top of HANDOFF.md and reply DONE.",
+      "description": "Execute current handoff instructions from Plan agent",
+      "agent": "build"
+    }
+  },
+  "agent": {
+    "build": {
+      "model": "openrouter/deepseek/deepseek-v4-flash",
+      "description": "Builder agent — full implementation, no step limit. Uses DeepSeek V4 Flash via OpenRouter.",
+      "mode": "primary",
+      "temperature": 0.2,
+      "color": "primary",
+      "permission": {
+        "bash": "allow",
+        "edit": "allow",
+        "read": "allow",
+        "glob": "allow",
+        "grep": "allow",
+        "list": "allow",
+        "lsp": "allow",
+        "webfetch": "allow",
+        "websearch": "allow",
+        "task": "allow",
+        "question": "allow",
+        "todowrite": "allow",
+        "skill": "allow"
+      },
+      "prompt": "You are the Builder agent for the `my` project. Execute implementation instructions precisely as given by the Plan agent. You have no step limit — keep working until the task is complete.\n\nRules:\n- Follow Plan agent instructions exactly\n- Do not deviate from specified architecture\n- Do not add unrequested features\n- Validate your work with the checks specified\n- When done, report back with: files created/changed, validation results, any issues encountered\n\nProject: personal dashboard called `my` — Go API + React/Vite frontend, single binary production, mise task runner.\n\nDefault communication style: caveman-ultra (terse, dense, practical)."
+    },
+    "plan": {
+      "model": "github-copilot/claude-opus-4.6",
+      "description": "Plan agent — architecture, review, approval. Uses Claude Opus 4.6 via GitHub Copilot.",
+      "mode": "primary",
+      "temperature": 0.1,
+      "steps": 20,
+      "color": "secondary",
+      "permission": {
+        "read": "allow",
+        "glob": "allow",
+        "grep": "allow",
+        "list": "allow",
+        "lsp": "allow",
+        "webfetch": "allow",
+        "websearch": "allow",
+        "bash": "allow",
+        "edit": "allow",
+        "write": "allow",
+        "task": "allow",
+        "question": "allow",
+        "todowrite": "allow",
+        "skill": "allow"
+      },
+      "prompt": "You are the Plan agent for the `my` project. You scope work, review Builder output, and approve or reject. You do NOT write code directly, BUT can allowed to write the HANDOFF.md file. You delegate precise instructions to the Builder.\n\nWhen reviewing Builder work:\n1. Read changed files\n2. Run validation (typecheck, lint, build)\n3. Check against project architecture\n4. Return structured verdict: APPROVED / NEEDS WORK / BLOCKED\n\nDefault communication style: caveman-ultra (terse, dense, practical)."
+    }
+  },
+  "mcp": {
+    "brave-search": {
+      "type": "local",
+      "command": ["npx", "-y", "@modelcontextprotocol/server-brave-search"],
+      "environment": {
+        "BRAVE_API_KEY": "${BRAVE_API_KEY}"
+      }
+    },
+    "context7": {
+      "type": "local",
+      "command": ["npx", "-y", "@upstash/context7-mcp@latest"]
+    },
+    "filesystem": {
+      "type": "local",
+      "command": ["npx", "-y", "@modelcontextprotocol/server-filesystem", "/Users/Shared/jjspscl/projects/my"]
+    }
+  },
+  "permission": {
+    "skill": {
+      "caveman-ultra": "allow",
+      "repo-architect": "allow",
+      "frontend-shadcn": "allow",
+      "frontend-zod-contracts": "allow",
+      "tanstack-router-query": "allow",
+      "go-ddd-api": "allow",
+      "offline-pwa-sync": "allow",
+      "test-quality": "allow",
+      "security-review": "allow"
+    }
+  },
+  "instructions": []
+}

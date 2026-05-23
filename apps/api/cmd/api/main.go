@@ -1,0 +1,108 @@
+package main
+
+import (
+	"log"
+	"net/http"
+	"os"
+
+	"github.com/go-chi/chi/v5"
+	chimw "github.com/go-chi/chi/v5/middleware"
+
+	"github.com/jjspscl/my/internal/contexts/access/application"
+	"github.com/jjspscl/my/internal/contexts/access/infrastructure"
+	accesshttp "github.com/jjspscl/my/internal/contexts/access/interfaces/http"
+	financeapp "github.com/jjspscl/my/internal/contexts/finance/application"
+	financeinfra "github.com/jjspscl/my/internal/contexts/finance/infrastructure"
+	financehttp "github.com/jjspscl/my/internal/contexts/finance/interfaces/http"
+	habitapp "github.com/jjspscl/my/internal/contexts/habits/application"
+	habitinfra "github.com/jjspscl/my/internal/contexts/habits/infrastructure"
+	habithttp "github.com/jjspscl/my/internal/contexts/habits/interfaces/http"
+	"github.com/jjspscl/my/internal/platform/config"
+	"github.com/jjspscl/my/internal/platform/database"
+	"github.com/jjspscl/my/internal/platform/mail"
+	predis "github.com/jjspscl/my/internal/platform/redis"
+	"github.com/jjspscl/my/internal/platform/session"
+	"github.com/jjspscl/my/internal/platform/web"
+	"github.com/jjspscl/my/internal/shared/middleware"
+)
+
+func main() {
+	cfg, err := config.Load()
+	if err != nil {
+		log.Fatalf("config: %v", err)
+	}
+
+	// Database
+	db, err := database.Open(cfg.DatabaseURL)
+	if err != nil {
+		log.Fatalf("database: %v", err)
+	}
+	defer db.Close()
+
+	if err := database.Migrate(db, "migrations"); err != nil {
+		log.Fatalf("migrate: %v", err)
+	}
+
+	// Redis
+	rdb, err := predis.NewClient(cfg.RedisURL)
+	if err != nil {
+		log.Fatalf("redis: %v", err)
+	}
+	defer rdb.Close()
+
+	// Dependencies
+	sessions := session.NewRedisStore(rdb, cfg.SessionTTL)
+	mailer := mail.NewSMTPSender(cfg.SMTPHost, cfg.SMTPPort, cfg.SMTPFrom, cfg.SMTPUser, cfg.SMTPPass)
+	tokenRepo := infrastructure.NewTokenRepoLibSQL(db)
+	authSvc := application.NewAuthService(tokenRepo, sessions, mailer, cfg)
+	authHandler := accesshttp.NewAuthHandler(authSvc, cfg.CookieSecret, cfg.CSRFSecret)
+
+	// Finance
+	txRepo := financeinfra.NewTransactionRepoLibSQL(db)
+	txSvc := financeapp.NewTransactionService(txRepo, cfg.DefaultCurrency)
+	financeHandler := financehttp.NewFinanceHandler(txSvc)
+
+	// Habits
+	habitRepo := habitinfra.NewHabitRepoLibSQL(db)
+	habitSvc := habitapp.NewHabitService(habitRepo)
+	habitHandler := habithttp.NewHabitHandler(habitSvc)
+
+	// Router
+	r := chi.NewRouter()
+	r.Use(chimw.RequestID)
+	r.Use(chimw.RealIP)
+	r.Use(chimw.Logger)
+	r.Use(chimw.Recoverer)
+
+	// API
+	r.Route("/api/v1", func(r chi.Router) {
+		r.Get("/health", func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			w.Write([]byte(`{"status":"ok"}`))
+		})
+
+		// Public auth routes
+		r.Route("/auth", authHandler.Routes)
+
+		// Protected routes
+		r.Group(func(r chi.Router) {
+			r.Use(middleware.RequireAuth(sessions))
+			r.Use(middleware.CSRFProtect())
+
+			// Finance
+			r.Route("/finance", financeHandler.Routes)
+
+			// Habits
+			r.Route("/habits", habitHandler.Routes)
+		})
+	})
+
+	// SPA fallback
+	r.Handle("/*", web.Handler())
+
+	addr := ":" + cfg.APIPort
+	log.Printf("my: listening on %s (pid %d)", addr, os.Getpid())
+	if err := http.ListenAndServe(addr, r); err != nil {
+		log.Fatal(err)
+	}
+}

@@ -1,0 +1,58 @@
+# Dependencies
+node_modules/
+.pnpm-store/
+
+# Build outputs
+bin/
+dist/
+apps/web/dist/
+apps/api/internal/platform/web/static/*
+!apps/api/internal/platform/web/static/.gitkeep
+
+# Environment
+.env
+.env.local
+.env.*.local
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Go
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+
+# Database
+*.db
+*.db-journal
+*.db-wal
+*.db-shm
+
+# Test coverage
+coverage/
+*.lcov
+
+# Logs
+*.log
+
+# Turso
+.turso/
+
+# Misc
+.cache/
+tmp/
+
+# Air tmp
+apps/api/tmp/

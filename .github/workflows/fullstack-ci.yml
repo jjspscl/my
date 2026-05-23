@@ -1,0 +1,30 @@
+name: Fullstack CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+
+jobs:
+  full-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26'
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install
+      - run: pnpm --filter @my/web build
+      - run: bash scripts/copy-web-assets.sh
+      - run: go build -o ../../bin/my ./cmd/api
+        working-directory: apps/api
+      - name: Verify binary
+        run: ls -la bin/my && file bin/my

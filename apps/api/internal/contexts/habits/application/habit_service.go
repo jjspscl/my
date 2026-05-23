@@ -26,29 +26,16 @@ type CreateHabitInput struct {
 }
 
 func (s *HabitService) Create(ctx context.Context, userEmail string, input CreateHabitInput) (*domain.Habit, error) {
-	if input.Name == "" {
-		return nil, fmt.Errorf("name is required")
-	}
-	freq := domain.Frequency(input.Frequency)
-	if freq != domain.FrequencyDaily && freq != domain.FrequencyWeekly {
-		freq = domain.FrequencyDaily
-	}
-	if input.TargetPerWeek < 1 {
-		input.TargetPerWeek = 1
-	}
-	if input.Color == "" {
-		input.Color = "blue"
-	}
-
-	h := &domain.Habit{
-		ID:            uuid.New().String(),
-		UserEmail:     userEmail,
-		Name:          input.Name,
-		Color:         input.Color,
-		Frequency:     freq,
-		TargetPerWeek: input.TargetPerWeek,
-		Archived:      false,
-		CreatedAt:     time.Now().UTC(),
+	h, err := domain.NewHabit(
+		uuid.New().String(),
+		userEmail,
+		input.Name,
+		input.Color,
+		domain.Frequency(input.Frequency),
+		input.TargetPerWeek,
+	)
+	if err != nil {
+		return nil, err
 	}
 
 	if err := s.repo.SaveHabit(ctx, h); err != nil {

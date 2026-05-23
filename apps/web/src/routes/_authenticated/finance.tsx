@@ -4,6 +4,7 @@ import { Plus, Trash2, Loader2 } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { Skeleton } from '@/components/ui/skeleton'
 import {
   Table,
   TableBody,
@@ -27,6 +28,8 @@ function formatPHP(cents: number): string {
 
 export const Route = createFileRoute('/_authenticated/finance')({
   component: FinancePage,
+  pendingComponent: FinanceSkeleton,
+  errorComponent: FinanceError,
 })
 
 function FinancePage() {
@@ -152,6 +155,29 @@ function FinancePage() {
           </Table>
         </div>
       )}
+    </div>
+  )
+}
+
+function FinanceSkeleton() {
+  return (
+    <div className="p-4 space-y-4">
+      <Skeleton className="h-8 w-48" />
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+        <Skeleton className="h-24" />
+        <Skeleton className="h-24" />
+      </div>
+      <Skeleton className="h-64" />
+    </div>
+  )
+}
+
+function FinanceError({ error }: { error: Error }) {
+  return (
+    <div className="p-4">
+      <div className="rounded-lg border border-destructive/50 p-4 text-center">
+        <p className="text-sm text-destructive">{error.message}</p>
+      </div>
     </div>
   )
 }

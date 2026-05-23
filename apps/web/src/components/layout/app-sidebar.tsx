@@ -4,12 +4,9 @@ import {
   Wallet,
   CheckSquare,
   LogOut,
-  Menu,
 } from 'lucide-react'
-import { useState } from 'react'
 
 import { Button } from '@/components/ui/button'
-import { Sheet, SheetContent, SheetTrigger } from '@/components/ui/sheet'
 import { Separator } from '@/components/ui/separator'
 import { cn } from '@/shared/lib/utils'
 import { useCurrentUser, useLogout } from '@/features/auth/hooks/use-auth'
@@ -80,30 +77,9 @@ function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {
 }
 
 export function AppSidebar() {
-  const [open, setOpen] = useState(false)
-
   return (
-    <>
-      {/* Desktop sidebar */}
-      <aside className="hidden w-56 flex-shrink-0 border-r bg-background md:flex md:flex-col">
-        <SidebarContent />
-      </aside>
-
-      {/* Mobile menu button + sheet */}
-      <Sheet open={open} onOpenChange={setOpen}>
-        <SheetTrigger asChild>
-          <Button
-            variant="ghost"
-            size="icon"
-            className="fixed left-2 top-2 z-50 md:hidden"
-          >
-            <Menu className="h-5 w-5" />
-          </Button>
-        </SheetTrigger>
-        <SheetContent side="left" className="w-56 p-0">
-          <SidebarContent onNavigate={() => setOpen(false)} />
-        </SheetContent>
-      </Sheet>
-    </>
+    <aside className="hidden w-56 flex-shrink-0 border-r bg-background md:flex md:flex-col">
+      <SidebarContent />
+    </aside>
   )
 }

@@ -6,7 +6,7 @@ import {
   getTodayTotal as getTodayTotalApi,
   listTransactions as listTransactionsApi,
 } from '../api/finance.api'
-import type { CreateTransaction } from '../schemas/transaction.schemas'
+import type { CreateTransaction, Transaction } from '../schemas/transaction.schemas'
 
 export function useTodayTotal() {
   return useQuery({
@@ -29,7 +29,17 @@ export function useCreateTransaction() {
 
   return useMutation({
     mutationFn: (data: CreateTransaction) => createTransactionApi(data),
-    onSuccess: () => {
+    onMutate: async () => {
+      await queryClient.cancelQueries({ queryKey: financeKeys.transactions() })
+      const prevTotal = queryClient.getQueryData(financeKeys.todayTotal())
+      return { prevTotal }
+    },
+    onError: (_err, _vars, ctx) => {
+      if (ctx?.prevTotal) {
+        queryClient.setQueryData(financeKeys.todayTotal(), ctx.prevTotal)
+      }
+    },
+    onSettled: () => {
       queryClient.invalidateQueries({ queryKey: financeKeys.transactions() })
     },
   })
@@ -40,7 +50,32 @@ export function useDeleteTransaction() {
 
   return useMutation({
     mutationFn: (id: string) => deleteTransactionApi(id),
-    onSuccess: () => {
+    onMutate: async (id) => {
+      // Cancel in-flight fetches
+      await queryClient.cancelQueries({ queryKey: financeKeys.transactions() })
+
+      // Snapshot all transaction list queries for rollback
+      const queries = queryClient.getQueriesData<Transaction[]>({ queryKey: financeKeys.transactions() })
+      const snapshots = queries.map(([key, data]) => ({ key, data }))
+
+      // Optimistically remove from all cached lists
+      for (const { key } of snapshots) {
+        queryClient.setQueryData<Transaction[]>(key, (old) =>
+          old ? old.filter((tx) => tx.id !== id) : old,
+        )
+      }
+
+      return { snapshots }
+    },
+    onError: (_err, _vars, ctx) => {
+      // Rollback all lists
+      if (ctx?.snapshots) {
+        for (const { key, data } of ctx.snapshots) {
+          queryClient.setQueryData(key, data)
+        }
+      }
+    },
+    onSettled: () => {
       queryClient.invalidateQueries({ queryKey: financeKeys.transactions() })
     },
   })

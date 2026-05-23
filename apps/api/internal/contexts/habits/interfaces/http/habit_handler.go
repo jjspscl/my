@@ -76,11 +76,6 @@ func (h *HabitHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if req.Name == "" {
-		response.WriteError(w, r, http.StatusBadRequest, "name is required", nil)
-		return
-	}
-
 	habit, err := h.svc.Create(r.Context(), email, application.CreateHabitInput{
 		Name:          req.Name,
 		Color:         req.Color,
@@ -88,7 +83,7 @@ func (h *HabitHandler) Create(w http.ResponseWriter, r *http.Request) {
 		TargetPerWeek: req.TargetPerWeek,
 	})
 	if err != nil {
-		response.WriteError(w, r, http.StatusInternalServerError, "internal error", err)
+		response.WriteError(w, r, http.StatusBadRequest, err.Error(), err)
 		return
 	}
 

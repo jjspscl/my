@@ -3,6 +3,8 @@ import { createRoot } from 'react-dom/client'
 import { RouterProvider, createRouter } from '@tanstack/react-router'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import { routeTree } from './routeTree.gen'
+import { initNetworkListeners } from '@/shared/sync/network-status'
+import { startSyncEngine } from '@/shared/sync/sync-engine'
 import './styles/globals.css'
 
 const queryClient = new QueryClient({
@@ -29,6 +31,10 @@ declare module '@tanstack/react-router' {
     router: typeof router
   }
 }
+
+// Init offline/sync infrastructure
+initNetworkListeners()
+startSyncEngine()
 
 const rootElement = document.getElementById('root')!
 

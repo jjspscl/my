@@ -1,4 +1,6 @@
 import { useState } from 'react'
+import { useForm } from 'react-hook-form'
+import { zodResolver } from '@hookform/resolvers/zod'
 import { Plus } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
@@ -17,9 +19,31 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '@/components/ui/dialog'
+import {
+  Form,
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from '@/components/ui/form'
 import { CategoryCombobox } from './category-combobox'
 import { useCreateTransaction } from '../hooks/use-transactions'
-import type { CreateTransaction } from '../schemas/transaction.schemas'
+import { type CreateTransaction } from '../schemas/transaction.schemas'
+import { z } from 'zod'
+
+// Form schema extends CreateTransactionSchema but uses string for amount (input field)
+const FormSchema = z.object({
+  amount: z.string().min(1, 'Amount is required').refine(
+    (v) => parseFloat(v) > 0,
+    'Amount must be positive',
+  ),
+  category: z.string().min(1, 'Category is required'),
+  description: z.string().default(''),
+  type: z.enum(['expense', 'income']),
+  transactionDate: z.string().min(1),
+})
+type FormValues = z.infer<typeof FormSchema>
 
 interface AddExpenseDialogProps {
   trigger?: React.ReactNode
@@ -28,41 +52,36 @@ interface AddExpenseDialogProps {
 
 export function AddExpenseDialog({ trigger, defaultType = 'expense' }: AddExpenseDialogProps) {
   const [open, setOpen] = useState(false)
-  const [amountCents, setAmountCents] = useState('')
-  const [category, setCategory] = useState('')
-  const [description, setDescription] = useState('')
-  const [type, setType] = useState<'expense' | 'income'>(defaultType)
-  const [transactionDate, setTransactionDate] = useState(
-    new Date().toISOString().split('T')[0],
-  )
-
   const createTx = useCreateTransaction()
 
-  const handleSubmit = () => {
-    const cents = Math.round(parseFloat(amountCents) * 100)
-    if (cents <= 0 || !category) return
+  const form = useForm<FormValues>({
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    resolver: zodResolver(FormSchema) as any,
+    defaultValues: {
+      amount: '',
+      category: '',
+      description: '',
+      type: defaultType,
+      transactionDate: new Date().toISOString().split('T')[0],
+    },
+  })
 
+  const onSubmit = (values: FormValues) => {
     const data: CreateTransaction = {
-      amountCents: cents,
-      category,
-      description,
-      type,
-      transactionDate,
+      amountCents: Math.round(parseFloat(values.amount) * 100),
+      category: values.category,
+      description: values.description,
+      type: values.type,
+      transactionDate: values.transactionDate,
     }
 
     createTx.mutate(data, {
       onSuccess: () => {
         setOpen(false)
-        setAmountCents('')
-        setCategory('')
-        setDescription('')
-        setType(defaultType)
-        setTransactionDate(new Date().toISOString().split('T')[0])
+        form.reset()
       },
     })
   }
-
-  const isValid = parseFloat(amountCents) > 0 && category
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
@@ -76,69 +95,104 @@ export function AddExpenseDialog({ trigger, defaultType = 'expense' }: AddExpens
       </DialogTrigger>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Add {type === 'expense' ? 'Expense' : 'Income'}</DialogTitle>
+          <DialogTitle>Add {form.watch('type') === 'expense' ? 'Expense' : 'Income'}</DialogTitle>
         </DialogHeader>
 
-        <div className="space-y-4 pt-2">
-          <div className="flex gap-2">
-            <div className="flex-1">
-              <label className="text-xs text-muted-foreground mb-1 block">Amount (PHP)</label>
-              <Input
-                type="number"
-                step="0.01"
-                min="0"
-                placeholder="0.00"
-                value={amountCents}
-                onChange={(e) => setAmountCents(e.target.value)}
-                autoFocus
+        <Form {...form}>
+          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4 pt-2">
+            <div className="flex gap-2">
+              <FormField
+                control={form.control}
+                name="amount"
+                render={({ field }) => (
+                  <FormItem className="flex-1">
+                    <FormLabel className="text-xs text-muted-foreground">Amount (PHP)</FormLabel>
+                    <FormControl>
+                      <Input
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        placeholder="0.00"
+                        autoFocus
+                        {...field}
+                      />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="type"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel className="text-xs text-muted-foreground">Type</FormLabel>
+                    <Select value={field.value} onValueChange={field.onChange}>
+                      <FormControl>
+                        <SelectTrigger className="w-[110px]">
+                          <SelectValue />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        <SelectItem value="expense">Expense</SelectItem>
+                        <SelectItem value="income">Income</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </FormItem>
+                )}
               />
             </div>
-            <div>
-              <label className="text-xs text-muted-foreground mb-1 block">Type</label>
-              <Select value={type} onValueChange={(v: 'expense' | 'income') => setType(v)}>
-                <SelectTrigger className="w-[110px]">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="expense">Expense</SelectItem>
-                  <SelectItem value="income">Income</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-          </div>
 
-          <div>
-            <label className="text-xs text-muted-foreground mb-1 block">Category</label>
-            <CategoryCombobox value={category} onChange={setCategory} />
-          </div>
-
-          <div>
-            <label className="text-xs text-muted-foreground mb-1 block">Description (optional)</label>
-            <Input
-              placeholder="Coffee, lunch..."
-              value={description}
-              onChange={(e) => setDescription(e.target.value)}
+            <FormField
+              control={form.control}
+              name="category"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel className="text-xs text-muted-foreground">Category</FormLabel>
+                  <FormControl>
+                    <CategoryCombobox value={field.value} onChange={field.onChange} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
             />
-          </div>
 
-          <div>
-            <label className="text-xs text-muted-foreground mb-1 block">Date</label>
-            <Input
-              type="date"
-              value={transactionDate}
-              onChange={(e) => setTransactionDate(e.target.value)}
+            <FormField
+              control={form.control}
+              name="description"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel className="text-xs text-muted-foreground">Description (optional)</FormLabel>
+                  <FormControl>
+                    <Input placeholder="Coffee, lunch..." {...field} />
+                  </FormControl>
+                </FormItem>
+              )}
             />
-          </div>
 
-          <Button
-            className="w-full"
-            size="sm"
-            onClick={handleSubmit}
-            disabled={!isValid || createTx.isPending}
-          >
-            {createTx.isPending ? 'Saving...' : `Add ${type === 'expense' ? 'Expense' : 'Income'}`}
-          </Button>
-        </div>
+            <FormField
+              control={form.control}
+              name="transactionDate"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel className="text-xs text-muted-foreground">Date</FormLabel>
+                  <FormControl>
+                    <Input type="date" {...field} />
+                  </FormControl>
+                </FormItem>
+              )}
+            />
+
+            <Button
+              type="submit"
+              className="w-full"
+              size="sm"
+              disabled={createTx.isPending}
+            >
+              {createTx.isPending ? 'Saving...' : `Add ${form.watch('type') === 'expense' ? 'Expense' : 'Income'}`}
+            </Button>
+          </form>
+        </Form>
       </DialogContent>
     </Dialog>
   )

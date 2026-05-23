@@ -75,19 +75,6 @@ func (h *FinanceHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	if req.AmountCents <= 0 {
-		response.WriteError(w, r, http.StatusBadRequest, "amountCents must be positive", nil)
-		return
-	}
-	if req.Category == "" {
-		response.WriteError(w, r, http.StatusBadRequest, "category is required", nil)
-		return
-	}
-	if req.Type != "expense" && req.Type != "income" {
-		response.WriteError(w, r, http.StatusBadRequest, "type must be expense or income", nil)
-		return
-	}
-
 	txDate := time.Now()
 	if req.TransactionDate != "" {
 		parsed, err := time.Parse("2006-01-02", req.TransactionDate)
@@ -106,7 +93,7 @@ func (h *FinanceHandler) Create(w http.ResponseWriter, r *http.Request) {
 		TransactionDate: txDate,
 	})
 	if err != nil {
-		response.WriteError(w, r, http.StatusInternalServerError, "internal error", err)
+		response.WriteError(w, r, http.StatusBadRequest, err.Error(), err)
 		return
 	}
 

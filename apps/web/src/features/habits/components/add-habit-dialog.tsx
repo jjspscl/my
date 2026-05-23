@@ -1,4 +1,6 @@
 import { useState } from 'react'
+import { useForm } from 'react-hook-form'
+import { zodResolver } from '@hookform/resolvers/zod'
 import { Check, Plus } from 'lucide-react'
 import { cn } from '@/shared/lib/utils'
 import { PALETTE_TOKENS, type PaletteToken } from '@/shared/theme/palette'
@@ -19,7 +21,16 @@ import {
   DialogTitle,
   DialogTrigger,
 } from '@/components/ui/dialog'
+import {
+  Form,
+  FormControl,
+  FormField,
+  FormItem,
+  FormLabel,
+  FormMessage,
+} from '@/components/ui/form'
 import { useCreateHabit } from '../hooks/use-habits'
+import { CreateHabitSchema, type CreateHabit } from '../schemas/habit.schemas'
 
 interface AddHabitDialogProps {
   trigger?: React.ReactNode
@@ -27,34 +38,29 @@ interface AddHabitDialogProps {
 
 export function AddHabitDialog({ trigger }: AddHabitDialogProps) {
   const [open, setOpen] = useState(false)
-  const [name, setName] = useState('')
-  const [color, setColor] = useState<PaletteToken>('blue')
-  const [frequency, setFrequency] = useState<'daily' | 'weekly'>('daily')
-  const [targetPerWeek, setTargetPerWeek] = useState('1')
-
   const createHabit = useCreateHabit()
 
-  const handleSubmit = () => {
-    if (!name.trim()) return
+  const form = useForm<CreateHabit>({
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    resolver: zodResolver(CreateHabitSchema) as any,
+    defaultValues: {
+      name: '',
+      color: 'blue',
+      frequency: 'daily',
+      targetPerWeek: 1,
+    },
+  })
 
-    createHabit.mutate(
-      {
-        name: name.trim(),
-        color,
-        frequency,
-        targetPerWeek: frequency === 'weekly' ? parseInt(targetPerWeek) || 1 : 1,
+  const onSubmit = (values: CreateHabit) => {
+    createHabit.mutate(values, {
+      onSuccess: () => {
+        setOpen(false)
+        form.reset()
       },
-      {
-        onSuccess: () => {
-          setOpen(false)
-          setName('')
-          setColor('blue')
-          setFrequency('daily')
-          setTargetPerWeek('1')
-        },
-      },
-    )
+    })
   }
+
+  const frequency = form.watch('frequency')
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
@@ -71,80 +77,104 @@ export function AddHabitDialog({ trigger }: AddHabitDialogProps) {
           <DialogTitle>New Habit</DialogTitle>
         </DialogHeader>
 
-        <div className="space-y-4 pt-2">
-          {/* Name */}
-          <div>
-            <label className="text-xs text-muted-foreground mb-1 block">Name</label>
-            <Input
-              placeholder="Read, Exercise, Meditate..."
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-              autoFocus
+        <Form {...form}>
+          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4 pt-2">
+            <FormField
+              control={form.control}
+              name="name"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel className="text-xs text-muted-foreground">Name</FormLabel>
+                  <FormControl>
+                    <Input placeholder="Read, Exercise, Meditate..." autoFocus {...field} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )}
             />
-          </div>
 
-          {/* Color picker */}
-          <div>
-            <label className="text-xs text-muted-foreground mb-1.5 block">Color</label>
-            <div className="flex gap-1.5 flex-wrap">
-              {PALETTE_TOKENS.map((t) => (
-                  <button
-                    key={t}
-                    type="button"
-                    className={cn(
-                      'h-7 w-7 rounded-full flex items-center justify-center transition-transform',
-                      color === t && 'ring-2 ring-offset-1 ring-foreground scale-110',
-                    )}
-                    style={{ backgroundColor: `var(--palette-${t})` }}
-                  onClick={() => setColor(t as PaletteToken)}
-                >
-                  {color === t && <Check className="h-3.5 w-3.5 text-white" />}
-                </button>
-              ))}
-            </div>
-          </div>
+            <FormField
+              control={form.control}
+              name="color"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel className="text-xs text-muted-foreground">Color</FormLabel>
+                  <FormControl>
+                    <div className="flex gap-1.5 flex-wrap">
+                      {PALETTE_TOKENS.map((t) => (
+                        <button
+                          key={t}
+                          type="button"
+                          className={cn(
+                            'h-7 w-7 rounded-full flex items-center justify-center transition-transform',
+                            field.value === t && 'ring-2 ring-offset-1 ring-foreground scale-110',
+                          )}
+                          style={{ backgroundColor: `var(--palette-${t})` }}
+                          onClick={() => field.onChange(t as PaletteToken)}
+                        >
+                          {field.value === t && <Check className="h-3.5 w-3.5 text-white" />}
+                        </button>
+                      ))}
+                    </div>
+                  </FormControl>
+                </FormItem>
+              )}
+            />
 
-          {/* Frequency */}
-          <div className="flex gap-3">
-            <div className="flex-1">
-              <label className="text-xs text-muted-foreground mb-1 block">Frequency</label>
-              <Select
-                value={frequency}
-                onValueChange={(v: 'daily' | 'weekly') => setFrequency(v)}
-              >
-                <SelectTrigger>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="daily">Daily</SelectItem>
-                  <SelectItem value="weekly">Weekly</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
+            <div className="flex gap-3">
+              <FormField
+                control={form.control}
+                name="frequency"
+                render={({ field }) => (
+                  <FormItem className="flex-1">
+                    <FormLabel className="text-xs text-muted-foreground">Frequency</FormLabel>
+                    <Select value={field.value} onValueChange={field.onChange}>
+                      <FormControl>
+                        <SelectTrigger>
+                          <SelectValue />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        <SelectItem value="daily">Daily</SelectItem>
+                        <SelectItem value="weekly">Weekly</SelectItem>
+                      </SelectContent>
+                    </Select>
+                  </FormItem>
+                )}
+              />
 
-            {frequency === 'weekly' && (
-              <div className="w-24">
-                <label className="text-xs text-muted-foreground mb-1 block">Times/week</label>
-                <Input
-                  type="number"
-                  min="1"
-                  max="7"
-                  value={targetPerWeek}
-                  onChange={(e) => setTargetPerWeek(e.target.value)}
+              {frequency === 'weekly' && (
+                <FormField
+                  control={form.control}
+                  name="targetPerWeek"
+                  render={({ field }) => (
+                    <FormItem className="w-24">
+                      <FormLabel className="text-xs text-muted-foreground">Times/week</FormLabel>
+                      <FormControl>
+                        <Input
+                          type="number"
+                          min="1"
+                          max="7"
+                          {...field}
+                          onChange={(e) => field.onChange(parseInt(e.target.value) || 1)}
+                        />
+                      </FormControl>
+                    </FormItem>
+                  )}
                 />
-              </div>
-            )}
-          </div>
+              )}
+            </div>
 
-          <Button
-            className="w-full"
-            size="sm"
-            onClick={handleSubmit}
-            disabled={!name.trim() || createHabit.isPending}
-          >
-            {createHabit.isPending ? 'Creating...' : 'Create Habit'}
-          </Button>
-        </div>
+            <Button
+              type="submit"
+              className="w-full"
+              size="sm"
+              disabled={createHabit.isPending}
+            >
+              {createHabit.isPending ? 'Creating...' : 'Create Habit'}
+            </Button>
+          </form>
+        </Form>
       </DialogContent>
     </Dialog>
   )

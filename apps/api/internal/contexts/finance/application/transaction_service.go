@@ -28,26 +28,18 @@ type CreateTransactionInput struct {
 }
 
 func (s *TransactionService) Create(ctx context.Context, userEmail string, input CreateTransactionInput) (*domain.Transaction, error) {
-	if input.AmountCents <= 0 {
-		return nil, fmt.Errorf("amount must be positive")
-	}
-	if input.Category == "" {
-		return nil, fmt.Errorf("category is required")
-	}
-	if input.Type != domain.TransactionExpense && input.Type != domain.TransactionIncome {
-		return nil, fmt.Errorf("invalid transaction type")
-	}
-
-	tx := &domain.Transaction{
-		ID:              uuid.New().String(),
-		UserEmail:       userEmail,
-		AmountCents:     input.AmountCents,
-		Currency:        s.currency,
-		Category:        input.Category,
-		Description:     input.Description,
-		Type:            input.Type,
-		TransactionDate: input.TransactionDate,
-		CreatedAt:       time.Now().UTC(),
+	tx, err := domain.NewTransaction(
+		uuid.New().String(),
+		userEmail,
+		s.currency,
+		input.Category,
+		input.Description,
+		input.AmountCents,
+		input.Type,
+		input.TransactionDate,
+	)
+	if err != nil {
+		return nil, err
 	}
 
 	if err := s.repo.Save(ctx, tx); err != nil {

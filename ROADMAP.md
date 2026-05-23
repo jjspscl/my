@@ -20,12 +20,12 @@
 - [x] PWA manifest + service worker (via vite-plugin-pwa)
 - [x] OpenCode local skills (9 skills)
 - [x] mise task runner (all required commands)
-- [ ] Auth/session shell (registration, login, logout, refresh)
-- [ ] Dashboard widget registry
-- [ ] Finance quick expense
-- [ ] Monthly spend widget
-- [ ] Habit check-in
-- [ ] Today habits widget
+- [x] Auth/session shell (magic link, login, logout, verify)
+- [x] Dashboard widget registry
+- [x] Finance quick expense
+- [x] Monthly spend widget
+- [x] Habit check-in
+- [x] Today habits widget
 - [ ] Offline mutation queue
 - [ ] Sync status indicator
 
@@ -35,10 +35,10 @@
 - [x] SPA fallback handler with go:embed
 - [x] DDD bounded context directory structure (9 contexts)
 - [x] Frontend feature-based directory structure
-- [ ] libSQL database integration (embedded + Turso)
-- [ ] goose migrations
-- [ ] sqlc code generation
-- [ ] JWT + HttpOnly cookies + CSRF
+- [x] libSQL database integration (embedded mode via modernc.org/sqlite)
+- [x] SQL migrations
+- [x] Repository pattern (manual SQL)
+- [x] Session cookies + CSRF double-submit
 - [ ] Request middleware (ID, panic recovery, CORS, rate limit)
 - [ ] Structured JSON logging
 - [ ] Domain events infrastructure
@@ -53,9 +53,9 @@
 - [x] Tailwind CSS v4 with CSS variables
 - [x] PWA plugin configured
 - [x] ESLint + Vitest configured
-- [ ] Zod schema contracts (finance, habits, dashboard, auth)
-- [ ] Query key factories per feature
-- [ ] Route loaders with ensureQueryData
+- [x] Zod schema contracts (finance, habits, dashboard, auth)
+- [x] Query key factories per feature
+- [x] Route loaders with ensureQueryData
 - [ ] Zustand ephemeral UI stores
 - [ ] Offline IndexedDB mutation queue
 - [ ] React Hook Form + zodResolver forms
@@ -66,27 +66,27 @@
 - [x] chi router with middleware
 - [x] Health endpoint (/api/v1/health)
 - [x] Static frontend embed + SPA handler
-- [ ] libSQL connection (embedded mode)
-- [ ] Config from environment
+- [x] libSQL connection (embedded mode)
+- [x] Config from environment
 - [ ] Structured logger (slog)
-- [ ] Auth context (identity, access)
-- [ ] Finance context (domain, application, infra, HTTP)
-- [ ] Habits context (domain, application, infra, HTTP)
+- [x] Auth context (identity, access)
+- [x] Finance context (domain, application, infra, HTTP)
+- [x] Habits context (domain, application, infra, HTTP)
 - [ ] Sync context
 - [ ] Dashboard context
-- [ ] Database migrations
+- [x] Database migrations
 
 ## UI Checklist
 
 - [x] Minimal monochrome design system (CSS variables)
 - [x] shadcn/ui components initialized
-- [ ] AppShell (mobile/tablet/desktop)
-- [ ] BottomNav (mobile)
-- [ ] SidebarNav (desktop)
-- [ ] WidgetCard component
-- [ ] Dashboard grid layout
-- [ ] Finance widgets
-- [ ] Habits widgets
+- [x] AppShell (sidebar desktop + sheet mobile)
+- [x] BottomNav (mobile)
+- [x] SidebarNav (desktop)
+- [x] WidgetCard component
+- [x] Dashboard grid layout
+- [x] Finance widgets
+- [x] Habits widgets
 - [ ] Feedback components (offline banner, sync badge, toasts)
 
 ## Testing Checklist
@@ -95,10 +95,10 @@
 - [x] Testing Library configured
 - [x] Playwright installed
 - [x] MSW installed
-- [ ] First unit test
+- [x] First unit test
 - [ ] First component test
 - [ ] First e2e test
-- [ ] Go table-driven tests
+- [x] Go table-driven tests
 - [ ] Go httptest handler tests
 
 ## Completed Work
@@ -130,20 +130,57 @@
 - Architecture docs (8 files)
 - GitHub Actions CI (3 workflows)
 
+### Phase 2 — Single-User Magic Link Auth
+- Magic link request + verify flow (15-min expiry tokens)
+- HttpOnly session cookie + CSRF double-submit pattern
+- Auth middleware + CSRF middleware with tests
+- TanStack Router pathless `_authenticated` layout with `beforeLoad` guard
+- Login page + verify page (useRef guard for StrictMode)
+
+### Phase 3 — Dashboard Widget System
+- Widget registry (idempotent, side-effect imports)
+- WidgetCard + WidgetErrorBoundary components
+- DashboardGrid with responsive col-span sizing
+- 5 widgets: Today Overview, Quick Expense, Recent Transactions, Habit Streak, Activity Heatmap
+
+### Phase 4 — Finance Vertical Slice
+- Transaction domain (expense/income, validation, amount_cents)
+- Transaction service + libSQL repository
+- Finance HTTP handler (CRUD + today-total)
+- Frontend: schemas, API client, query keys, hooks, components
+
+### Phase 5 — Habit Tracking Vertical Slice
+- Habit domain (daily/weekly frequency, palette color tokens, streaks)
+- Habit service + libSQL repository (toggle, archive, completions)
+- Habits HTTP handler (CRUD + toggle + completions map)
+- Frontend: schemas, API, hooks, contribution graph, habit cards
+- 12-week GitHub-style activity heatmap (combined all habits)
+
+### Phase — Tests + DX
+- Air hot-reload with browser-sync proxy on :8090
+- 11 Go test files (domain, service, middleware, datetime parsing)
+- 8 frontend test files, 102 tests (schemas, api client, registry, query keys)
+- mise seed task for deterministic dev data
+- CI: 3 GitHub Actions workflows (API, Web, Fullstack)
+
+### Phase 6 (WIP) — Polish + Offline/Sync
+- Mobile bottom navigation bar
+- Route-level loading skeletons + error components
+- IndexedDB mutation queue
+- Network status store + sync engine
+- Offline-aware API client wrapper
+- Sync status UI component
+- PWA workbox runtime caching for API routes
+
 ## Remaining Work
 
-- Phase 2: Auth shell (backend + frontend)
-- Phase 3: Dashboard widget system
-- Phase 4: Finance vertical slice (quick expense)
-- Phase 5: Habits vertical slice (check-in)
-- Phase 6: Offline/sync infrastructure
-- Phase 7: CI/CD pipelines
-- Phase 8: Documentation
-- Phase 9: Docker production image
+- Phase 6: Offline/sync infrastructure (in progress)
+- Phase 7: Additional middleware (structured logging, panic recovery, rate limit)
+- Phase 8: Docker production image
+- Phase 9: E2E tests (Playwright)
 
 ## Known Issues
 
-- `pnpm@latest` causes cosmetic warnings (fixed with pinned version)
 - shadcn calendar component has `@ts-expect-error` for `table` property (react-day-picker type mismatch)
-- `vitest` exits with code 1 when no test files exist (expected, will resolve when first test is added)
-- Tailwind v4 doesn't support `@apply` with custom CSS variable utilities (resolved by using plain CSS + `@theme` block)
+- Tailwind v4 dynamic arbitrary classes don't work at runtime — use inline styles with CSS var refs
+- `GetAllCompletionsGrouped` TotalHabits counts only habits with completions in range (not total)

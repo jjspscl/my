@@ -1,7 +1,7 @@
 package main
 
 import (
-	"log"
+	"log/slog"
 	"net/http"
 	"os"
 
@@ -19,6 +19,7 @@ import (
 	habithttp "github.com/jjspscl/my/internal/contexts/habits/interfaces/http"
 	"github.com/jjspscl/my/internal/platform/config"
 	"github.com/jjspscl/my/internal/platform/database"
+	plogger "github.com/jjspscl/my/internal/platform/logger"
 	"github.com/jjspscl/my/internal/platform/mail"
 	predis "github.com/jjspscl/my/internal/platform/redis"
 	"github.com/jjspscl/my/internal/platform/session"
@@ -27,26 +28,32 @@ import (
 )
 
 func main() {
+	log := plogger.New()
+
 	cfg, err := config.Load()
 	if err != nil {
-		log.Fatalf("config: %v", err)
+		log.Error("config load failed", slog.Any("error", err))
+		os.Exit(1)
 	}
 
 	// Database
 	db, err := database.Open(cfg.DatabaseURL)
 	if err != nil {
-		log.Fatalf("database: %v", err)
+		log.Error("database open failed", slog.Any("error", err))
+		os.Exit(1)
 	}
 	defer db.Close()
 
 	if err := database.Migrate(db, "migrations"); err != nil {
-		log.Fatalf("migrate: %v", err)
+		log.Error("migration failed", slog.Any("error", err))
+		os.Exit(1)
 	}
 
 	// Redis
 	rdb, err := predis.NewClient(cfg.RedisURL)
 	if err != nil {
-		log.Fatalf("redis: %v", err)
+		log.Error("redis connect failed", slog.Any("error", err))
+		os.Exit(1)
 	}
 	defer rdb.Close()
 
@@ -71,8 +78,8 @@ func main() {
 	r := chi.NewRouter()
 	r.Use(chimw.RequestID)
 	r.Use(chimw.RealIP)
-	r.Use(chimw.Logger)
-	r.Use(chimw.Recoverer)
+	r.Use(middleware.Recover(log))
+	r.Use(middleware.RequestLogger(log))
 
 	// API
 	r.Route("/api/v1", func(r chi.Router) {
@@ -101,8 +108,9 @@ func main() {
 	r.Handle("/*", web.Handler())
 
 	addr := ":" + cfg.APIPort
-	log.Printf("my: listening on %s (pid %d)", addr, os.Getpid())
+	log.Info("server starting", slog.String("addr", addr), slog.Int("pid", os.Getpid()))
 	if err := http.ListenAndServe(addr, r); err != nil {
-		log.Fatal(err)
+		log.Error("server failed", slog.Any("error", err))
+		os.Exit(1)
 	}
 }

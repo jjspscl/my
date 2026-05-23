@@ -8,7 +8,7 @@ import {
   listHabits as listHabitsApi,
   toggleHabit as toggleHabitApi,
 } from '../api/habits.api'
-import type { CreateHabit } from '../schemas/habit.schemas'
+import type { CreateHabit, Habit } from '../schemas/habit.schemas'
 
 export function useHabits() {
   return useQuery({
@@ -23,7 +23,7 @@ export function useCreateHabit() {
 
   return useMutation({
     mutationFn: (data: CreateHabit) => createHabitApi(data),
-    onSuccess: () => {
+    onSettled: () => {
       queryClient.invalidateQueries({ queryKey: habitKeys.all })
     },
   })
@@ -35,7 +35,35 @@ export function useToggleHabit() {
   return useMutation({
     mutationFn: ({ habitId, date }: { habitId: string; date?: string }) =>
       toggleHabitApi(habitId, date),
-    onSuccess: () => {
+    onMutate: async ({ habitId }) => {
+      await queryClient.cancelQueries({ queryKey: habitKeys.list() })
+      const prev = queryClient.getQueryData<Habit[]>(habitKeys.list())
+
+      // Optimistically flip completedToday
+      queryClient.setQueryData<Habit[]>(habitKeys.list(), (old) =>
+        old
+          ? old.map((h) =>
+              h.id === habitId
+                ? {
+                    ...h,
+                    completedToday: !h.completedToday,
+                    currentStreak: h.completedToday
+                      ? Math.max(0, (h.currentStreak ?? 0) - 1)
+                      : (h.currentStreak ?? 0) + 1,
+                  }
+                : h,
+            )
+          : old,
+      )
+
+      return { prev }
+    },
+    onError: (_err, _vars, ctx) => {
+      if (ctx?.prev) {
+        queryClient.setQueryData(habitKeys.list(), ctx.prev)
+      }
+    },
+    onSettled: () => {
       queryClient.invalidateQueries({ queryKey: habitKeys.all })
     },
   })
@@ -46,7 +74,23 @@ export function useArchiveHabit() {
 
   return useMutation({
     mutationFn: (habitId: string) => archiveHabitApi(habitId),
-    onSuccess: () => {
+    onMutate: async (habitId) => {
+      await queryClient.cancelQueries({ queryKey: habitKeys.list() })
+      const prev = queryClient.getQueryData<Habit[]>(habitKeys.list())
+
+      // Optimistically remove from list
+      queryClient.setQueryData<Habit[]>(habitKeys.list(), (old) =>
+        old ? old.filter((h) => h.id !== habitId) : old,
+      )
+
+      return { prev }
+    },
+    onError: (_err, _vars, ctx) => {
+      if (ctx?.prev) {
+        queryClient.setQueryData(habitKeys.list(), ctx.prev)
+      }
+    },
+    onSettled: () => {
       queryClient.invalidateQueries({ queryKey: habitKeys.all })
     },
   })

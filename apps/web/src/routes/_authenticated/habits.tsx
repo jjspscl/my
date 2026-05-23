@@ -1,6 +1,7 @@
 import { createFileRoute } from '@tanstack/react-router'
 import { Loader2 } from 'lucide-react'
 
+import { Skeleton } from '@/components/ui/skeleton'
 import { useHabits, useCompletionsMap, useArchiveHabit } from '@/features/habits/hooks/use-habits'
 import { HabitCard } from '@/features/habits/components/habit-card'
 import { AddHabitDialog } from '@/features/habits/components/add-habit-dialog'
@@ -8,6 +9,8 @@ import { HabitContributionGraph } from '@/features/habits/components/contributio
 
 export const Route = createFileRoute('/_authenticated/habits')({
   component: HabitsPage,
+  pendingComponent: HabitsSkeleton,
+  errorComponent: HabitsError,
 })
 
 function HabitsPage() {
@@ -91,6 +94,30 @@ function HabitsPage() {
             </div>
           ))
         )}
+      </div>
+    </div>
+  )
+}
+
+function HabitsSkeleton() {
+  return (
+    <div className="p-4 space-y-4">
+      <Skeleton className="h-8 w-48" />
+      <Skeleton className="h-32 w-full" />
+      <div className="space-y-2">
+        {Array.from({ length: 3 }).map((_, i) => (
+          <Skeleton key={i} className="h-16 w-full" />
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function HabitsError({ error }: { error: Error }) {
+  return (
+    <div className="p-4">
+      <div className="rounded-lg border border-destructive/50 p-4 text-center">
+        <p className="text-sm text-destructive">{error.message}</p>
       </div>
     </div>
   )

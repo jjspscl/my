@@ -2,100 +2,85 @@ package domain
 
 import (
 	"testing"
-	"time"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
-func TestHabit_ValidCreation(t *testing.T) {
-	h := &Habit{
-		ID:            "h-001",
-		UserEmail:     "user@test.com",
-		Name:          "Exercise",
-		Color:         "green",
-		Frequency:     FrequencyDaily,
-		TargetPerWeek: 7,
-		Archived:      false,
-		CreatedAt:     time.Now(),
-	}
-
+func TestNewHabit_Valid(t *testing.T) {
+	h, err := NewHabit("h-001", "user@test.com", "Exercise", "green", FrequencyDaily, 7)
+	require.NoError(t, err)
 	assert.Equal(t, "Exercise", h.Name)
 	assert.Equal(t, "green", h.Color)
 	assert.Equal(t, FrequencyDaily, h.Frequency)
 	assert.Equal(t, 7, h.TargetPerWeek)
+	assert.False(t, h.Archived)
 }
 
-func TestHabit_WeeklyFrequency(t *testing.T) {
-	h := &Habit{
-		Name:          "Learn Go",
-		Frequency:     FrequencyWeekly,
-		TargetPerWeek: 3,
-	}
-
+func TestNewHabit_Weekly(t *testing.T) {
+	h, err := NewHabit("h-002", "user@test.com", "Learn Go", "indigo", FrequencyWeekly, 3)
+	require.NoError(t, err)
 	assert.Equal(t, FrequencyWeekly, h.Frequency)
 	assert.Equal(t, 3, h.TargetPerWeek)
 }
 
-func TestHabit_ArchivedByDefault(t *testing.T) {
-	h := &Habit{
-		Name:  "Test",
-		Color: "blue",
-	}
-
-	assert.False(t, h.Archived)
+func TestNewHabit_EmptyName_Error(t *testing.T) {
+	_, err := NewHabit("h-003", "user@test.com", "", "blue", FrequencyDaily, 1)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "name is required")
 }
 
-func TestHabit_Defaults(t *testing.T) {
-	h := &Habit{}
+func TestNewHabit_EmptyColor_DefaultsToBlue(t *testing.T) {
+	h, err := NewHabit("h-004", "user@test.com", "Test", "", FrequencyDaily, 1)
+	require.NoError(t, err)
+	assert.Equal(t, "blue", h.Color)
+}
 
-	assert.Empty(t, h.Name)
-	assert.Empty(t, h.Color)
-	assert.Empty(t, h.Frequency)
-	assert.Equal(t, 0, h.TargetPerWeek)
+func TestNewHabit_InvalidColor_Error(t *testing.T) {
+	_, err := NewHabit("h-005", "user@test.com", "Test", "neon-pink", FrequencyDaily, 1)
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "invalid color")
+}
+
+func TestNewHabit_InvalidFrequency_DefaultsToDaily(t *testing.T) {
+	h, err := NewHabit("h-006", "user@test.com", "Test", "blue", "monthly", 1)
+	require.NoError(t, err)
+	assert.Equal(t, FrequencyDaily, h.Frequency)
+}
+
+func TestNewHabit_ZeroTarget_DefaultsToOne(t *testing.T) {
+	h, err := NewHabit("h-007", "user@test.com", "Test", "blue", FrequencyDaily, 0)
+	require.NoError(t, err)
+	assert.Equal(t, 1, h.TargetPerWeek)
+}
+
+func TestNewHabit_TargetOverSeven_CapsToSeven(t *testing.T) {
+	h, err := NewHabit("h-008", "user@test.com", "Test", "blue", FrequencyWeekly, 10)
+	require.NoError(t, err)
+	assert.Equal(t, 7, h.TargetPerWeek)
 }
 
 func TestFrequency_Constants(t *testing.T) {
 	assert.Equal(t, Frequency("daily"), FrequencyDaily)
 	assert.Equal(t, Frequency("weekly"), FrequencyWeekly)
-	assert.NotEqual(t, FrequencyDaily, FrequencyWeekly)
 }
 
 func TestHabitWithStatus_Embedding(t *testing.T) {
-	h := HabitWithStatus{
-		Habit: Habit{
-			ID:    "h-001",
-			Name:  "Exercise",
-			Color: "green",
-		},
-		CompletedToday: true,
-		CurrentStreak:  5,
-	}
-
-	assert.Equal(t, "h-001", h.Habit.ID)
-	assert.True(t, h.CompletedToday)
-	assert.Equal(t, 5, h.CurrentStreak)
-}
-
-func TestHabitCompletion_ValidCreation(t *testing.T) {
-	c := &HabitCompletion{
-		ID:            "hc-001",
-		HabitID:       "h-001",
-		CompletedDate: time.Now(),
-		CreatedAt:     time.Now(),
-	}
-	assert.Equal(t, "h-001", c.HabitID)
-	assert.False(t, c.CompletedDate.IsZero())
+	h, _ := NewHabit("h-001", "user@test.com", "Exercise", "green", FrequencyDaily, 7)
+	ws := HabitWithStatus{Habit: *h, CompletedToday: true, CurrentStreak: 5}
+	assert.Equal(t, "h-001", ws.Habit.ID)
+	assert.True(t, ws.CompletedToday)
+	assert.Equal(t, 5, ws.CurrentStreak)
 }
 
 func TestHabitStreak_Fields(t *testing.T) {
 	s := HabitStreak{
-		HabitID:     "h-001",
-		Name:        "Exercise",
-		Color:       "green",
-		Frequency:   FrequencyDaily,
-		StreakCount: 10,
+		HabitID: "h-001", Name: "Exercise", Color: "green",
+		Frequency: FrequencyDaily, StreakCount: 10,
 	}
-
-	assert.Equal(t, "Exercise", s.Name)
 	assert.Equal(t, 10, s.StreakCount)
+}
+
+func TestValidPaletteTokens_Has12(t *testing.T) {
+	assert.Len(t, ValidPaletteTokens, 12)
 }

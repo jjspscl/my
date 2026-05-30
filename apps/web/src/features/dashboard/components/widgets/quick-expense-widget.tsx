@@ -41,6 +41,7 @@ export function QuickExpenseWidget() {
       category,
       description: '',
       type: 'expense',
+      walletId: '',
     })
   }
 

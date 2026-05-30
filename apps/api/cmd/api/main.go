@@ -66,8 +66,29 @@ func main() {
 
 	// Finance
 	txRepo := financeinfra.NewTransactionRepoLibSQL(db)
-	txSvc := financeapp.NewTransactionService(txRepo, cfg.DefaultCurrency)
+	walletRepo := financeinfra.NewWalletRepoLibSQL(db)
+	txSvc := financeapp.NewTransactionService(txRepo, walletRepo, cfg.DefaultCurrency)
 	financeHandler := financehttp.NewFinanceHandler(txSvc)
+
+	budgetRepo := financeinfra.NewBudgetRepoLibSQL(db)
+	budgetSvc := financeapp.NewBudgetService(budgetRepo)
+	budgetHandler := financehttp.NewBudgetHandler(budgetSvc)
+
+	billRepo := financeinfra.NewBillRepoLibSQL(db)
+	billSvc := financeapp.NewBillService(billRepo)
+	billHandler := financehttp.NewBillHandler(billSvc)
+	txSvc.WithBillAutoMatcher(billSvc)
+
+	goalRepo := financeinfra.NewGoalRepoLibSQL(db)
+	transferRepo := financeinfra.NewTransferRepoLibSQL(db)
+	goalSvc := financeapp.NewGoalService(goalRepo, transferRepo)
+	goalHandler := financehttp.NewGoalHandler(goalSvc)
+
+	walletSvc := financeapp.NewWalletService(walletRepo)
+	walletHandler := financehttp.NewWalletHandler(walletSvc)
+
+	transferSvc := financeapp.NewTransferService(transferRepo, walletRepo)
+	transferHandler := financehttp.NewTransferHandler(transferSvc)
 
 	// Habits
 	habitRepo := habitinfra.NewHabitRepoLibSQL(db)
@@ -97,7 +118,14 @@ func main() {
 			r.Use(middleware.CSRFProtect())
 
 			// Finance
-			r.Route("/finance", financeHandler.Routes)
+			r.Route("/finance", func(r chi.Router) {
+				financeHandler.Routes(r)
+				r.Route("/budgets", budgetHandler.Routes)
+				r.Route("/bills", billHandler.Routes)
+				r.Route("/goals", goalHandler.Routes)
+				r.Route("/wallets", walletHandler.Routes)
+				r.Route("/transfers", transferHandler.Routes)
+			})
 
 			// Habits
 			r.Route("/habits", habitHandler.Routes)

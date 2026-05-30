@@ -13,6 +13,51 @@ import (
 
 // ---- mocks ----
 
+type mockWalletRepo struct {
+	wallets []*domain.Wallet
+}
+
+func (m *mockWalletRepo) Save(ctx context.Context, wallet *domain.Wallet) error {
+	return nil
+}
+
+func (m *mockWalletRepo) FindByID(ctx context.Context, id string) (*domain.Wallet, error) {
+	for _, w := range m.wallets {
+		if w.ID == id {
+			return w, nil
+		}
+	}
+	return nil, errors.New("wallet not found")
+}
+
+func (m *mockWalletRepo) ListByUser(ctx context.Context, userEmail string) ([]*domain.Wallet, error) {
+	return m.wallets, nil
+}
+
+func (m *mockWalletRepo) Update(ctx context.Context, wallet *domain.Wallet) error {
+	return nil
+}
+
+func (m *mockWalletRepo) Archive(ctx context.Context, id, userEmail string) error {
+	return nil
+}
+
+func (m *mockWalletRepo) FindDefault(ctx context.Context, userEmail string) (*domain.Wallet, error) {
+	for _, w := range m.wallets {
+		if w.UserEmail == userEmail && w.IsDefault {
+			return w, nil
+		}
+	}
+	if len(m.wallets) > 0 {
+		return m.wallets[0], nil
+	}
+	return nil, errors.New("no wallets found")
+}
+
+func (m *mockWalletRepo) GetBalancesByUser(ctx context.Context, userEmail string) ([]*domain.WalletBalance, error) {
+	return nil, nil
+}
+
 type mockTransactionRepo struct {
 	transactions []*domain.Transaction
 	saveFn       func(ctx context.Context, tx *domain.Transaction) error
@@ -98,7 +143,12 @@ func (m *mockTransactionRepo) GetTodayTotal(ctx context.Context, userEmail strin
 
 func newTestTransactionService() *TransactionService {
 	repo := &mockTransactionRepo{}
-	return NewTransactionService(repo, "PHP")
+	walletRepo := &mockWalletRepo{
+		wallets: []*domain.Wallet{
+			{ID: "w-default", UserEmail: "user@test.com", Name: "Cash", IsDefault: true},
+		},
+	}
+	return NewTransactionService(repo, walletRepo, "PHP")
 }
 
 // ---- tests ----
@@ -112,6 +162,7 @@ func TestCreate_ValidExpense_SavesAndReturns(t *testing.T) {
 		Category:        "food",
 		Description:     "Lunch",
 		Type:            domain.TransactionExpense,
+		WalletID:        "w-default",
 		TransactionDate: time.Now(),
 	})
 	require.NoError(t, err)
@@ -131,6 +182,7 @@ func TestCreate_ValidIncome_SavesAndReturns(t *testing.T) {
 		Category:        "salary",
 		Description:     "Monthly salary",
 		Type:            domain.TransactionIncome,
+		WalletID:        "w-default",
 		TransactionDate: time.Now(),
 	})
 	require.NoError(t, err)
@@ -146,6 +198,7 @@ func TestCreate_NegativeAmount_ReturnsError(t *testing.T) {
 		AmountCents: -100,
 		Category:    "food",
 		Type:        domain.TransactionExpense,
+		WalletID:    "w-default",
 	})
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "positive")
@@ -159,6 +212,7 @@ func TestCreate_ZeroAmount_ReturnsError(t *testing.T) {
 		AmountCents: 0,
 		Category:    "food",
 		Type:        domain.TransactionExpense,
+		WalletID:    "w-default",
 	})
 	assert.Error(t, err)
 }
@@ -171,6 +225,7 @@ func TestCreate_MissingCategory_ReturnsError(t *testing.T) {
 		AmountCents: 100,
 		Category:    "",
 		Type:        domain.TransactionExpense,
+		WalletID:    "w-default",
 	})
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "category")
@@ -184,6 +239,7 @@ func TestCreate_InvalidType_ReturnsError(t *testing.T) {
 		AmountCents: 100,
 		Category:    "food",
 		Type:        "invalid",
+		WalletID:    "w-default",
 	})
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "type")
@@ -201,16 +257,21 @@ func TestGetTodayTotal_NoTransactions_ReturnsZeros(t *testing.T) {
 }
 
 func TestGetTodayTotal_MixedTransactions_ReturnsCorrectAggregation(t *testing.T) {
+	walletRepo := &mockWalletRepo{
+		wallets: []*domain.Wallet{
+			{ID: "w-default", UserEmail: "user@test.com", Name: "Cash", IsDefault: true},
+		},
+	}
 	repo := &mockTransactionRepo{}
-	svc := NewTransactionService(repo, "PHP")
+	svc := NewTransactionService(repo, walletRepo, "PHP")
 	ctx := context.Background()
-	now := time.Now()
+	now := time.Now().UTC()
 
 	// Add some transactions
 	repo.transactions = []*domain.Transaction{
-		{ID: "tx-1", UserEmail: "user@test.com", AmountCents: 100000, Type: domain.TransactionExpense, TransactionDate: now},
-		{ID: "tx-2", UserEmail: "user@test.com", AmountCents: 50000, Type: domain.TransactionExpense, TransactionDate: now},
-		{ID: "tx-3", UserEmail: "user@test.com", AmountCents: 5000000, Type: domain.TransactionIncome, TransactionDate: now},
+		{ID: "tx-1", UserEmail: "user@test.com", AmountCents: 100000, Type: domain.TransactionExpense, TransactionDate: now, WalletID: "w-default"},
+		{ID: "tx-2", UserEmail: "user@test.com", AmountCents: 50000, Type: domain.TransactionExpense, TransactionDate: now, WalletID: "w-default"},
+		{ID: "tx-3", UserEmail: "user@test.com", AmountCents: 5000000, Type: domain.TransactionIncome, TransactionDate: now, WalletID: "w-default"},
 	}
 
 	total, err := svc.GetTodayTotal(ctx, "user@test.com")
@@ -221,8 +282,13 @@ func TestGetTodayTotal_MixedTransactions_ReturnsCorrectAggregation(t *testing.T)
 }
 
 func TestList_DefaultLimit(t *testing.T) {
+	walletRepo := &mockWalletRepo{
+		wallets: []*domain.Wallet{
+			{ID: "w-default", UserEmail: "user@test.com", Name: "Cash", IsDefault: true},
+		},
+	}
 	repo := &mockTransactionRepo{}
-	svc := NewTransactionService(repo, "PHP")
+	svc := NewTransactionService(repo, walletRepo, "PHP")
 	ctx := context.Background()
 
 	// Add 200 transactions
@@ -231,6 +297,7 @@ func TestList_DefaultLimit(t *testing.T) {
 			ID:              "tx-" + string(rune(i)),
 			UserEmail:       "user@test.com",
 			TransactionDate: time.Now(),
+			WalletID:        "w-default",
 		})
 	}
 
@@ -243,12 +310,17 @@ func TestList_DefaultLimit(t *testing.T) {
 }
 
 func TestDelete_ExistingTransaction_Succeeds(t *testing.T) {
+	walletRepo := &mockWalletRepo{
+		wallets: []*domain.Wallet{
+			{ID: "w-default", UserEmail: "user@test.com", Name: "Cash", IsDefault: true},
+		},
+	}
 	repo := &mockTransactionRepo{}
-	svc := NewTransactionService(repo, "PHP")
+	svc := NewTransactionService(repo, walletRepo, "PHP")
 	ctx := context.Background()
 
 	repo.transactions = []*domain.Transaction{
-		{ID: "tx-1", UserEmail: "user@test.com"},
+		{ID: "tx-1", UserEmail: "user@test.com", WalletID: "w-default"},
 	}
 
 	err := svc.Delete(ctx, "tx-1", "user@test.com")
@@ -256,30 +328,41 @@ func TestDelete_ExistingTransaction_Succeeds(t *testing.T) {
 }
 
 func TestCreate_RepoFailure_ReturnsError(t *testing.T) {
+	walletRepo := &mockWalletRepo{
+		wallets: []*domain.Wallet{
+			{ID: "w-default", UserEmail: "user@test.com", Name: "Cash", IsDefault: true},
+		},
+	}
 	repo := &mockTransactionRepo{
 		saveFn: func(ctx context.Context, tx *domain.Transaction) error {
 			return errors.New("database error")
 		},
 	}
-	svc := NewTransactionService(repo, "PHP")
+	svc := NewTransactionService(repo, walletRepo, "PHP")
 	ctx := context.Background()
 
 	_, err := svc.Create(ctx, "user@test.com", CreateTransactionInput{
 		AmountCents: 100,
 		Category:    "food",
 		Type:        domain.TransactionExpense,
+		WalletID:    "w-default",
 	})
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "save transaction")
 }
 
 func TestGetTodayTotal_EmptyDateRange_ReturnsNilDefault(t *testing.T) {
+	walletRepo := &mockWalletRepo{
+		wallets: []*domain.Wallet{
+			{ID: "w-default", UserEmail: "user@test.com", Name: "Cash", IsDefault: true},
+		},
+	}
 	repo := &mockTransactionRepo{
 		todayTotalFn: func(ctx context.Context, userEmail string, date time.Time) (*domain.DailyTotal, error) {
 			return nil, nil
 		},
 	}
-	svc := NewTransactionService(repo, "PHP")
+	svc := NewTransactionService(repo, walletRepo, "PHP")
 	ctx := context.Background()
 
 	total, err := svc.GetTodayTotal(ctx, "user@test.com")

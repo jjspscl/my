@@ -29,7 +29,9 @@ import {
 } from '@/components/ui/form'
 import { CategoryCombobox } from './category-combobox'
 import { useCreateTransaction } from '../hooks/use-transactions'
+import { useWallets } from '../hooks/use-wallets'
 import { type CreateTransaction } from '../schemas/transaction.schemas'
+import type { Wallet } from '../schemas/wallet.schemas'
 import { z } from 'zod'
 
 // Form schema extends CreateTransactionSchema but uses string for amount (input field)
@@ -41,6 +43,7 @@ const FormSchema = z.object({
   category: z.string().min(1, 'Category is required'),
   description: z.string().default(''),
   type: z.enum(['expense', 'income']),
+  walletId: z.string(),
   transactionDate: z.string().min(1),
 })
 type FormValues = z.infer<typeof FormSchema>
@@ -53,6 +56,7 @@ interface AddExpenseDialogProps {
 export function AddExpenseDialog({ trigger, defaultType = 'expense' }: AddExpenseDialogProps) {
   const [open, setOpen] = useState(false)
   const createTx = useCreateTransaction()
+  const { data: wallets } = useWallets()
 
   const form = useForm<FormValues>({
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -62,6 +66,7 @@ export function AddExpenseDialog({ trigger, defaultType = 'expense' }: AddExpens
       category: '',
       description: '',
       type: defaultType,
+      walletId: '',
       transactionDate: new Date().toISOString().split('T')[0],
     },
   })
@@ -72,6 +77,7 @@ export function AddExpenseDialog({ trigger, defaultType = 'expense' }: AddExpens
       category: values.category,
       description: values.description,
       type: values.type,
+      walletId: values.walletId,
       transactionDate: values.transactionDate,
     }
 
@@ -142,6 +148,31 @@ export function AddExpenseDialog({ trigger, defaultType = 'expense' }: AddExpens
                 )}
               />
             </div>
+
+            {wallets && wallets.length > 0 && (
+              <FormField
+                control={form.control}
+                name="walletId"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel className="text-xs text-muted-foreground">Wallet</FormLabel>
+                    <Select value={field.value} onValueChange={field.onChange}>
+                      <FormControl>
+                        <SelectTrigger className="text-sm">
+                          <SelectValue placeholder="Select wallet" />
+                        </SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        {wallets.map((w: Wallet) => (
+                          <SelectItem key={w.id} value={w.id}>{w.name}</SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            )}
 
             <FormField
               control={form.control}

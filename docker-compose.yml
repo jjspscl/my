@@ -1,16 +1,4 @@
 services:
-  redis:
-    image: redis:7-alpine
-    ports:
-      - "6379:6379"
-    volumes:
-      - redis-data:/data
-    healthcheck:
-      test: ["CMD", "redis-cli", "ping"]
-      interval: 5s
-      timeout: 3s
-      retries: 5
-
   # Optional: self-hosted libSQL server (sqld)
   # Uncomment to use instead of embedded mode
   # sqld:
@@ -23,5 +11,4 @@ services:
   #     - SQLD_NODE=primary
 
 volumes:
-  redis-data:
   # sqld-data:

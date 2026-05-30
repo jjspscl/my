@@ -10,8 +10,5 @@
     "typecheck": "mise run typecheck",
     "schema:check": "pnpm --filter @my/web schema:check",
     "openapi:check": "pnpm --filter @my/web openapi:check"
-  },
-  "pnpm": {
-    "onlyBuiltDependencies": ["msw", "@playwright/test"]
   }
 }

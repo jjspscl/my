@@ -12,24 +12,39 @@ description = "Install workspace dependencies"
 run = "pnpm install"
 
 [tasks.dev]
-description = "Run API and client dev servers"
-depends = ["dev:api", "dev:client"]
+description = "Run dev services, API, and client"
+run = [
+  { task = "dev:redis" },
+  { task = "dev:mail" },
+  { tasks = ["dev:api", "dev:client"] },
+]
 
 [tasks."dev:api"]
-description = "Run Go API dev server with hot-reload (ensures Redis is running)"
-run = [
-  "docker start my-redis 2>/dev/null || docker run -d --name my-redis -p 6379:6379 redis:7-alpine",
-  "air"
-]
+description = "Run Go API dev server with hot-reload"
+run = ["air"]
 dir = "apps/api"
 
+[tasks."dev:redis"]
+description = "Start Redis if not already running"
+run = [
+  "bash scripts/docker-ensure.sh my-redis redis:7-alpine 6379:6379",
+  "bash -c 'until (echo > /dev/tcp/127.0.0.1/6379) >/dev/null 2>&1; do sleep 1; done'",
+]
+
 [tasks."dev:mail"]
-description = "Run Mailpit for local email testing (UI on :8025)"
-run = "docker start my-mailpit 2>/dev/null || docker run -d --name my-mailpit -p 1025:1025 -p 8025:8025 axllent/mailpit"
+description = "Start Mailpit if not already running (SMTP :1025, UI :8025)"
+run = [
+  "bash scripts/docker-ensure.sh my-mailpit axllent/mailpit 1025:1025 8025:8025",
+  "bash -c 'until (echo > /dev/tcp/127.0.0.1/1025) >/dev/null 2>&1; do sleep 1; done'",
+]
+
+[tasks."dev:mail:ui"]
+description = "Open Mailpit UI in browser"
+run = "open http://localhost:8025"
 
 [tasks."dev:client"]
 description = "Run Vite client dev server with HMR"
-run = "pnpm dev --host 0.0.0.0 --port 5173 --strictPort"
+run = "pnpm dev"
 dir = "apps/web"
 
 [tasks.build]
@@ -37,7 +52,7 @@ description = "Build client assets, copy them into Go embed directory, then buil
 run = [
   "mise run build:client",
   "bash scripts/copy-web-assets.sh",
-  "mise run build:api"
+  "mise run build:api",
 ]
 
 [tasks."build:client"]
@@ -52,10 +67,7 @@ dir = "apps/api"
 
 [tasks.test]
 description = "Run all tests"
-run = [
-  "mise run test:api",
-  "mise run test:client"
-]
+run = ["mise run test:api", "mise run test:client"]
 
 [tasks."test:api"]
 description = "Run Go tests"
@@ -69,10 +81,7 @@ dir = "apps/web"
 
 [tasks.lint]
 description = "Run all linters"
-run = [
-  "mise run lint:api",
-  "mise run lint:client"
-]
+run = ["mise run lint:api", "mise run lint:client"]
 
 [tasks."lint:api"]
 description = "Run Go lint checks"

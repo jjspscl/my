@@ -33,6 +33,7 @@ type createTransactionRequest struct {
 	Category        string `json:"category"`
 	Description     string `json:"description"`
 	Type            string `json:"type"`
+	WalletID        string `json:"walletId,omitempty"`
 	TransactionDate string `json:"transactionDate"`
 }
 
@@ -43,6 +44,8 @@ type transactionResponse struct {
 	Category        string `json:"category"`
 	Description     string `json:"description"`
 	Type            string `json:"type"`
+	WalletID        string `json:"walletId,omitempty"`
+	WalletName      string `json:"walletName,omitempty"`
 	TransactionDate string `json:"transactionDate"`
 	CreatedAt       string `json:"createdAt"`
 }
@@ -61,6 +64,8 @@ func toTransactionResponse(t *domain.Transaction) transactionResponse {
 		Category:        t.Category,
 		Description:     t.Description,
 		Type:            string(t.Type),
+		WalletID:        t.WalletID,
+		WalletName:      t.WalletName,
 		TransactionDate: t.TransactionDate.Format("2006-01-02"),
 		CreatedAt:       t.CreatedAt.Format(time.RFC3339),
 	}
@@ -90,6 +95,7 @@ func (h *FinanceHandler) Create(w http.ResponseWriter, r *http.Request) {
 		Category:        req.Category,
 		Description:     req.Description,
 		Type:            domain.TransactionType(req.Type),
+		WalletID:        req.WalletID,
 		TransactionDate: txDate,
 	})
 	if err != nil {

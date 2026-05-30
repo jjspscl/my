@@ -23,6 +23,8 @@ type Transaction struct {
 	Category        string
 	Description     string
 	Type            TransactionType
+	WalletID        string
+	WalletName      string
 	TransactionDate time.Time
 	CreatedAt       time.Time
 }

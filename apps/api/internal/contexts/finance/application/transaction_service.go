@@ -10,13 +10,26 @@ import (
 	"github.com/jjspscl/my/internal/contexts/finance/domain"
 )
 
-type TransactionService struct {
-	repo     domain.TransactionRepository
-	currency string
+// BillAutoMatcher is an optional hook to auto-match bills after a transaction is created.
+type BillAutoMatcher interface {
+	TryAutoMatch(ctx context.Context, tx *domain.Transaction)
 }
 
-func NewTransactionService(repo domain.TransactionRepository, currency string) *TransactionService {
-	return &TransactionService{repo: repo, currency: currency}
+type TransactionService struct {
+	repo        domain.TransactionRepository
+	walletRepo  domain.WalletRepository
+	currency    string
+	billMatcher BillAutoMatcher
+}
+
+func NewTransactionService(repo domain.TransactionRepository, walletRepo domain.WalletRepository, currency string) *TransactionService {
+	return &TransactionService{repo: repo, walletRepo: walletRepo, currency: currency}
+}
+
+// WithBillAutoMatcher sets the bill auto-matcher hook.
+func (s *TransactionService) WithBillAutoMatcher(m BillAutoMatcher) *TransactionService {
+	s.billMatcher = m
+	return s
 }
 
 type CreateTransactionInput struct {
@@ -24,10 +37,38 @@ type CreateTransactionInput struct {
 	Category        string
 	Description     string
 	Type            domain.TransactionType
+	WalletID        string
 	TransactionDate time.Time
 }
 
+func (s *TransactionService) resolveWallet(ctx context.Context, userEmail, walletID string) (*domain.Wallet, error) {
+	if walletID == "" {
+		defaultWallet, err := s.walletRepo.FindDefault(ctx, userEmail)
+		if err != nil {
+			return nil, fmt.Errorf("no wallet specified and no default wallet found: %w", err)
+		}
+		return defaultWallet, nil
+	}
+
+	wallet, err := s.walletRepo.FindByID(ctx, walletID)
+	if err != nil {
+		return nil, fmt.Errorf("wallet not found: %w", err)
+	}
+	if wallet.UserEmail != userEmail {
+		return nil, fmt.Errorf("wallet not found")
+	}
+	if wallet.ArchivedAt != nil {
+		return nil, fmt.Errorf("wallet is archived")
+	}
+	return wallet, nil
+}
+
 func (s *TransactionService) Create(ctx context.Context, userEmail string, input CreateTransactionInput) (*domain.Transaction, error) {
+	wallet, err := s.resolveWallet(ctx, userEmail, input.WalletID)
+	if err != nil {
+		return nil, err
+	}
+
 	tx, err := domain.NewTransaction(
 		uuid.New().String(),
 		userEmail,
@@ -41,9 +82,14 @@ func (s *TransactionService) Create(ctx context.Context, userEmail string, input
 	if err != nil {
 		return nil, err
 	}
+	tx.WalletID = wallet.ID
 
 	if err := s.repo.Save(ctx, tx); err != nil {
 		return nil, fmt.Errorf("save transaction: %w", err)
+	}
+
+	if s.billMatcher != nil {
+		s.billMatcher.TryAutoMatch(ctx, tx)
 	}
 
 	return tx, nil

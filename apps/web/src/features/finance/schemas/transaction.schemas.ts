@@ -23,6 +23,7 @@ export const CreateTransactionSchema = z.object({
   category: CategorySchema,
   description: z.string().default(''),
   type: TransactionTypeSchema,
+  walletId: z.string(),
   transactionDate: z.string().optional(),
 })
 export type CreateTransaction = z.infer<typeof CreateTransactionSchema>
@@ -34,6 +35,8 @@ export const TransactionSchema = z.object({
   category: z.string(),
   description: z.string(),
   type: TransactionTypeSchema,
+  walletId: z.string(),
+  walletName: z.string().optional(),
   transactionDate: z.string(),
   createdAt: z.string(),
 })

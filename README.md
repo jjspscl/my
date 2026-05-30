@@ -20,7 +20,7 @@ mise install
 # Install dependencies
 mise run install
 
-# Start development servers
+# Start development servers (includes Redis + Mailpit)
 mise run dev
 ```
 
@@ -29,9 +29,12 @@ mise run dev
 | Command | Description |
 |---|---|
 | `mise run install` | Install workspace dependencies |
-| `mise run dev` | Run API + client dev servers |
+| `mise run dev` | Start Redis, Mailpit, API, and client dev servers |
 | `mise run dev:api` | Run Go API dev server (port 8080) |
 | `mise run dev:client` | Run Vite client dev server (port 5173) |
+| `mise run dev:redis` | Start Redis if not already running |
+| `mise run dev:mail` | Start Mailpit (SMTP :1025, UI :8025) |
+| `mise run dev:mail:ui` | Open Mailpit UI in browser |
 | `mise run build` | Build production binary with embedded frontend |
 | `mise run test` | Run all tests |
 | `mise run lint` | Run all linters |
@@ -65,6 +68,17 @@ In development, two servers run independently:
 
 - **Go API** on `localhost:8080` — handles API routes
 - **Vite** on `localhost:5173` — handles React HMR, proxies `/api` to Go
+
+### Dev services
+
+`mise run dev` automatically starts required dependencies using Docker:
+
+- **Redis** (`my-redis`) — session storage, port 6379
+- **Mailpit** (`my-mailpit`) — local SMTP server for email testing, port 1025
+
+Mailpit provides a web UI at **http://localhost:8025** where you can view emails sent by the app (magic link, etc.).
+
+If a container is already running, it is reused. If it exists but is stopped, it is restarted. If it does not exist, it is created.
 
 ## Modules
 

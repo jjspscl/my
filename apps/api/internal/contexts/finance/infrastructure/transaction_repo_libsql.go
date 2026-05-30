@@ -19,10 +19,10 @@ func NewTransactionRepoLibSQL(db *sql.DB) *TransactionRepoLibSQL {
 
 func (r *TransactionRepoLibSQL) Save(ctx context.Context, tx *domain.Transaction) error {
 	_, err := r.db.ExecContext(ctx,
-		`INSERT INTO transactions (id, user_email, amount_cents, currency, category, description, type, transaction_date, created_at)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		`INSERT INTO transactions (id, user_email, amount_cents, currency, category, description, type, wallet_id, transaction_date, created_at)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		tx.ID, tx.UserEmail, tx.AmountCents, tx.Currency, tx.Category,
-		tx.Description, tx.Type, tx.TransactionDate.Format("2006-01-02"), tx.CreatedAt,
+		tx.Description, tx.Type, tx.WalletID, tx.TransactionDate.Format("2006-01-02"), tx.CreatedAt,
 	)
 	if err != nil {
 		return fmt.Errorf("save transaction: %w", err)
@@ -32,8 +32,10 @@ func (r *TransactionRepoLibSQL) Save(ctx context.Context, tx *domain.Transaction
 
 func (r *TransactionRepoLibSQL) FindByID(ctx context.Context, id string) (*domain.Transaction, error) {
 	row := r.db.QueryRowContext(ctx,
-		`SELECT id, user_email, amount_cents, currency, category, description, type, transaction_date, created_at
-		 FROM transactions WHERE id = ?`, id,
+		`SELECT t.id, t.user_email, t.amount_cents, t.currency, t.category, t.description, t.type, t.wallet_id, COALESCE(w.name, '') as wallet_name, t.transaction_date, t.created_at
+		 FROM transactions t
+		 LEFT JOIN wallets w ON t.wallet_id = w.id
+		 WHERE t.id = ?`, id,
 	)
 
 	return scanTransaction(row)
@@ -41,10 +43,11 @@ func (r *TransactionRepoLibSQL) FindByID(ctx context.Context, id string) (*domai
 
 func (r *TransactionRepoLibSQL) ListByUserAndDateRange(ctx context.Context, userEmail string, from, to time.Time, limit, offset int) ([]*domain.Transaction, error) {
 	rows, err := r.db.QueryContext(ctx,
-		`SELECT id, user_email, amount_cents, currency, category, description, type, transaction_date, created_at
-		 FROM transactions
-		 WHERE user_email = ? AND transaction_date >= ? AND transaction_date <= ?
-		 ORDER BY transaction_date DESC, created_at DESC
+		`SELECT t.id, t.user_email, t.amount_cents, t.currency, t.category, t.description, t.type, t.wallet_id, COALESCE(w.name, '') as wallet_name, t.transaction_date, t.created_at
+		 FROM transactions t
+		 LEFT JOIN wallets w ON t.wallet_id = w.id
+		 WHERE t.user_email = ? AND t.transaction_date >= ? AND t.transaction_date <= ?
+		 ORDER BY t.transaction_date DESC, t.created_at DESC
 		 LIMIT ? OFFSET ?`,
 		userEmail, from.Format("2006-01-02"), to.Format("2006-01-02"), limit, offset,
 	)
@@ -120,13 +123,18 @@ func scanTransaction(row scannable) (*domain.Transaction, error) {
 	var t domain.Transaction
 	var dateStr string
 	var createdAtStr string
+	var walletID *string
 
 	if err := row.Scan(&t.ID, &t.UserEmail, &t.AmountCents, &t.Currency,
-		&t.Category, &t.Description, &t.Type, &dateStr, &createdAtStr); err != nil {
+		&t.Category, &t.Description, &t.Type, &walletID, &t.WalletName, &dateStr, &createdAtStr); err != nil {
 		if err == sql.ErrNoRows {
 			return nil, fmt.Errorf("transaction not found")
 		}
 		return nil, fmt.Errorf("scan transaction: %w", err)
+	}
+
+	if walletID != nil {
+		t.WalletID = *walletID
 	}
 
 	parsed, err := parseDatetime(dateStr)
@@ -142,6 +150,14 @@ func scanTransaction(row scannable) (*domain.Transaction, error) {
 	t.CreatedAt = createdAt
 
 	return &t, nil
+}
+
+// nullableString converts *string to interface{} for SQL NULL handling.
+func nullableString(s *string) interface{} {
+	if s == nil {
+		return nil
+	}
+	return *s
 }
 
 // parseDatetime tries common SQLite datetime formats.

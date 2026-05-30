@@ -65,7 +65,7 @@
       "type": "local",
       "command": ["npx", "-y", "@modelcontextprotocol/server-brave-search"],
       "environment": {
-        "BRAVE_API_KEY": "${BRAVE_API_KEY}"
+        "BRAVE_API_KEY": "{env:BRAVE_API_KEY}"
       }
     },
     "context7": {

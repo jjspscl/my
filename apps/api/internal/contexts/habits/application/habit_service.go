@@ -184,9 +184,12 @@ func (s *HabitService) ToggleCompletion(ctx context.Context, habitID, userEmail,
 		return false, fmt.Errorf("habit not found")
 	}
 
+	if dateStr == "" {
+		dateStr = time.Now().Format("2006-01-02")
+	}
 	date, err := time.Parse("2006-01-02", dateStr)
 	if err != nil {
-		date = time.Now().UTC()
+		return false, fmt.Errorf("invalid date format: %w", err)
 	}
 
 	existing, err := s.repo.GetCompletion(ctx, habitID, date)

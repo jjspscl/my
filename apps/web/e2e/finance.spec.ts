@@ -1,10 +1,11 @@
 import { test, expect } from '@playwright/test'
 import { login } from './helpers/auth'
 
+const runId = Date.now()
 let uid = 0
 function unique(name: string): string {
   uid++
-  return `${name} ${uid}`
+  return `${name} ${runId}-${uid}`
 }
 
 test.describe('Finance', () => {
@@ -36,6 +37,7 @@ test.describe('Finance', () => {
   })
 
   test('create a transaction', async ({ page }) => {
+    const description = unique('Lunch E2E test')
     await page.goto('/finance')
 
     // Click Add Transaction button
@@ -56,13 +58,13 @@ test.describe('Finance', () => {
     }
 
     // Fill description
-    await page.getByLabel('Description').fill('Lunch E2E test')
+    await page.getByLabel('Description').fill(description)
 
     // Submit
     await page.getByRole('button', { name: 'Add Expense' }).click()
 
     // Transaction should appear in table
-    await expect(page.getByText('Lunch E2E test')).toBeVisible()
+    await expect(page.getByText(description)).toBeVisible()
     await expect(page.getByRole('cell', { name: /250\.50/ }).first()).toBeVisible()
   })
 

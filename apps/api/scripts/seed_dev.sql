@@ -10,6 +10,10 @@ DELETE FROM habit_completions;
 DELETE FROM habits;
 DELETE FROM transactions;
 
+-- Ensure deterministic default wallet exists for seeded finance data.
+INSERT OR IGNORE INTO wallets (id, user_email, name, kind, currency, opening_balance_cents, is_default, created_at, updated_at)
+VALUES ('backfill_cash_jjspscl@gmail.com', 'jjspscl@gmail.com', 'Cash', 'cash', 'PHP', 0, 1, datetime('now'), datetime('now'));
+
 --------------------------------------------------------------
 -- HABITS (5 total)
 --------------------------------------------------------------
@@ -84,39 +88,39 @@ SELECT id, habit_id, d FROM w;
 -- Recurring monthly (23 entries)
 --------------------------------------------------------------
 
-INSERT INTO transactions (id, user_email, amount_cents, currency, category, description, type, transaction_date) VALUES
+INSERT INTO transactions (id, user_email, amount_cents, currency, category, description, type, wallet_id, transaction_date) VALUES
 -- Rent (1st, 15000 PHP)
-('tx-rent-01', 'jjspscl@gmail.com', 1500000, 'PHP', 'housing', 'Monthly Rent', 'expense', '2026-01-01'),
-('tx-rent-02', 'jjspscl@gmail.com', 1500000, 'PHP', 'housing', 'Monthly Rent', 'expense', '2026-02-01'),
-('tx-rent-03', 'jjspscl@gmail.com', 1500000, 'PHP', 'housing', 'Monthly Rent', 'expense', '2026-03-01'),
-('tx-rent-04', 'jjspscl@gmail.com', 1500000, 'PHP', 'housing', 'Monthly Rent', 'expense', '2026-04-01'),
-('tx-rent-05', 'jjspscl@gmail.com', 1500000, 'PHP', 'housing', 'Monthly Rent', 'expense', '2026-05-01'),
+('tx-rent-01', 'jjspscl@gmail.com', 1500000, 'PHP', 'housing', 'Monthly Rent', 'expense', 'backfill_cash_jjspscl@gmail.com', '2026-01-01'),
+('tx-rent-02', 'jjspscl@gmail.com', 1500000, 'PHP', 'housing', 'Monthly Rent', 'expense', 'backfill_cash_jjspscl@gmail.com', '2026-02-01'),
+('tx-rent-03', 'jjspscl@gmail.com', 1500000, 'PHP', 'housing', 'Monthly Rent', 'expense', 'backfill_cash_jjspscl@gmail.com', '2026-03-01'),
+('tx-rent-04', 'jjspscl@gmail.com', 1500000, 'PHP', 'housing', 'Monthly Rent', 'expense', 'backfill_cash_jjspscl@gmail.com', '2026-04-01'),
+('tx-rent-05', 'jjspscl@gmail.com', 1500000, 'PHP', 'housing', 'Monthly Rent', 'expense', 'backfill_cash_jjspscl@gmail.com', '2026-05-01'),
 
 -- Internet (5th, 1899 PHP)
-('tx-inet-01', 'jjspscl@gmail.com', 189900, 'PHP', 'utilities', 'Internet Bill', 'expense', '2026-01-05'),
-('tx-inet-02', 'jjspscl@gmail.com', 189900, 'PHP', 'utilities', 'Internet Bill', 'expense', '2026-02-05'),
-('tx-inet-03', 'jjspscl@gmail.com', 189900, 'PHP', 'utilities', 'Internet Bill', 'expense', '2026-03-05'),
-('tx-inet-04', 'jjspscl@gmail.com', 189900, 'PHP', 'utilities', 'Internet Bill', 'expense', '2026-04-05'),
-('tx-inet-05', 'jjspscl@gmail.com', 189900, 'PHP', 'utilities', 'Internet Bill', 'expense', '2026-05-05'),
+('tx-inet-01', 'jjspscl@gmail.com', 189900, 'PHP', 'utilities', 'Internet Bill', 'expense', 'backfill_cash_jjspscl@gmail.com', '2026-01-05'),
+('tx-inet-02', 'jjspscl@gmail.com', 189900, 'PHP', 'utilities', 'Internet Bill', 'expense', 'backfill_cash_jjspscl@gmail.com', '2026-02-05'),
+('tx-inet-03', 'jjspscl@gmail.com', 189900, 'PHP', 'utilities', 'Internet Bill', 'expense', 'backfill_cash_jjspscl@gmail.com', '2026-03-05'),
+('tx-inet-04', 'jjspscl@gmail.com', 189900, 'PHP', 'utilities', 'Internet Bill', 'expense', 'backfill_cash_jjspscl@gmail.com', '2026-04-05'),
+('tx-inet-05', 'jjspscl@gmail.com', 189900, 'PHP', 'utilities', 'Internet Bill', 'expense', 'backfill_cash_jjspscl@gmail.com', '2026-05-05'),
 
 -- Spotify (10th, 299 PHP)
-('tx-spot-01', 'jjspscl@gmail.com', 29900, 'PHP', 'entertainment', 'Spotify Premium', 'expense', '2026-01-10'),
-('tx-spot-02', 'jjspscl@gmail.com', 29900, 'PHP', 'entertainment', 'Spotify Premium', 'expense', '2026-02-10'),
-('tx-spot-03', 'jjspscl@gmail.com', 29900, 'PHP', 'entertainment', 'Spotify Premium', 'expense', '2026-03-10'),
-('tx-spot-04', 'jjspscl@gmail.com', 29900, 'PHP', 'entertainment', 'Spotify Premium', 'expense', '2026-04-10'),
-('tx-spot-05', 'jjspscl@gmail.com', 29900, 'PHP', 'entertainment', 'Spotify Premium', 'expense', '2026-05-10'),
+('tx-spot-01', 'jjspscl@gmail.com', 29900, 'PHP', 'entertainment', 'Spotify Premium', 'expense', 'backfill_cash_jjspscl@gmail.com', '2026-01-10'),
+('tx-spot-02', 'jjspscl@gmail.com', 29900, 'PHP', 'entertainment', 'Spotify Premium', 'expense', 'backfill_cash_jjspscl@gmail.com', '2026-02-10'),
+('tx-spot-03', 'jjspscl@gmail.com', 29900, 'PHP', 'entertainment', 'Spotify Premium', 'expense', 'backfill_cash_jjspscl@gmail.com', '2026-03-10'),
+('tx-spot-04', 'jjspscl@gmail.com', 29900, 'PHP', 'entertainment', 'Spotify Premium', 'expense', 'backfill_cash_jjspscl@gmail.com', '2026-04-10'),
+('tx-spot-05', 'jjspscl@gmail.com', 29900, 'PHP', 'entertainment', 'Spotify Premium', 'expense', 'backfill_cash_jjspscl@gmail.com', '2026-05-10'),
 
 -- Salary (15th, 85000 PHP)
-('tx-sal-01', 'jjspscl@gmail.com', 8500000, 'PHP', 'salary', 'Monthly Salary', 'income', '2026-01-15'),
-('tx-sal-02', 'jjspscl@gmail.com', 8500000, 'PHP', 'salary', 'Monthly Salary', 'income', '2026-02-15'),
-('tx-sal-03', 'jjspscl@gmail.com', 8500000, 'PHP', 'salary', 'Monthly Salary', 'income', '2026-03-15'),
-('tx-sal-04', 'jjspscl@gmail.com', 8500000, 'PHP', 'salary', 'Monthly Salary', 'income', '2026-04-15'),
-('tx-sal-05', 'jjspscl@gmail.com', 8500000, 'PHP', 'salary', 'Monthly Salary', 'income', '2026-05-15'),
+('tx-sal-01', 'jjspscl@gmail.com', 8500000, 'PHP', 'salary', 'Monthly Salary', 'income', 'backfill_cash_jjspscl@gmail.com', '2026-01-15'),
+('tx-sal-02', 'jjspscl@gmail.com', 8500000, 'PHP', 'salary', 'Monthly Salary', 'income', 'backfill_cash_jjspscl@gmail.com', '2026-02-15'),
+('tx-sal-03', 'jjspscl@gmail.com', 8500000, 'PHP', 'salary', 'Monthly Salary', 'income', 'backfill_cash_jjspscl@gmail.com', '2026-03-15'),
+('tx-sal-04', 'jjspscl@gmail.com', 8500000, 'PHP', 'salary', 'Monthly Salary', 'income', 'backfill_cash_jjspscl@gmail.com', '2026-04-15'),
+('tx-sal-05', 'jjspscl@gmail.com', 8500000, 'PHP', 'salary', 'Monthly Salary', 'income', 'backfill_cash_jjspscl@gmail.com', '2026-05-15'),
 
 -- Freelance (25th, 25000 PHP, only Feb/Mar/May)
-('tx-free-01', 'jjspscl@gmail.com', 2500000, 'PHP', 'freelance', 'Freelance Project', 'income', '2026-02-25'),
-('tx-free-02', 'jjspscl@gmail.com', 2500000, 'PHP', 'freelance', 'Freelance Project', 'income', '2026-03-25'),
-('tx-free-03', 'jjspscl@gmail.com', 2500000, 'PHP', 'freelance', 'Freelance Project', 'income', '2026-05-25');
+('tx-free-01', 'jjspscl@gmail.com', 2500000, 'PHP', 'freelance', 'Freelance Project', 'income', 'backfill_cash_jjspscl@gmail.com', '2026-02-25'),
+('tx-free-02', 'jjspscl@gmail.com', 2500000, 'PHP', 'freelance', 'Freelance Project', 'income', 'backfill_cash_jjspscl@gmail.com', '2026-03-25'),
+('tx-free-03', 'jjspscl@gmail.com', 2500000, 'PHP', 'freelance', 'Freelance Project', 'income', 'backfill_cash_jjspscl@gmail.com', '2026-05-25');
 
 --------------------------------------------------------------
 -- Random daily transactions (deterministic day-based selection)
@@ -188,11 +192,11 @@ grocery AS (
     FROM dates
     WHERE CAST(strftime('%d', d) AS INTEGER) IN (7, 21)
 )
-INSERT INTO transactions (id, user_email, amount_cents, currency, category, description, type, transaction_date)
-SELECT id, email, cents, cur, cat, descr, 'expense', d FROM transport
+INSERT INTO transactions (id, user_email, amount_cents, currency, category, description, type, wallet_id, transaction_date)
+SELECT id, email, cents, cur, cat, descr, 'expense', 'backfill_cash_jjspscl@gmail.com', d FROM transport
 UNION ALL
-SELECT id, email, cents, cur, cat, descr, 'expense', d FROM food
+SELECT id, email, cents, cur, cat, descr, 'expense', 'backfill_cash_jjspscl@gmail.com', d FROM food
 UNION ALL
-SELECT id, email, cents, cur, cat, descr, 'expense', d FROM grocery;
+SELECT id, email, cents, cur, cat, descr, 'expense', 'backfill_cash_jjspscl@gmail.com', d FROM grocery;
 
 COMMIT;

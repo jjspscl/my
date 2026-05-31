@@ -33,7 +33,7 @@ type createTransactionRequest struct {
 	Category        string `json:"category"`
 	Description     string `json:"description"`
 	Type            string `json:"type"`
-	WalletID        string `json:"walletId,omitempty"`
+	WalletID        string `json:"walletId"`
 	TransactionDate string `json:"transactionDate"`
 }
 

@@ -1,28 +1,56 @@
-# OpenCode Skills — my
+# OpenCode assets — `my`
 
-Repo-local skills for the `my` personal dashboard project.
+Repo-local OpenCode support files for the `my` personal dashboard project.
+
+## What lives here
+
+- `skills/*/SKILL.md` — repo-local reusable skills
+- local npm package metadata for OpenCode-related tooling
+
+Project-wide OpenCode config lives in root `opencode.jsonc`.
+Project-wide agent rules live in root `AGENTS.md`.
+
+## Agents
+
+| Agent | Role |
+|---|---|
+| `plan` | default review/scoping agent |
+| `build` | implementation agent |
+
+## Custom command
+
+`opencode.jsonc` defines a `build` command that tells the `build` agent to read and execute the current `HANDOFF.md` instructions.
+
+`HANDOFF.md` is temporary execution state, not durable architecture documentation.
 
 ## Skills
 
 | Skill | Purpose |
 |---|---|
-| caveman-ultra | Default terse engineering communication |
-| repo-architect | Enforce monorepo architecture and DDD boundaries |
-| frontend-shadcn | shadcn/ui + Tailwind CSS styling rules |
-| frontend-zod-contracts | Zod schema-first data contracts |
-| tanstack-router-query | TanStack Router + Query patterns |
-| go-ddd-api | Go DDD clean architecture patterns |
-| offline-pwa-sync | PWA, offline, sync contracts |
-| test-quality | Testing standards and scope |
-| security-review | Security review checklist |
+| caveman-ultra | terse engineering communication |
+| repo-architect | monorepo architecture and file placement rules |
+| frontend-shadcn | UI styling/component guidance |
+| frontend-zod-contracts | schema-first frontend contracts |
+| tanstack-router-query | router/query conventions |
+| go-ddd-api | Go DDD/backend slice guidance |
+| offline-pwa-sync | offline/PWA/sync guidance |
+| test-quality | focused testing guidance |
+| security-review | security review checklist |
 
-## Agents
+## MCPs in project config
 
-- **plan**: Claude Opus 4.6 — architecture, review, approval
-- **build**: DeepSeek V4 Flash — implementation, no step limit
+### Enabled
 
-## MCPs
+- `brave-search`
+- `context7`
+- `filesystem`
+- `playwright`
+- `gh_grep`
 
-- **brave-search**: Web search via Brave
-- **context7**: Documentation lookup
-- **filesystem**: Project file access
+Use higher-cost MCPs only when the task actually needs browser automation or public code example lookup.
+
+## Recommended reading order
+
+1. `AGENTS.md`
+2. `docs/opencode.md`
+3. subsystem docs in `docs/`

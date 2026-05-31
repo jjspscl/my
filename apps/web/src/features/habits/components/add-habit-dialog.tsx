@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useForm } from 'react-hook-form'
+import { useForm, useWatch } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { Check, Plus } from 'lucide-react'
 import { cn } from '@/shared/lib/utils'
@@ -60,7 +60,7 @@ export function AddHabitDialog({ trigger }: AddHabitDialogProps) {
     })
   }
 
-  const frequency = form.watch('frequency')
+  const frequency = useWatch({ control: form.control, name: 'frequency' })
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>

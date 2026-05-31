@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -29,18 +29,6 @@ export function WalletFormDialog({ trigger, wallet, open, onOpenChange }: Wallet
   const createWallet = useCreateWallet()
   const updateWallet = useUpdateWallet()
   const isPending = createWallet.isPending || updateWallet.isPending
-
-  useEffect(() => {
-    if (wallet) {
-      setName(wallet.name)
-      setKind(wallet.kind)
-      setOpeningBalance(String(wallet.openingBalanceCents / 100))
-    } else if (!open) {
-      setName('')
-      setKind('cash')
-      setOpeningBalance('')
-    }
-  }, [wallet, open])
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
@@ -81,7 +69,7 @@ export function WalletFormDialog({ trigger, wallet, open, onOpenChange }: Wallet
           <div className="space-y-2">
             <Label htmlFor="wallet-kind" className="text-xs">Type</Label>
             <Select value={kind} onValueChange={setKind}>
-              <SelectTrigger className="text-sm">
+              <SelectTrigger id="wallet-kind" className="text-sm">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>

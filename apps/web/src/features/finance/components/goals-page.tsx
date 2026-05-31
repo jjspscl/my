@@ -113,7 +113,7 @@ function GoalCard({ goal, wallets, onEdit, onDelete, onContribute }: {
 
 export function GoalsPage() {
   const { data: goals, isLoading } = useGoals()
-  const { data: wallets } = useWallets()
+  const { data: wallets, isLoading: walletsLoading } = useWallets()
   const deleteGoal = useDeleteGoal()
   const [editingGoal, setEditingGoal] = useState<GoalSummary | null>(null)
   const [contributingGoal, setContributingGoal] = useState<GoalSummary | null>(null)
@@ -174,6 +174,8 @@ export function GoalsPage() {
           <GoalFormDialog
             open={formOpen && !editingGoal}
             onOpenChange={(o) => { setFormOpen(o); if (!o) setEditingGoal(null) }}
+            wallets={wallets}
+            walletsLoading={walletsLoading}
           />
         </CardHeader>
         <CardContent className="space-y-3">
@@ -206,6 +208,8 @@ export function GoalsPage() {
           goal={editingGoal}
           open={formOpen && !!editingGoal}
           onOpenChange={(o) => { setFormOpen(o); if (!o) setEditingGoal(null) }}
+          wallets={wallets}
+          walletsLoading={walletsLoading}
         />
       )}
 

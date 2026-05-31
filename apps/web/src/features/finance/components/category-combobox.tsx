@@ -1,4 +1,4 @@
-import { useState } from 'react'
+import { forwardRef, useState } from 'react'
 import { Check, ChevronsUpDown } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
@@ -18,15 +18,19 @@ interface CategoryComboboxProps {
   value: string
   onChange: (value: string) => void
   placeholder?: string
+  id?: string
+  className?: string
 }
 
-export function CategoryCombobox({ value, onChange, placeholder }: CategoryComboboxProps) {
+export const CategoryCombobox = forwardRef<HTMLButtonElement, CategoryComboboxProps>(
+  function CategoryCombobox({ value, onChange, placeholder, id, className }, ref) {
   const [open, setOpen] = useState(false)
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
-      <PopoverTrigger asChild>
+      <PopoverTrigger asChild id={id} className={className}>
         <Button
+          ref={ref}
           variant="outline"
           role="combobox"
           aria-expanded={open}
@@ -79,4 +83,4 @@ export function CategoryCombobox({ value, onChange, placeholder }: CategoryCombo
       </PopoverContent>
     </Popover>
   )
-}
+})

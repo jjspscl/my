@@ -123,7 +123,8 @@ func (r *GoalRepoLibSQL) GetCurrentAmountByGoal(ctx context.Context, goalID stri
 
 func scanGoal(row scannable) (*domain.SavingsGoal, error) {
 	var g domain.SavingsGoal
-	var targetDate, createdAt, updatedAt string
+	var targetDate *string
+	var createdAt, updatedAt string
 	var targetWalletID *string
 
 	err := row.Scan(&g.ID, &g.UserEmail, &g.Name, &g.TargetAmountCents, &targetDate, &targetWalletID, &createdAt, &updatedAt)
@@ -138,8 +139,8 @@ func scanGoal(row scannable) (*domain.SavingsGoal, error) {
 		g.TargetWalletID = *targetWalletID
 	}
 
-	if targetDate != "" {
-		parsed, _ := time.Parse("2006-01-02", targetDate)
+	if targetDate != nil && *targetDate != "" {
+		parsed, _ := time.Parse("2006-01-02", *targetDate)
 		g.TargetDate = &parsed
 	}
 	g.CreatedAt, _ = time.Parse(time.RFC3339, createdAt)

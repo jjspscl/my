@@ -173,7 +173,9 @@ func (r *BillRepoLibSQL) ListUpcomingBills(ctx context.Context, userEmail string
 	for rows.Next() {
 		var b domain.RecurringBill
 		var p domain.BillPayment
-		var startDate, endDate, createdAt, updatedAt string
+		var startDate string
+		var endDate *string
+		var createdAt, updatedAt string
 		var payID, payBillID, payDueDate, payCreatedAt sql.NullString
 		var payTransactionID, payPaidDate, payStatus sql.NullString
 		var payAmountCents sql.NullInt64
@@ -194,8 +196,8 @@ func (r *BillRepoLibSQL) ListUpcomingBills(ctx context.Context, userEmail string
 		b.AutoMatch = autoMatch == 1
 		b.MatchPattern = matchPattern
 		b.StartDate, _ = time.Parse("2006-01-02", startDate)
-		if endDate != "" {
-			parsed, _ := time.Parse("2006-01-02", endDate)
+		if endDate != nil && *endDate != "" {
+			parsed, _ := time.Parse("2006-01-02", *endDate)
 			b.EndDate = &parsed
 		}
 		b.CreatedAt, _ = time.Parse(time.RFC3339, createdAt)
@@ -266,7 +268,9 @@ func (r *BillRepoLibSQL) FindTransactionByMatch(ctx context.Context, userEmail, 
 
 func scanBill(row scannable) (*domain.RecurringBill, error) {
 	var b domain.RecurringBill
-	var startDate, endDate, createdAt, updatedAt string
+	var startDate string
+	var endDate *string
+	var createdAt, updatedAt string
 	autoMatch := 0
 	matchPattern := (*string)(nil)
 
@@ -285,8 +289,8 @@ func scanBill(row scannable) (*domain.RecurringBill, error) {
 	b.AutoMatch = autoMatch == 1
 	b.MatchPattern = matchPattern
 	b.StartDate, _ = time.Parse("2006-01-02", startDate)
-	if endDate != "" {
-		parsed, _ := time.Parse("2006-01-02", endDate)
+	if endDate != nil && *endDate != "" {
+		parsed, _ := time.Parse("2006-01-02", *endDate)
 		b.EndDate = &parsed
 	}
 	b.CreatedAt, _ = time.Parse(time.RFC3339, createdAt)
@@ -297,7 +301,8 @@ func scanBill(row scannable) (*domain.RecurringBill, error) {
 
 func scanPayment(row scannable) (*domain.BillPayment, error) {
 	var p domain.BillPayment
-	var dueDate, paidDate, createdAt string
+	var dueDate, createdAt string
+	var paidDate *string
 	var transactionID *string
 
 	err := row.Scan(&p.ID, &p.BillID, &transactionID, &dueDate, &paidDate, &p.AmountCents, (*string)(&p.Status), &createdAt)
@@ -310,8 +315,8 @@ func scanPayment(row scannable) (*domain.BillPayment, error) {
 
 	p.TransactionID = transactionID
 	p.DueDate, _ = time.Parse("2006-01-02", dueDate)
-	if paidDate != "" {
-		parsed, _ := time.Parse("2006-01-02", paidDate)
+	if paidDate != nil && *paidDate != "" {
+		parsed, _ := time.Parse("2006-01-02", *paidDate)
 		p.PaidDate = &parsed
 	}
 	p.CreatedAt, _ = time.Parse(time.RFC3339, createdAt)

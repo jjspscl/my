@@ -1,45 +1,85 @@
 # Backend DDD
 
-## Module Path
+## Module path
 
 `github.com/jjspscl/my`
 
-## Stack
+## Current backend stack
 
 - Go 1.26+
-- chi (HTTP router)
-- libSQL (embedded SQLite / Turso remote)
-- sqlc (type-safe SQL)
-- goose (migrations)
-- slog (structured logging)
+- chi
+- libSQL client + embedded SQLite via `modernc.org/sqlite`
+- Redis via `go-redis/v9`
+- `slog` JSON logging
+- SMTP sender for magic-link delivery
 
-## Bounded Contexts
+## Current reality
 
-Each context is self-contained with:
-- Domain: entities, value objects, aggregate roots, domain events, repository ports
-- Application: commands, queries, application services
-- Infrastructure: repository implementations, external adapters
-- Interfaces/HTTP: handlers, DTOs, route registration
+The backend is a DDD-inspired modular monolith.
 
-## Rules
+Implemented application slices today:
 
-1. Domain layer imports NO external packages (no HTTP, DB, framework)
-2. Application layer depends only on domain ports
-3. Infrastructure implements domain ports
-4. Handlers are thin: validate input -> call application -> map output
-5. Domain entities are never API response bodies
-6. Each context registers its own routes
+- `access`
+- `finance`
+- `habits`
+
+Other context folders are scaffolds/placeholders, not full production slices yet.
+
+## Layering rules
+
+1. Domain layer should stay free of HTTP/DB/framework concerns.
+2. Application layer coordinates use cases over domain ports.
+3. Infrastructure implements repository/adaptor details.
+4. HTTP handlers stay thin: decode/validate -> call application -> map response.
+5. API responses should not expose domain entities directly without mapping.
+
+## Current auth model
+
+Current auth is **single-user magic-link auth**, not JWT/refresh-token auth.
+
+Flow:
+
+1. client requests a magic link
+2. backend issues a short-lived token and sends email
+3. client verifies token
+4. backend creates an opaque session in Redis
+5. backend sets `my_session` cookie and JS-readable `my_csrf` cookie
+
+Protected routes use:
+
+- Redis-backed session lookup
+- CSRF protection via `X-CSRF-Token`
 
 ## Database
 
-- Default: embedded libSQL (file-based SQLite)
-- Optional: Turso remote (set MY_TURSO_URL + MY_TURSO_AUTH_TOKEN)
-- Migrations via goose (SQLite dialect)
-- Queries via sqlc (SQLite dialect)
+Current state:
 
-## Auth
+- default local database: `file:my_dev.db`
+- optional remote Turso/libSQL supported through env vars
+- migrations stored as SQL files under `apps/api/migrations/`
+- migrations executed by project code during startup / migrate command
 
-- JWT access tokens in HttpOnly cookies
-- CSRF protection (double-submit or synchronizer token)
-- Refresh token rotation
-- Works in dev mode (localhost cookies)
+This repo currently does **not** use generated `sqlc` repositories in the active implementation.
+
+## Router shape
+
+Current API routes live under `/api/v1`.
+
+Implemented areas:
+
+- `/api/v1/health`
+- `/api/v1/auth/*`
+- `/api/v1/finance/*`
+- `/api/v1/habits/*`
+
+## Logging and middleware
+
+Current middleware/runtime behavior includes:
+
+- request IDs
+- real IP middleware
+- panic recovery
+- structured request logging
+
+Redis is used for session storage.
+Rate limiting is not yet a current production feature.

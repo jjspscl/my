@@ -1,26 +1,27 @@
 # my
 
-A modular personal dashboard for finance, habits, and daily life.
+A personal dashboard for finance, habits, and daily life.
 
 > Your day, money, and habits in one calm dashboard.
 
 ## Stack
 
-- **Backend**: Go, chi, libSQL (embedded/Turso), Redis
-- **Frontend**: React, Vite, TypeScript, TanStack Router, TanStack Query, Zod, shadcn/ui, Tailwind CSS
-- **Architecture**: DDD modular monolith, single-binary production deployment
-- **Offline**: PWA, IndexedDB mutation queue, service worker
+- **Backend**: Go 1.26, chi, libSQL/SQLite, Redis, slog JSON logging
+- **Frontend**: React 19, Vite 8, TypeScript 6, TanStack Router, TanStack Query, Zod, React Hook Form, shadcn/ui-style components, Tailwind CSS v4
+- **Architecture**: DDD-inspired modular monolith, feature-based frontend, single-binary production deploy
+- **Offline**: PWA manifest + Workbox runtime caching, IndexedDB mutation queue, reconnect/interval replay engine
+- **AI workflow**: OpenCode with root `AGENTS.md`, repo-local skills, and optional MCP servers
 
-## Quick Start
+## Quick start
 
 ```bash
-# Install tools (requires mise)
+# Install pinned tools
 mise install
 
-# Install dependencies
+# Install workspace dependencies
 mise run install
 
-# Start development servers (includes Redis + Mailpit)
+# Start Redis, Mailpit, Go API, and Vite
 mise run dev
 ```
 
@@ -35,55 +36,132 @@ mise run dev
 | `mise run dev:redis` | Start Redis if not already running |
 | `mise run dev:mail` | Start Mailpit (SMTP :1025, UI :8025) |
 | `mise run dev:mail:ui` | Open Mailpit UI in browser |
-| `mise run build` | Build production binary with embedded frontend |
+| `mise run build` | Build Vite assets, copy them into Go embed dir, build production binary |
 | `mise run test` | Run all tests |
-| `mise run lint` | Run all linters |
+| `mise run lint` | Run Go vet and frontend ESLint |
 | `mise run typecheck` | Run frontend type checking |
+| `mise run migrate` | Run database migrations |
+| `mise run seed` | Seed local dev data |
 | `mise run clean` | Clean build outputs |
 
-## Architecture
+## Runtime
 
-```
-my/
-  apps/api/          Go API server (chi, libSQL, DDD contexts)
-  apps/web/          React frontend (Vite, TanStack, shadcn/ui)
-  packages/          Shared packages
-  infrastructure/    Docker, K8s, Terraform
-  docs/              Documentation
-  .opencode/         AI coding agent skills
-```
+### Production
 
-## Production
+`my` runs as a single Go binary:
 
-In production, `my` runs as a single Go binary:
+1. Vite builds frontend assets.
+2. `scripts/copy-web-assets.sh` copies them into `apps/api/internal/platform/web/static/`.
+3. Go embeds the static assets with `go:embed`.
+4. One Go server handles both `/api/v1/*` and SPA routes.
 
-1. Frontend is compiled to static assets by Vite
-2. Assets are embedded into the Go binary via `go:embed`
-3. Go serves both API routes and frontend from one HTTP server
-4. No Node.js or Vite in production
+### Development
 
-## Development
+Two servers run independently:
 
-In development, two servers run independently:
+- **Go API** on `http://localhost:8080`
+- **Vite** on `http://localhost:5173`
 
-- **Go API** on `localhost:8080` — handles API routes
-- **Vite** on `localhost:5173` — handles React HMR, proxies `/api` to Go
+Vite proxies `/api` to the Go API.
 
 ### Dev services
 
-`mise run dev` automatically starts required dependencies using Docker:
+`mise run dev` also ensures these containers are available:
 
 - **Redis** (`my-redis`) — session storage, port 6379
-- **Mailpit** (`my-mailpit`) — local SMTP server for email testing, port 1025
+- **Mailpit** (`my-mailpit`) — local SMTP server, port 1025
+- **Mailpit UI** — `http://localhost:8025`
 
-Mailpit provides a web UI at **http://localhost:8025** where you can view emails sent by the app (magic link, etc.).
+## Current architecture
 
-If a container is already running, it is reused. If it exists but is stopped, it is restarted. If it does not exist, it is created.
+```text
+my/
+  AGENTS.md                         Project agent/source-of-truth rules
+  apps/api/                         Go API, migrations, embedded web runtime
+  apps/web/                         React/Vite frontend
+  docs/                             Current-state architecture and workflow docs
+  .opencode/                        Repo-local OpenCode skills
+  infrastructure/                   Infra placeholders
+  deployments/                      Deployment placeholders
+  packages/                         Shared package workspace (currently light use)
+```
 
-## Modules
+### Backend slices in use
 
-- **Finance** — accounts, transactions, budgets, categories, recurring expenses, savings goals
-- **Habits** — daily/weekly habits, check-ins, streaks, reminders
+Active backend slices live in `apps/api/internal/contexts/`:
+
+- `access`
+- `finance`
+- `habits`
+
+Other context folders exist as scaffolds, but are not full vertical slices yet.
+
+### Frontend shape
+
+- `src/features/*` — feature modules
+- `src/components/ui/*` — shared UI primitives
+- `src/shared/sync/*` — offline/network/sync infrastructure
+
+## Auth and offline status
+
+### Auth
+
+Current auth is **single-user magic-link auth**.
+
+- Redis-backed opaque session cookie: `my_session`
+- JS-readable CSRF cookie: `my_csrf`
+- no JWT access tokens or refresh token rotation in the current implementation
+
+### Offline/sync
+
+Current offline support is **partial but real**.
+
+Implemented:
+
+- PWA manifest and service worker
+- Workbox `NetworkFirst` runtime caching for `/api/v1/*`
+- IndexedDB mutation queue
+- reconnect + periodic queue draining
+
+Not implemented yet:
+
+- dedicated `/api/v1/sync/*` API
+- universal offline queue adoption across all feature mutations
+
+## OpenCode / agent workflow
+
+Root agent guidance lives in `AGENTS.md`.
+
+Repo-local OpenCode config lives in `opencode.jsonc`.
+
+Current workflow:
+
+- `plan` is the default OpenCode agent
+- `build` executes implementation work
+- `HANDOFF.md` is temporary task state, not durable project documentation
+- repo-local skills live in `.opencode/skills/`
+
+### MCP/tooling
+
+Enabled OpenCode MCPs:
+
+- `brave-search`
+- `context7`
+- `filesystem`
+- `playwright`
+- `gh_grep`
+
+Use heavier MCPs only when the task actually needs browser automation or public code example lookup.
+
+## Docs index
+
+- `AGENTS.md` — project rules and current-state truth for agents
+- `docs/opencode.md` — OpenCode config, agents, MCP notes
+- `docs/architecture.md` — runtime and directory architecture
+- `docs/backend-ddd.md` — backend patterns and current auth/data reality
+- `docs/frontend.md` — frontend conventions
+- `docs/offline-sync.md` — current offline/sync implementation status
+- `ROADMAP.md` — future work, not current implementation truth
 
 ## License
 

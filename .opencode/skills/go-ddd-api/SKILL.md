@@ -1,6 +1,6 @@
 ---
 name: go-ddd-api
-description: Build the Golang API using chi, libSQL, sqlc, DDD-inspired clean architecture, and modular monolith bounded contexts.
+description: Build the Golang API using chi, libSQL, DDD-inspired clean architecture, and modular monolith bounded contexts.
 compatibility: opencode
 ---
 
@@ -10,8 +10,8 @@ Use:
 - Go
 - chi
 - libSQL (embedded default, Turso remote optional)
-- sqlc
-- goose migrations
+- manual SQL repositories in infrastructure layer
+- SQL migration files under `apps/api/migrations/`
 - clean architecture
 - hexagonal boundaries
 - modular monolith DDD
@@ -30,3 +30,10 @@ Domain layer has no:
 
 Handlers stay thin.
 Domain entities never become API responses directly.
+
+Current repo auth model:
+- magic-link auth
+- Redis-backed opaque session cookie
+- CSRF cookie/header protection
+
+Do not assume JWTs, refresh tokens, sqlc, or goose unless task explicitly adds them.

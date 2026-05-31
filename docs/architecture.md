@@ -2,78 +2,118 @@
 
 ## Overview
 
-`my` is a modular monolith personal dashboard with a Go backend and React frontend.
+`my` is a personal dashboard built as a Go backend plus React/Vite frontend.
 
-## Production Runtime
+Production ships as one Go binary with embedded frontend assets.
+Development runs the API and Vite separately.
 
-```
+## Production runtime
+
+```text
 ┌─────────────────────────────┐
-│        Go Binary (my)       │
+│        Go binary (my)       │
 ├─────────────────────────────┤
-│  chi Router                 │
-│  ├── /api/v1/* → handlers   │
-│  └── /* → embedded SPA      │
+│ chi router                  │
+│ ├── /api/v1/*               │
+│ └── /* -> embedded SPA      │
 ├─────────────────────────────┤
-│  Embedded Static Assets     │
-│  (compiled React/Vite)      │
+│ embedded static assets      │
+│ (Vite build output)         │
 ├─────────────────────────────┤
-│  libSQL (embedded SQLite)   │
-│  Redis (cache/sessions)     │
+│ libSQL / SQLite             │
+│ Redis                       │
 └─────────────────────────────┘
 ```
 
-## Development Runtime
+Build flow:
 
-```
+1. Vite builds to `apps/web/dist`
+2. `scripts/copy-web-assets.sh` copies assets into `apps/api/internal/platform/web/static/`
+3. Go embeds that directory with `go:embed`
+4. `go build` produces `bin/my`
+
+## Development runtime
+
+```text
 ┌──────────────┐     ┌──────────────┐
-│  Vite :5173  │────▶│  Go API :8080│
-│  React HMR   │proxy│  chi router  │
-│  /api → 8080 │     │  libSQL      │
+│ Vite :5173   │---->│ Go API :8080 │
+│ React HMR    │proxy│ chi router   │
+│ /api -> 8080 │     │ libSQL+Redis │
 └──────────────┘     └──────────────┘
 ```
 
-## Backend Bounded Contexts
+`mise run dev` also brings up Redis and Mailpit.
 
-| Context | Responsibility |
-|---|---|
-| identity | User registration, profiles |
-| access | Authentication, authorization, sessions |
-| dashboard | Layouts, widgets, preferences |
-| modules | Module registry, capabilities |
-| finance | Accounts, transactions, budgets |
-| habits | Habits, check-ins, streaks |
-| sync | Offline sync, conflict resolution |
-| notifications | Reminders, alerts |
-| health | System health checks |
+## Backend layout
 
-## Context Structure
+Backend code lives under `apps/api/internal/`.
 
-Each bounded context follows clean architecture:
+### Active vertical slices
 
+Current implemented slices under `apps/api/internal/contexts/`:
+
+- `access`
+- `finance`
+- `habits`
+
+### Scaffold-only contexts
+
+These folders exist as placeholders but are not full production slices yet:
+
+- `dashboard`
+- `health`
+- `identity`
+- `modules`
+- `notifications`
+- `sync`
+
+### Slice structure
+
+```text
+apps/api/internal/contexts/<name>/
+  domain/          entities, value objects, repository ports
+  application/     application services/use cases
+  infrastructure/  adapters and repository implementations
+  interfaces/http/ HTTP handlers and route wiring
 ```
-contexts/<name>/
-  domain/          Entities, value objects, events, ports
-  application/     Commands, queries, services
-  infrastructure/  Repository implementations, adapters
-  interfaces/http/ Handlers, DTOs, routes
+
+Not every scaffolded context currently has every layer populated.
+
+### Platform and shared code
+
+```text
+apps/api/internal/platform/    config, database, logger, redis, session, web
+apps/api/internal/shared/      middleware, response helpers
 ```
 
-## Frontend Feature Structure
+## Frontend layout
 
+Frontend code lives under `apps/web/src/`.
+
+```text
+src/
+  components/      shared UI, layout, widgets
+  features/        feature modules
+  routes/          TanStack Router route tree
+  shared/          API helpers, sync infra, utilities
 ```
+
+Feature modules generally follow:
+
+```text
 features/<name>/
-  schemas/     Zod schemas (source of truth for types)
-  api/         Query keys, queries, mutations
-  components/  Feature-specific UI
-  hooks/       Feature-specific hooks
-  lib/         Business logic utilities
+  api/
+  components/
+  hooks/
+  lib/
+  schemas/
 ```
 
-## Key Principles
+## Key principles
 
-- Domain layer has zero external dependencies
-- Handlers are thin (validate -> delegate -> respond)
-- DTOs never expose domain entities directly
-- All frontend types inferred from Zod schemas
-- Server state in TanStack Query, never Zustand
-- URL state in TanStack Router, never Zustand
+- domain logic stays outside transport/framework concerns
+- handlers stay thin: validate -> delegate -> map response
+- frontend app data types come from Zod schemas
+- TanStack Query owns server state
+- TanStack Router owns route/URL state
+- Zustand is reserved for local ephemeral client state such as network/sync state

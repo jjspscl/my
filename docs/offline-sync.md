@@ -1,42 +1,79 @@
 # Offline & Sync
 
-## PWA
+## Current status
 
-- Web manifest (vite-plugin-pwa)
-- Service worker (Workbox, auto-update)
-- Offline fallback page
-- App icons
+Offline support exists, but it is partial infrastructure rather than a fully integrated sync platform.
 
-## Offline-Safe Operations
+Document current behavior, not roadmap-only behavior.
 
-- Finance transaction drafts
-- Habit check-ins
-- Dashboard layout changes
-- Widget configuration
+## Implemented today
 
-## Server-Authoritative
+### PWA shell
 
-- Auth/sessions
-- Permissions
-- Final account balances
-- External integrations
+- web manifest via `vite-plugin-pwa`
+- service worker with `registerType: 'autoUpdate'`
+- Workbox runtime caching for `/api/v1/*`
+- `NetworkFirst` API cache with 5s network timeout
 
-## IndexedDB Queue
+### Client-side offline infra
 
-All offline mutations stored in IndexedDB with:
-- `clientMutationId` (UUID)
-- `schemaVersion` (for migration)
-- Zod validation on read
-- Retry with exponential backoff
+Files live under `apps/web/src/shared/sync/`.
 
-## Sync Protocol
+Current pieces:
 
-- `POST /api/v1/sync/push` -- send queued mutations
-- `POST /api/v1/sync/pull` -- fetch latest state
-- `GET /api/v1/sync/status` -- check sync health
+- `network-status.ts` — Zustand online/offline store
+- `mutation-queue.ts` — IndexedDB queue via `idb-keyval`
+- `offline-mutate.ts` — helper to queue failed/offline mutations
+- `sync-engine.ts` — replay engine + queue drain scheduling
 
-## Conflict Strategy
+### Queue behavior
 
-- Finance: client-created records synced, server-authoritative balances
-- Habits: optimistic check-ins, server-authoritative streaks
-- Dashboard: last-write-wins with revision tracking
+Queued mutation fields:
+
+- `id`
+- `schemaVersion`
+- `method`
+- `url`
+- `body`
+- `createdAt`
+- `retries`
+- `maxRetries`
+
+Behavior:
+
+- queue entries validated with Zod on read
+- invalid/corrupt entries are discarded
+- drain runs on startup
+- drain runs when connectivity returns
+- drain also runs every 30 seconds
+- replay re-sends the original request with cookies and `X-CSRF-Token`
+- 4xx responses are treated as permanent failure and discarded
+- 5xx/network failures are retried until `maxRetries`
+
+## Important limitations
+
+These are **not** currently implemented end to end:
+
+- dedicated `/api/v1/sync/push`
+- dedicated `/api/v1/sync/pull`
+- dedicated `/api/v1/sync/status`
+- conflict-resolution protocol between client/server revisions
+- universal adoption of queue-backed mutations across all features
+
+`offlineMutate()` currently exists as infrastructure, but feature hooks are not yet universally wired through it.
+
+## Server-authoritative areas
+
+Even with offline support, server truth still matters for:
+
+- auth/session validity
+- final wallet/account balances
+- habit streak derivation
+- any future multi-device reconciliation
+
+## Documentation rule
+
+If queue integration expands or a real sync API lands, update this doc to separate:
+
+- current implementation
+- future roadmap

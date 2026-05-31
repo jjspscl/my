@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { useForm } from 'react-hook-form'
+import { useForm, useWatch } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { Plus } from 'lucide-react'
 
@@ -71,6 +71,8 @@ export function AddExpenseDialog({ trigger, defaultType = 'expense' }: AddExpens
     },
   })
 
+  const formType = useWatch({ control: form.control, name: 'type' })
+
   const onSubmit = (values: FormValues) => {
     const data: CreateTransaction = {
       amountCents: Math.round(parseFloat(values.amount) * 100),
@@ -101,7 +103,7 @@ export function AddExpenseDialog({ trigger, defaultType = 'expense' }: AddExpens
       </DialogTrigger>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Add {form.watch('type') === 'expense' ? 'Expense' : 'Income'}</DialogTitle>
+          <DialogTitle>Add {formType === 'expense' ? 'Expense' : 'Income'}</DialogTitle>
         </DialogHeader>
 
         <Form {...form}>
@@ -220,7 +222,7 @@ export function AddExpenseDialog({ trigger, defaultType = 'expense' }: AddExpens
               size="sm"
               disabled={createTx.isPending}
             >
-              {createTx.isPending ? 'Saving...' : `Add ${form.watch('type') === 'expense' ? 'Expense' : 'Income'}`}
+              {createTx.isPending ? 'Saving...' : `Add ${formType === 'expense' ? 'Expense' : 'Income'}`}
             </Button>
           </form>
         </Form>

@@ -5,42 +5,79 @@
 - React 19
 - Vite 8
 - TypeScript 6 (strict)
-- TanStack Router (file-based routing)
-- TanStack Query (server state)
-- Zod 4 (schema-first contracts)
-- React Hook Form + zodResolver
-- Zustand (ephemeral UI state only)
-- shadcn/ui + Tailwind CSS v4 + Radix + lucide-react
+- TanStack Router
+- TanStack Query
+- Zod 4
+- React Hook Form + `zodResolver`
+- Zustand for small local client state only
+- Tailwind CSS v4
+- shadcn/ui-style component set
+- `vite-plugin-pwa`
 
 ## Rules
 
-1. All application data types must be inferred from Zod schemas
-2. No `interface` or `type` for API data -- use `z.infer<>`
-3. No `response.json() as T` -- always parse with Zod
-4. Server state lives in TanStack Query, not Zustand
-5. URL state lives in TanStack Router, not Zustand
-6. Each feature has query key factories
-7. Route search params validate through Zod
+1. Infer application data types from Zod schemas.
+2. Do not cast `response.json()` directly to application types.
+3. Parse API responses with schemas.
+4. Keep server state in TanStack Query.
+5. Keep route/search state in TanStack Router.
+6. Use Zustand only for ephemeral client state such as network/sync status.
+7. Keep feature-local query key factories next to the feature API layer.
 
-## Directory Structure
+## Directory structure
 
-```
+```text
 src/
-  routes/          TanStack Router file-based routes
-  features/        Feature modules (schemas, api, components, hooks)
-  components/      Shared components (ui, layout, widgets, feedback, nav)
-  shared/          Utilities, types, hooks, API client
-  stores/          Zustand stores (ephemeral UI only)
-  styles/          Global CSS
+  components/      shared UI, layout, widgets
+  features/        feature modules
+  routes/          TanStack Router route tree
+  shared/          API client, sync infra, utilities
 ```
+
+Typical feature layout:
+
+```text
+features/<name>/
+  api/
+  components/
+  hooks/
+  lib/
+  schemas/
+```
+
+## Current offline/state note
+
+The repo currently uses Zustand inside `src/shared/sync/` for:
+
+- network connectivity state
+- sync queue status
+
+This is acceptable because it is ephemeral local client state, not server state.
 
 ## Scripts
+
+### Preferred repo-level entrypoints
+
+Run from repo root with `mise`:
+
+| Command | Purpose |
+|---|---|
+| `mise run dev` | full dev stack |
+| `mise run build` | frontend build + embed copy + Go build |
+| `mise run test` | API + frontend tests |
+| `mise run lint` | API vet + frontend lint |
+| `mise run typecheck` | frontend typecheck |
+
+### App-local scripts
+
+Inside `apps/web/`:
 
 | Script | Purpose |
 |---|---|
 | `pnpm dev` | Vite dev server with HMR |
-| `pnpm build` | TypeScript check + Vite production build |
-| `pnpm typecheck` | TypeScript --noEmit |
+| `pnpm build` | TypeScript build + Vite build |
+| `pnpm typecheck` | `tsc --noEmit` |
 | `pnpm lint` | ESLint |
 | `pnpm test` | Vitest |
 | `pnpm route:generate` | TanStack Router code generation |
+| `pnpm e2e` | Playwright tests |

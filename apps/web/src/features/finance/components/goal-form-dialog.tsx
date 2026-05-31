@@ -1,4 +1,4 @@
-import { useState, useEffect } from 'react'
+import { useState } from 'react'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -6,7 +6,6 @@ import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Plus } from 'lucide-react'
 import { useCreateGoal, useUpdateGoal } from '../hooks/use-goals'
-import { useWallets } from '../hooks/use-wallets'
 import type { GoalSummary } from '../schemas/goal.schemas'
 import type { Wallet } from '../schemas/wallet.schemas'
 
@@ -15,32 +14,19 @@ interface GoalFormDialogProps {
   goal?: GoalSummary
   open?: boolean
   onOpenChange?: (open: boolean) => void
+  wallets: Wallet[] | undefined
+  walletsLoading?: boolean
 }
 
-export function GoalFormDialog({ trigger, goal, open, onOpenChange }: GoalFormDialogProps) {
+export function GoalFormDialog({ trigger, goal, open, onOpenChange, wallets, walletsLoading }: GoalFormDialogProps) {
   const [name, setName] = useState(goal?.name ?? '')
   const [targetAmount, setTargetAmount] = useState(goal ? String(goal.targetAmountCents / 100) : '')
   const [targetDate, setTargetDate] = useState(goal?.targetDate ?? '')
   const [targetWalletId, setTargetWalletId] = useState(goal?.targetWalletId ?? '')
 
-  const { data: wallets } = useWallets()
   const createGoal = useCreateGoal()
   const updateGoal = useUpdateGoal()
   const isPending = createGoal.isPending || updateGoal.isPending
-
-  useEffect(() => {
-    if (goal) {
-      setName(goal.name)
-      setTargetAmount(String(goal.targetAmountCents / 100))
-      setTargetDate(goal.targetDate ?? '')
-      setTargetWalletId(goal.targetWalletId ?? '')
-    } else if (!open) {
-      setName('')
-      setTargetAmount('')
-      setTargetDate('')
-      setTargetWalletId('')
-    }
-  }, [goal, open])
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
@@ -91,16 +77,26 @@ export function GoalFormDialog({ trigger, goal, open, onOpenChange }: GoalFormDi
           </div>
           <div className="space-y-2">
             <Label htmlFor="goal-wallet" className="text-xs">Target Wallet</Label>
-            <Select value={targetWalletId} onValueChange={setTargetWalletId}>
-              <SelectTrigger className="text-sm">
-                <SelectValue placeholder="Select wallet" />
-              </SelectTrigger>
-              <SelectContent>
-                {wallets?.map((w: Wallet) => (
-                  <SelectItem key={w.id} value={w.id}>{w.name}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            {walletsLoading ? (
+              <div className="flex h-9 items-center rounded-md border border-input px-3 text-sm text-muted-foreground">
+                Loading wallets...
+              </div>
+            ) : !wallets || wallets.length === 0 ? (
+              <div className="flex h-9 items-center rounded-md border border-input px-3 text-sm text-muted-foreground">
+                No wallets — create one first
+              </div>
+            ) : (
+              <Select value={targetWalletId || ''} onValueChange={setTargetWalletId}>
+                <SelectTrigger id="goal-wallet" className="text-sm">
+                  <SelectValue placeholder="Select wallet" />
+                </SelectTrigger>
+                <SelectContent>
+                  {wallets.map((w: Wallet) => (
+                    <SelectItem key={w.id} value={w.id}>{w.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
           </div>
           <Button type="submit" className="w-full text-sm" disabled={isPending}>
             {isPending ? 'Saving...' : goal ? 'Update Goal' : 'Create Goal'}

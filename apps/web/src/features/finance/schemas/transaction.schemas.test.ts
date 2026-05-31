@@ -30,6 +30,7 @@ describe('TransactionSchema', () => {
       category: 'food',
       description: 'Lunch',
       type: 'expense',
+      walletId: 'w-1',
       transactionDate: '2026-01-15',
       createdAt: '2026-01-15T10:00:00Z',
     })
@@ -46,6 +47,7 @@ describe('TransactionSchema', () => {
       category: 'salary',
       description: 'Monthly salary',
       type: 'income',
+      walletId: 'w-1',
       transactionDate: '2026-01-15',
       createdAt: '2026-01-15T10:00:00Z',
     })
@@ -61,6 +63,7 @@ describe('TransactionSchema', () => {
       category: 'food',
       description: '',
       type: 'expense',
+      walletId: 'w-1',
       transactionDate: '2026-01-15',
       createdAt: '2026-01-15T10:00:00Z',
     })
@@ -75,6 +78,7 @@ describe('TransactionSchema', () => {
       category: 'food',
       description: '',
       type: 'invalid',
+      walletId: 'w-1',
       transactionDate: '2026-01-15',
       createdAt: '2026-01-15T10:00:00Z',
     })
@@ -89,6 +93,7 @@ describe('TransactionSchema', () => {
       category: 'food',
       description: '',
       type: 'expense',
+      walletId: 'w-1',
       createdAt: '2026-01-15T10:00:00Z',
     })
     expect(result.success).toBe(false)
@@ -102,6 +107,7 @@ describe('CreateTransactionSchema', () => {
       category: 'food',
       description: 'Lunch',
       type: 'expense',
+      walletId: 'w-1',
     })
     expect(result.success).toBe(true)
   })
@@ -111,6 +117,7 @@ describe('CreateTransactionSchema', () => {
       amountCents: -100,
       category: 'food',
       type: 'expense',
+      walletId: 'w-1',
     })
     expect(result.success).toBe(false)
   })
@@ -120,6 +127,7 @@ describe('CreateTransactionSchema', () => {
       amountCents: 0,
       category: 'food',
       type: 'expense',
+      walletId: 'w-1',
     })
     expect(result.success).toBe(false)
   })
@@ -129,6 +137,7 @@ describe('CreateTransactionSchema', () => {
       amountCents: 100,
       category: '',
       type: 'expense',
+      walletId: 'w-1',
     })
     expect(result.success).toBe(false)
   })
@@ -138,6 +147,7 @@ describe('CreateTransactionSchema', () => {
       amountCents: 100,
       category: 'food',
       type: 'expense',
+      walletId: 'w-1',
     })
     expect(input.description).toBe('')
   })
@@ -148,6 +158,7 @@ describe('CreateTransactionSchema', () => {
       category: 'food',
       description: '',
       type: 'expense',
+      walletId: 'w-1',
       transactionDate: '2026-01-15',
     })
     expect(result.success).toBe(true)
@@ -158,6 +169,7 @@ describe('CreateTransactionSchema', () => {
       amountCents: 100,
       category: 'food',
       type: 'invalid',
+      walletId: 'w-1',
     })
     expect(result.success).toBe(false)
   })

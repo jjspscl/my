@@ -88,6 +88,7 @@ function WalletCard({ wallet, onArchive, onEdit }: { wallet: Wallet; onArchive: 
 export function WalletsPage() {
   const { data: wallets, isLoading } = useWallets()
   const archiveWallet = useArchiveWallet()
+  const [creatingOpen, setCreatingOpen] = useState(false)
   const [editingWallet, setEditingWallet] = useState<Wallet | null>(null)
   const [editingOpen, setEditingOpen] = useState(false)
 
@@ -106,7 +107,10 @@ export function WalletsPage() {
     <div className="space-y-4">
       {/* Actions */}
       <div className="flex items-center gap-2">
-        <WalletFormDialog />
+        <WalletFormDialog
+          open={creatingOpen}
+          onOpenChange={setCreatingOpen}
+        />
         <TransferDialog />
       </div>
 

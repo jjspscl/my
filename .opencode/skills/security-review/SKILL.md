@@ -7,12 +7,11 @@ compatibility: opencode
 # security-review
 
 Check:
-- auth flow
-- refresh tokens
-- secure cookies
+- magic-link auth flow
+- opaque session cookies
+- secure cookie settings
 - CSRF when cookie auth enabled
 - backend authorization
-- rate limits
 - request body limits
 - input validation
 - output encoding
@@ -23,6 +22,13 @@ Check:
 - finance data privacy
 - sync idempotency
 - replay risks
+- optional MCP/token handling in config files
+
+Current repo notes:
+- auth is session-cookie based, not JWT/refresh-token based
+- Redis stores sessions
+- offline replay exists client-side and can re-send queued mutations
+- rate limiting is not currently part of runtime behavior, so call it out if missing from a proposed design
 
 Never allow:
 - frontend-only auth enforcement
@@ -32,3 +38,4 @@ Never allow:
 - unvalidated API payloads
 - unvalidated local persisted data
 - permissive CORS by default
+- committed PATs or MCP credentials

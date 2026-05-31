@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef } from 'react'
 import { Plus, Loader2 } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
@@ -22,27 +22,26 @@ export function QuickExpenseWidget() {
   const { data: todayTotal, isLoading: totalLoading } = useTodayTotal()
   const createTx = useCreateTransaction()
 
-  // Focus input when mutation completes
-  useEffect(() => {
-    if (!createTx.isPending && !createTx.isSuccess) return
-    if (createTx.isSuccess) {
-      setAmount('')
-      setCategory('')
-      inputRef.current?.focus()
-    }
-  }, [createTx.isPending, createTx.isSuccess])
-
   const handleQuickAdd = () => {
     const cents = Math.round(parseFloat(amount) * 100)
     if (cents <= 0 || !category) return
 
-    createTx.mutate({
-      amountCents: cents,
-      category,
-      description: '',
-      type: 'expense',
-      walletId: '',
-    })
+    createTx.mutate(
+      {
+        amountCents: cents,
+        category,
+        description: '',
+        type: 'expense',
+        walletId: '',
+      },
+      {
+        onSuccess: () => {
+          setAmount('')
+          setCategory('')
+          inputRef.current?.focus()
+        },
+      },
+    )
   }
 
   const canSubmit = parseFloat(amount) > 0 && !!category && !createTx.isPending

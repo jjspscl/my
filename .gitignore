@@ -56,3 +56,12 @@ tmp/
 
 # Air tmp
 apps/api/tmp/
+
+# Playwright
+.playwright-mcp/
+apps/web/playwright-report/
+apps/web/test-results/
+test-results/
+
+# TypeScript build info
+*.tsbuildinfo

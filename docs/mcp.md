@@ -12,7 +12,7 @@ macOS/Linux, amd64/arm64:
 curl -fsSL https://raw.githubusercontent.com/jjspscl/my/v1.0.0/scripts/install-mcp.sh | sh
 ```
 
-Installer resolves latest GitHub release unless `MY_MCP_VERSION` is set, verifies `checksums.txt`, verifies GitHub build attestation when `gh` exists, installs to `~/.local/bin/my-mcp`, and prints configuration. It does not edit client configuration.
+Installer resolves latest GitHub release unless `MY_MCP_VERSION` is set, verifies the archive SHA-256 against `checksums.txt`, verifies the archive's GitHub build provenance when `gh` exists, installs to `~/.local/bin/my-mcp`, and prints configuration. It does not edit client configuration.
 
 Check updates:
 
@@ -190,7 +190,17 @@ Create tag after review:
 MY_RELEASE_VERSION=v1.0.0 mise run release:tag
 ```
 
-Tag push runs `.github/workflows/release.yml`. Workflow publishes release and attests checksum file. Do not push tag until snapshot and full validation pass.
+Tag push runs `.github/workflows/release.yml`. The workflow publishes the release and attests build provenance for every archive listed in `checksums.txt`.
+
+Verify a downloaded archive manually:
+
+```bash
+gh attestation verify my-mcp_1.0.0_darwin_arm64.tar.gz --repo jjspscl/my
+```
+
+Note that `subject-checksums` attests the artifacts enumerated in the checksum file, not the checksum file itself. Verify an archive, not `checksums.txt`.
+
+Do not push a tag until snapshot and full validation pass.
 
 ## Security
 
@@ -201,5 +211,5 @@ Tag push runs `.github/workflows/release.yml`. Workflow publishes release and at
 - Session cookie and CSRF middleware do not protect `/mcp`; bearer token does.
 - Tool audit logs include name, duration, outcome, and error text only. Arguments/results are never logged.
 - Destructive tools are annotated and described as irreversible.
-- Installer verifies checksum and optionally GitHub attestation.
+- Installer verifies the archive checksum, and the archive's build provenance when `gh` is available.
 - Do not expose HTTP endpoint publicly without adding network controls and rotating token on suspected disclosure.

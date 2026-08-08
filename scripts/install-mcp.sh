@@ -50,8 +50,8 @@ fi
 [ "$actual" = "$expected" ] || fail "checksum mismatch for $archive"
 
 if command -v gh >/dev/null 2>&1; then
-	if ! gh attestation verify "$tmp_dir/checksums.txt" --repo "$repo" >/dev/null 2>&1; then
-		fail "GitHub attestation verification failed"
+	if ! gh attestation verify "$tmp_dir/$archive" --repo "$repo" >/dev/null 2>&1; then
+		fail "GitHub attestation verification failed for $archive"
 	fi
 else
 	printf 'warning: gh unavailable; provenance attestation not verified\n' >&2

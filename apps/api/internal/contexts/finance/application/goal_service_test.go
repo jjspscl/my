@@ -19,11 +19,46 @@ type mockGoalRepo struct {
 	contributions map[string][]*domain.GoalContribution // key: goalID
 }
 
+type mockGoalTransferRepo struct {
+	transfers []*domain.WalletTransfer
+}
+
+func (m *mockGoalTransferRepo) Save(_ context.Context, transfer *domain.WalletTransfer) error {
+	m.transfers = append(m.transfers, transfer)
+	return nil
+}
+
+func (m *mockGoalTransferRepo) FindByID(_ context.Context, id string) (*domain.WalletTransfer, error) {
+	for _, transfer := range m.transfers {
+		if transfer.ID == id {
+			return transfer, nil
+		}
+	}
+	return nil, fmt.Errorf("transfer not found")
+}
+
+func (m *mockGoalTransferRepo) ListByUser(_ context.Context, userEmail string, _, _ int) ([]*domain.WalletTransfer, error) {
+	var result []*domain.WalletTransfer
+	for _, transfer := range m.transfers {
+		if transfer.UserEmail == userEmail {
+			result = append(result, transfer)
+		}
+	}
+	return result, nil
+}
+
 func newMockGoalRepo() *mockGoalRepo {
 	return &mockGoalRepo{
 		goals:         make(map[string]*domain.SavingsGoal),
 		contributions: make(map[string][]*domain.GoalContribution),
 	}
+}
+
+func newGoalWalletRepo() *mockWalletRepo {
+	return &mockWalletRepo{wallets: []*domain.Wallet{
+		{ID: "w-1", UserEmail: "user@test.com"},
+		{ID: "w-2", UserEmail: "user@test.com"},
+	}}
 }
 
 func (m *mockGoalRepo) SaveGoal(_ context.Context, goal *domain.SavingsGoal) error {
@@ -84,7 +119,7 @@ func (m *mockGoalRepo) GetCurrentAmountByGoal(_ context.Context, goalID string) 
 
 func TestCreateGoal_Valid(t *testing.T) {
 	repo := newMockGoalRepo()
-	svc := NewGoalServiceNoTransfer(repo)
+	svc := NewGoalServiceNoTransfer(repo, newGoalWalletRepo())
 
 	goal, err := svc.Create(context.Background(), "user@test.com", CreateGoalInput{
 		Name:              "Emergency Fund",
@@ -99,7 +134,7 @@ func TestCreateGoal_Valid(t *testing.T) {
 
 func TestCreateGoal_InvalidTarget(t *testing.T) {
 	repo := newMockGoalRepo()
-	svc := NewGoalServiceNoTransfer(repo)
+	svc := NewGoalServiceNoTransfer(repo, newGoalWalletRepo())
 
 	_, err := svc.Create(context.Background(), "user@test.com", CreateGoalInput{
 		Name:              "Test",
@@ -112,7 +147,7 @@ func TestCreateGoal_InvalidTarget(t *testing.T) {
 
 func TestListSummaries_Empty(t *testing.T) {
 	repo := newMockGoalRepo()
-	svc := NewGoalServiceNoTransfer(repo)
+	svc := NewGoalServiceNoTransfer(repo, newGoalWalletRepo())
 
 	summaries, err := svc.ListSummaries(context.Background(), "user@test.com")
 	require.NoError(t, err)
@@ -121,7 +156,7 @@ func TestListSummaries_Empty(t *testing.T) {
 
 func TestListSummaries_WithGoal(t *testing.T) {
 	repo := newMockGoalRepo()
-	svc := NewGoalServiceNoTransfer(repo)
+	svc := NewGoalServiceNoTransfer(repo, newGoalWalletRepo())
 
 	_, _ = svc.Create(context.Background(), "user@test.com", CreateGoalInput{
 		Name:              "Goal 1",
@@ -141,7 +176,7 @@ func TestListSummaries_WithGoal(t *testing.T) {
 
 func TestAddContribution_UpdatesSummary(t *testing.T) {
 	repo := newMockGoalRepo()
-	svc := NewGoalServiceNoTransfer(repo)
+	svc := NewGoalServiceNoTransfer(repo, newGoalWalletRepo())
 
 	goal, _ := svc.Create(context.Background(), "user@test.com", CreateGoalInput{
 		Name:              "Vacation",
@@ -166,7 +201,7 @@ func TestAddContribution_UpdatesSummary(t *testing.T) {
 
 func TestAddContribution_AchievesGoal(t *testing.T) {
 	repo := newMockGoalRepo()
-	svc := NewGoalServiceNoTransfer(repo)
+	svc := NewGoalServiceNoTransfer(repo, newGoalWalletRepo())
 
 	goal, _ := svc.Create(context.Background(), "user@test.com", CreateGoalInput{
 		Name:              "Small Goal",
@@ -188,7 +223,7 @@ func TestAddContribution_AchievesGoal(t *testing.T) {
 
 func TestAddContribution_WrongUser(t *testing.T) {
 	repo := newMockGoalRepo()
-	svc := NewGoalServiceNoTransfer(repo)
+	svc := NewGoalServiceNoTransfer(repo, newGoalWalletRepo())
 
 	goal, _ := svc.Create(context.Background(), "user@test.com", CreateGoalInput{
 		Name:              "Test",
@@ -206,7 +241,7 @@ func TestAddContribution_WrongUser(t *testing.T) {
 
 func TestDeleteGoal(t *testing.T) {
 	repo := newMockGoalRepo()
-	svc := NewGoalServiceNoTransfer(repo)
+	svc := NewGoalServiceNoTransfer(repo, newGoalWalletRepo())
 
 	goal, _ := svc.Create(context.Background(), "user@test.com", CreateGoalInput{
 		Name:              "Delete Me",
@@ -223,7 +258,7 @@ func TestDeleteGoal(t *testing.T) {
 
 func TestUpdateGoal(t *testing.T) {
 	repo := newMockGoalRepo()
-	svc := NewGoalServiceNoTransfer(repo)
+	svc := NewGoalServiceNoTransfer(repo, newGoalWalletRepo())
 
 	goal, _ := svc.Create(context.Background(), "user@test.com", CreateGoalInput{
 		Name:              "Original",
@@ -241,3 +276,96 @@ func TestUpdateGoal(t *testing.T) {
 	assert.Equal(t, "Updated", updated.Name)
 	assert.Equal(t, int64(100000), updated.TargetAmountCents)
 }
+
+func TestCreateGoalRejectsUnusableWallet(t *testing.T) {
+	tests := []struct {
+		name   string
+		wallet *domain.Wallet
+		want   string
+	}{
+		{name: "unknown", want: "wallet not found"},
+		{name: "foreign", wallet: &domain.Wallet{ID: "foreign", UserEmail: "other@test.com"}, want: "wallet not found"},
+		{name: "archived", wallet: archivedWallet("w-archived", "user@test.com"), want: "wallet is archived"},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			repo := newMockGoalRepo()
+			walletRepo := &mockWalletRepo{}
+			if tt.wallet != nil {
+				walletRepo.wallets = []*domain.Wallet{tt.wallet}
+			}
+			svc := NewGoalServiceNoTransfer(repo, walletRepo)
+
+			_, err := svc.Create(context.Background(), "user@test.com", CreateGoalInput{
+				Name:              "Protected goal",
+				TargetAmountCents: 1000,
+				TargetWalletID:    walletIDForTest(tt.wallet, "missing"),
+			})
+			require.Error(t, err)
+			assert.Contains(t, err.Error(), tt.want)
+			assert.Empty(t, repo.goals)
+		})
+	}
+}
+
+func TestAddContributionValidatesSourceAndCreatesTransfer(t *testing.T) {
+	goalRepo := newMockGoalRepo()
+	transferRepo := &mockGoalTransferRepo{}
+	walletRepo := newGoalWalletRepo()
+	svc := NewGoalService(goalRepo, transferRepo, walletRepo)
+
+	goal, err := svc.Create(context.Background(), "user@test.com", CreateGoalInput{
+		Name:              "Vacation",
+		TargetAmountCents: 10000,
+		TargetWalletID:    "w-2",
+	})
+	require.NoError(t, err)
+
+	_, err = svc.AddContribution(context.Background(), "user@test.com", AddContributionInput{
+		GoalID:         goal.ID,
+		AmountCents:    1000,
+		ContributedAt:  time.Now(),
+		SourceWalletID: stringPtr("w-1"),
+	})
+	require.NoError(t, err)
+	assert.Len(t, transferRepo.transfers, 1)
+	assert.Len(t, goalRepo.contributions[goal.ID], 1)
+}
+
+func TestAddContributionRejectsUnusableSourceBeforeWrite(t *testing.T) {
+	goalRepo := newMockGoalRepo()
+	transferRepo := &mockGoalTransferRepo{}
+	walletRepo := newGoalWalletRepo()
+	svc := NewGoalService(goalRepo, transferRepo, walletRepo)
+	goal, err := svc.Create(context.Background(), "user@test.com", CreateGoalInput{
+		Name:              "Vacation",
+		TargetAmountCents: 10000,
+		TargetWalletID:    "w-2",
+	})
+	require.NoError(t, err)
+
+	_, err = svc.AddContribution(context.Background(), "user@test.com", AddContributionInput{
+		GoalID:         goal.ID,
+		AmountCents:    1000,
+		ContributedAt:  time.Now(),
+		SourceWalletID: stringPtr("missing"),
+	})
+	require.Error(t, err)
+	assert.Empty(t, transferRepo.transfers)
+	assert.Empty(t, goalRepo.contributions[goal.ID])
+}
+
+func archivedWallet(id, email string) *domain.Wallet {
+	archivedAt := time.Now()
+	return &domain.Wallet{ID: id, UserEmail: email, ArchivedAt: &archivedAt}
+}
+
+func walletIDForTest(wallet *domain.Wallet, fallback string) string {
+	if wallet == nil {
+		return fallback
+	}
+	return wallet.ID
+}
+
+func stringPtr(value string) *string { return &value }

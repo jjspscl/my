@@ -50,17 +50,7 @@ func (s *TransactionService) resolveWallet(ctx context.Context, userEmail, walle
 		return defaultWallet, nil
 	}
 
-	wallet, err := s.walletRepo.FindByID(ctx, walletID)
-	if err != nil {
-		return nil, fmt.Errorf("wallet not found: %w", err)
-	}
-	if wallet.UserEmail != userEmail {
-		return nil, fmt.Errorf("wallet not found")
-	}
-	if wallet.ArchivedAt != nil {
-		return nil, fmt.Errorf("wallet is archived")
-	}
-	return wallet, nil
+	return ensureUsableWallet(ctx, s.walletRepo, userEmail, walletID)
 }
 
 func (s *TransactionService) Create(ctx context.Context, userEmail string, input CreateTransactionInput) (*domain.Transaction, error) {

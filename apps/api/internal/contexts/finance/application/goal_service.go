@@ -13,15 +13,16 @@ import (
 type GoalService struct {
 	goalRepo     domain.GoalRepository
 	transferRepo domain.TransferRepository
+	walletRepo   domain.WalletRepository
 }
 
-func NewGoalService(goalRepo domain.GoalRepository, transferRepo domain.TransferRepository) *GoalService {
-	return &GoalService{goalRepo: goalRepo, transferRepo: transferRepo}
+func NewGoalService(goalRepo domain.GoalRepository, transferRepo domain.TransferRepository, walletRepo domain.WalletRepository) *GoalService {
+	return &GoalService{goalRepo: goalRepo, transferRepo: transferRepo, walletRepo: walletRepo}
 }
 
 // NewGoalServiceNoTransfer creates a GoalService without transfer support.
-func NewGoalServiceNoTransfer(goalRepo domain.GoalRepository) *GoalService {
-	return &GoalService{goalRepo: goalRepo}
+func NewGoalServiceNoTransfer(goalRepo domain.GoalRepository, walletRepo domain.WalletRepository) *GoalService {
+	return &GoalService{goalRepo: goalRepo, walletRepo: walletRepo}
 }
 
 type CreateGoalInput struct {
@@ -48,6 +49,9 @@ type AddContributionInput struct {
 }
 
 func (s *GoalService) Create(ctx context.Context, userEmail string, input CreateGoalInput) (*domain.SavingsGoal, error) {
+	if _, err := ensureUsableWallet(ctx, s.walletRepo, userEmail, input.TargetWalletID); err != nil {
+		return nil, err
+	}
 	goal, err := domain.NewSavingsGoal(uuid.New().String(), userEmail, input.Name, input.TargetAmountCents, input.TargetDate, input.TargetWalletID)
 	if err != nil {
 		return nil, err
@@ -67,6 +71,9 @@ func (s *GoalService) Update(ctx context.Context, userEmail string, input Update
 	}
 	if existing.UserEmail != userEmail {
 		return nil, fmt.Errorf("goal not found")
+	}
+	if _, err := ensureUsableWallet(ctx, s.walletRepo, userEmail, input.TargetWalletID); err != nil {
+		return nil, err
 	}
 
 	goal, err := domain.NewSavingsGoal(input.ID, userEmail, input.Name, input.TargetAmountCents, input.TargetDate, input.TargetWalletID)
@@ -116,6 +123,12 @@ func (s *GoalService) AddContribution(ctx context.Context, userEmail string, inp
 	// If sourceWalletID is provided, auto-create a transfer to goal's target wallet
 	var transferID *string
 	if input.SourceWalletID != nil && goal.TargetWalletID != "" && s.transferRepo != nil {
+		if _, err := ensureUsableWallet(ctx, s.walletRepo, userEmail, *input.SourceWalletID); err != nil {
+			return nil, err
+		}
+		if _, err := ensureUsableWallet(ctx, s.walletRepo, userEmail, goal.TargetWalletID); err != nil {
+			return nil, err
+		}
 		transfer, err := domain.NewWalletTransfer(
 			uuid.New().String(),
 			userEmail,

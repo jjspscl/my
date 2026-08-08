@@ -27,25 +27,11 @@ type CreateTransferInput struct {
 	TransferDate time.Time
 }
 
-func (s *TransferService) validateWallet(ctx context.Context, userEmail, walletID string) error {
-	wallet, err := s.walletRepo.FindByID(ctx, walletID)
-	if err != nil {
-		return fmt.Errorf("wallet not found: %s", walletID)
-	}
-	if wallet.UserEmail != userEmail {
-		return fmt.Errorf("wallet not found: %s", walletID)
-	}
-	if wallet.ArchivedAt != nil {
-		return fmt.Errorf("wallet is archived: %s", walletID)
-	}
-	return nil
-}
-
 func (s *TransferService) Create(ctx context.Context, userEmail string, input CreateTransferInput) (*domain.WalletTransfer, error) {
-	if err := s.validateWallet(ctx, userEmail, input.FromWalletID); err != nil {
+	if _, err := ensureUsableWallet(ctx, s.walletRepo, userEmail, input.FromWalletID); err != nil {
 		return nil, err
 	}
-	if err := s.validateWallet(ctx, userEmail, input.ToWalletID); err != nil {
+	if _, err := ensureUsableWallet(ctx, s.walletRepo, userEmail, input.ToWalletID); err != nil {
 		return nil, err
 	}
 

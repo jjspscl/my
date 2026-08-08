@@ -81,7 +81,7 @@ func main() {
 
 	goalRepo := financeinfra.NewGoalRepoLibSQL(db)
 	transferRepo := financeinfra.NewTransferRepoLibSQL(db)
-	goalSvc := financeapp.NewGoalService(goalRepo, transferRepo)
+	goalSvc := financeapp.NewGoalService(goalRepo, transferRepo, walletRepo)
 	goalHandler := financehttp.NewGoalHandler(goalSvc)
 
 	walletSvc := financeapp.NewWalletService(walletRepo)

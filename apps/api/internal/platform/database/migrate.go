@@ -72,6 +72,18 @@ func Migrate(db *sql.DB, migrationsDir string) error {
 	return nil
 }
 
+func VerifySchema(db *sql.DB) error {
+	var table string
+	err := db.QueryRow("SELECT name FROM sqlite_master WHERE type = 'table' AND name = '_migrations'").Scan(&table)
+	if err == sql.ErrNoRows {
+		return fmt.Errorf("database schema is not initialized; run mise run migrate before starting standalone my-mcp")
+	}
+	if err != nil {
+		return fmt.Errorf("verify database schema: %w", err)
+	}
+	return nil
+}
+
 func ensureMigrationsTable(db *sql.DB) error {
 	_, err := db.Exec(`
 		CREATE TABLE IF NOT EXISTS _migrations (

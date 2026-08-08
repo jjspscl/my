@@ -3,6 +3,7 @@ go = "latest"
 node = "lts"
 pnpm = "latest"
 "go:github.com/air-verse/air" = "latest"
+goreleaser = "latest"
 
 [env]
 _.file = ".env"
@@ -50,9 +51,10 @@ dir = "apps/web"
 [tasks.build]
 description = "Build client assets, copy them into Go embed directory, then build Go binary"
 run = [
-  "mise run build:client",
-  "bash scripts/copy-web-assets.sh",
-  "mise run build:api",
+	"mise run build:client",
+	"bash scripts/copy-web-assets.sh",
+	"mise run build:api",
+	"mise run build:mcp",
 ]
 
 [tasks."build:client"]
@@ -63,6 +65,11 @@ dir = "apps/web"
 [tasks."build:api"]
 description = "Build Go binary with embedded frontend assets"
 run = "mkdir -p ../../bin && go build -o ../../bin/my ./cmd/api"
+dir = "apps/api"
+
+[tasks."build:mcp"]
+description = "Build standalone MCP server binary"
+run = "mkdir -p ../../bin && go build -o ../../bin/my-mcp ./cmd/mcp"
 dir = "apps/api"
 
 [tasks.test]
@@ -111,3 +118,19 @@ dir = "apps/api"
 [tasks.clean]
 description = "Clean build outputs"
 run = "rm -rf bin apps/web/dist apps/api/internal/platform/web/static"
+
+[tasks."release:check"]
+description = "Dry-run release build without publishing"
+run = "goreleaser release --snapshot --clean --skip=publish"
+
+[tasks."release:tag"]
+description = "Validate and create annotated release tag (push is manual)"
+run = [
+	"bash -c 'test -z \"$(git status --porcelain)\" || { echo \"working tree must be clean\" >&2; exit 1; }'",
+	"bash -c 'test \"$(git branch --show-current)\" = main || { echo \"release tag must be created from main\" >&2; exit 1; }'",
+	"mise run lint",
+	"mise run test",
+	"mise run typecheck",
+	"mise run build",
+	"bash -c 'test -n \"$MISE_RELEASE_VERSION\" || { echo \"set MISE_RELEASE_VERSION, e.g. v1.0.0\" >&2; exit 1; }; git tag -a \"$MISE_RELEASE_VERSION\" -m \"release: $MISE_RELEASE_VERSION\"'",
+]

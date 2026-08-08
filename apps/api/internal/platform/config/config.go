@@ -1,6 +1,7 @@
 package config
 
 import (
+	"fmt"
 	"os"
 	"strconv"
 	"strings"
@@ -21,6 +22,10 @@ type Config struct {
 	WebURL          string
 	SecureCookies   bool
 	DefaultCurrency string
+	MCPEnabled      bool
+	MCPToken        string
+	MCPBind         string
+	MCPReadOnly     bool
 }
 
 func Load() (*Config, error) {
@@ -28,6 +33,18 @@ func Load() (*Config, error) {
 	dur, err := time.ParseDuration(sessionTTL)
 	if err != nil {
 		return nil, err
+	}
+	mcpEnabled, err := boolEnv("MY_MCP_ENABLED", false)
+	if err != nil {
+		return nil, err
+	}
+	mcpReadOnly, err := boolEnv("MY_MCP_READONLY", false)
+	if err != nil {
+		return nil, err
+	}
+	mcpToken := os.Getenv("MY_MCP_TOKEN")
+	if mcpEnabled && len(mcpToken) < 32 {
+		return nil, fmt.Errorf("MY_MCP_TOKEN must be at least 32 characters when MY_MCP_ENABLED=true")
 	}
 	webURL := defaultEnv("MY_WEB_URL", "http://localhost:5173")
 	secureCookies, err := secureCookies(webURL)
@@ -49,6 +66,10 @@ func Load() (*Config, error) {
 		WebURL:          webURL,
 		SecureCookies:   secureCookies,
 		DefaultCurrency: defaultEnv("MY_DEFAULT_CURRENCY", "PHP"),
+		MCPEnabled:      mcpEnabled,
+		MCPToken:        mcpToken,
+		MCPBind:         defaultEnv("MY_MCP_BIND", "127.0.0.1"),
+		MCPReadOnly:     mcpReadOnly,
 	}, nil
 }
 
@@ -68,4 +89,16 @@ func defaultEnv(key, fallback string) string {
 		return v
 	}
 	return fallback
+}
+
+func boolEnv(key string, fallback bool) (bool, error) {
+	value := os.Getenv(key)
+	if value == "" {
+		return fallback, nil
+	}
+	parsed, err := strconv.ParseBool(value)
+	if err != nil {
+		return false, fmt.Errorf("%s: %w", key, err)
+	}
+	return parsed, nil
 }

@@ -45,7 +45,7 @@ mise run dev
 | `mise run seed` | Seed local dev data |
 | `mise run clean` | Clean build outputs |
 | `mise run release:check` | Snapshot GoReleaser build without publishing |
-| `MISE_RELEASE_VERSION=v1.0.0 mise run release:tag` | Validate and create annotated release tag; push manually |
+| `MY_RELEASE_VERSION=v1.0.0 mise run release:tag` | Validate and create annotated release tag; push manually |
 
 ## Runtime
 

@@ -187,7 +187,7 @@ mise run release:check
 Create tag after review:
 
 ```bash
-MISE_RELEASE_VERSION=v1.0.0 mise run release:tag
+MY_RELEASE_VERSION=v1.0.0 mise run release:tag
 ```
 
 Tag push runs `.github/workflows/release.yml`. Workflow publishes release and attests checksum file. Do not push tag until snapshot and full validation pass.

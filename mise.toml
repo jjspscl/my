@@ -132,5 +132,5 @@ run = [
 	"mise run test",
 	"mise run typecheck",
 	"mise run build",
-	"bash -c 'test -n \"$MISE_RELEASE_VERSION\" || { echo \"set MISE_RELEASE_VERSION, e.g. v1.0.0\" >&2; exit 1; }; git tag -a \"$MISE_RELEASE_VERSION\" -m \"release: $MISE_RELEASE_VERSION\"'",
+	"bash -c 'test -n \"$MY_RELEASE_VERSION\" || { echo \"set MY_RELEASE_VERSION, e.g. v1.0.0\" >&2; exit 1; }; git tag -a \"$MY_RELEASE_VERSION\" -m \"release: $MY_RELEASE_VERSION\"'",
 ]

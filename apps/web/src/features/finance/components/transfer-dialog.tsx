@@ -21,6 +21,9 @@ export function TransferDialog({ trigger }: TransferDialogProps) {
   const [amount, setAmount] = useState('')
   const [description, setDescription] = useState('')
   const [transferDate, setTransferDate] = useState(todayLocalStr())
+  // One key per form session: a double-submit or a queued replay reuses it, so
+  // the server dedupes instead of moving money twice.
+  const [idempotencyKey, setIdempotencyKey] = useState(() => crypto.randomUUID())
 
   const { data: wallets } = useWallets()
   const createTransfer = useCreateTransfer()
@@ -32,9 +35,10 @@ export function TransferDialog({ trigger }: TransferDialogProps) {
     if (!fromWalletId || !toWalletId || !cents) return
 
     createTransfer.mutate(
-      { fromWalletId, toWalletId, amountCents: cents, description, transferDate },
+      { fromWalletId, toWalletId, amountCents: cents, description, transferDate, idempotencyKey },
       {
         onSuccess: () => {
+          setIdempotencyKey(crypto.randomUUID())
           setOpen(false)
           setFromWalletId('')
           setToWalletId('')

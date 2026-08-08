@@ -43,5 +43,6 @@ export const AddContributionSchema = z.object({
   contributedAt: z.string().min(1, 'Date is required'),
   note: z.string().optional(),
   sourceWalletId: z.string().optional(),
+  idempotencyKey: z.string().optional(),
 })
 export type AddContribution = z.infer<typeof AddContributionSchema>

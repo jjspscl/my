@@ -48,8 +48,8 @@ export function useAddContribution() {
   const queryClient = useQueryClient()
 
   return useMutation({
-    mutationFn: ({ goalId, amountCents, contributedAt, note, sourceWalletId }: { goalId: string; amountCents: number; contributedAt: string; note: string; sourceWalletId?: string }) =>
-      addContribution(goalId, amountCents, contributedAt, note, sourceWalletId),
+    mutationFn: ({ goalId, amountCents, contributedAt, note, sourceWalletId, idempotencyKey }: { goalId: string; amountCents: number; contributedAt: string; note: string; sourceWalletId?: string; idempotencyKey?: string }) =>
+      addContribution(goalId, amountCents, contributedAt, note, sourceWalletId, idempotencyKey),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: financeKeys.goalList() })
       queryClient.invalidateQueries({ queryKey: financeKeys.walletList() })

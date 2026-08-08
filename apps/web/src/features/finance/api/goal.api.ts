@@ -1,6 +1,7 @@
 import { apiClient } from '@/shared/api/client'
 import { z } from 'zod'
 import { GoalSummarySchema, CreateGoalSchema, type CreateGoal } from '../schemas/goal.schemas'
+import { financeMutate, type MutateResult } from './mutate'
 
 const GoalSummaryListDataSchema = z.object({
   data: z.array(GoalSummarySchema),
@@ -62,9 +63,12 @@ export async function deleteGoal(id: string): Promise<void> {
   })
 }
 
-export async function addContribution(goalId: string, amountCents: number, contributedAt: string, note = '', sourceWalletId?: string): Promise<void> {
-  await apiClient(`/api/v1/finance/goals/${goalId}/contributions`, ContributionResponseSchema, {
-    method: 'POST',
-    body: JSON.stringify({ amountCents, contributedAt, note, sourceWalletId }),
-  })
+export async function addContribution(goalId: string, amountCents: number, contributedAt: string, note = '', sourceWalletId?: string, idempotencyKey?: string): Promise<MutateResult<unknown>> {
+  return financeMutate(`/api/v1/finance/goals/${goalId}/contributions`, {
+    amountCents,
+    contributedAt,
+    note,
+    sourceWalletId,
+    idempotencyKey: idempotencyKey ?? crypto.randomUUID(),
+  }, ContributionResponseSchema)
 }

@@ -21,6 +21,9 @@ export function GoalContributionDialog({ goal, open, onOpenChange }: GoalContrib
   const [contributedAt, setContributedAt] = useState(todayLocalStr())
   const [note, setNote] = useState('')
   const [sourceWalletId, setSourceWalletId] = useState('')
+  // One key per form session: a double-submit or a queued replay reuses it, so
+  // the server dedupes instead of crediting the goal twice.
+  const [idempotencyKey, setIdempotencyKey] = useState(() => crypto.randomUUID())
 
   const { data: wallets } = useWallets()
   const addContribution = useAddContribution()
@@ -33,9 +36,10 @@ export function GoalContributionDialog({ goal, open, onOpenChange }: GoalContrib
 
     const swId = sourceWalletId && sourceWalletId.trim() ? sourceWalletId : undefined
     addContribution.mutate(
-      { goalId: goal.id, amountCents: cents, contributedAt, note, sourceWalletId: swId },
+      { goalId: goal.id, amountCents: cents, contributedAt, note, sourceWalletId: swId, idempotencyKey },
       {
         onSuccess: () => {
+          setIdempotencyKey(crypto.randomUUID())
           onOpenChange(false)
           setAmount('')
           setNote('')

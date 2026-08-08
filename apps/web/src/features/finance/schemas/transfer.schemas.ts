@@ -17,5 +17,6 @@ export const CreateTransferSchema = z.object({
   amountCents: z.number().int().positive('Amount must be positive'),
   description: z.string().default(''),
   transferDate: z.string().min(1, 'Date is required'),
+  idempotencyKey: z.string().optional(),
 })
 export type CreateTransfer = z.infer<typeof CreateTransferSchema>

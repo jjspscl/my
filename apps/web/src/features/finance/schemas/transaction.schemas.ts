@@ -25,6 +25,8 @@ export const CreateTransactionSchema = z.object({
   type: TransactionTypeSchema,
   walletId: z.string(),
   transactionDate: z.string().optional(),
+  // Client-generated per logical mutation; the server dedupes replays on it.
+  idempotencyKey: z.string().optional(),
 })
 export type CreateTransaction = z.infer<typeof CreateTransactionSchema>
 

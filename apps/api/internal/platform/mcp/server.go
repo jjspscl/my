@@ -310,7 +310,7 @@ func registerWriteTools(server *mcpsdk.Server, app *bootstrap.App) {
 	registerTool(server, app.Log, &mcpsdk.Tool{Name: "finance_archive_wallet", Description: "Archive a wallet. This action is destructive and cannot be undone through MCP.", Annotations: destructive()}, func(ctx context.Context, in idInput) (any, error) {
 		return nil, app.Wallet.Archive(ctx, in.ID, app.Cfg.UserEmail)
 	})
-	registerTool(server, app.Log, &mcpsdk.Tool{Name: "finance_create_transfer", Description: "Transfer money between two wallets. For same-currency wallets amount_cents is used for both legs; cross-currency transfers must supply from_amount_cents and to_amount_cents.", Annotations: writable}, func(ctx context.Context, in createTransferInput) (any, error) {
+	registerTool(server, app.Log, &mcpsdk.Tool{Name: "finance_create_transfer", Description: "Transfer money between two wallets. For same-currency wallets amount_cents is used for both legs; cross-currency transfers must supply from_amount_cents and to_amount_cents. Supply idempotency_key and reuse it across retries so a retried transfer is not applied twice.", Annotations: writable}, func(ctx context.Context, in createTransferInput) (any, error) {
 		fromAmount := in.AmountCents
 		if in.FromAmountCents != nil {
 			fromAmount = *in.FromAmountCents

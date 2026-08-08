@@ -1,0 +1,65 @@
+version: 2
+
+before:
+  hooks:
+    - pnpm install --frozen-lockfile
+    - pnpm --filter @my/web build
+    - bash scripts/copy-web-assets.sh
+    - go -C apps/api mod download
+
+builds:
+  - id: my
+    dir: apps/api
+    main: ./cmd/api
+    binary: my
+    env:
+      - CGO_ENABLED=0
+    goos: [linux, darwin]
+    goarch: [amd64, arm64]
+    ldflags:
+      - -s -w
+      - -X github.com/jjspscl/my/internal/platform/version.Version={{.Version}}
+      - -X github.com/jjspscl/my/internal/platform/version.Commit={{.ShortCommit}}
+      - -X github.com/jjspscl/my/internal/platform/version.Date={{.CommitDate}}
+  - id: my-mcp
+    dir: apps/api
+    main: ./cmd/mcp
+    binary: my-mcp
+    env:
+      - CGO_ENABLED=0
+    goos: [linux, darwin]
+    goarch: [amd64, arm64]
+    ldflags:
+      - -s -w
+      - -X github.com/jjspscl/my/internal/platform/version.Version={{.Version}}
+      - -X github.com/jjspscl/my/internal/platform/version.Commit={{.ShortCommit}}
+      - -X github.com/jjspscl/my/internal/platform/version.Date={{.CommitDate}}
+
+archives:
+  - id: my
+    ids: [my]
+    formats: [tar.gz]
+    name_template: 'my_{{.Version}}_{{.Os}}_{{.Arch}}'
+  - id: my-mcp
+    ids: [my-mcp]
+    formats: [tar.gz]
+    name_template: 'my-mcp_{{.Version}}_{{.Os}}_{{.Arch}}'
+
+checksum:
+  name_template: checksums.txt
+
+changelog:
+  use: github
+  groups:
+    - title: Features
+      regexp: '^.*?feat(\(.+\))??!?:.+$'
+      order: 0
+    - title: Fixes
+      regexp: '^.*?fix(\(.+\))??!?:.+$'
+      order: 1
+    - title: Others
+      order: 999
+
+release:
+  draft: false
+  prerelease: auto

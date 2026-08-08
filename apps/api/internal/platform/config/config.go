@@ -2,6 +2,8 @@ package config
 
 import (
 	"os"
+	"strconv"
+	"strings"
 	"time"
 )
 
@@ -16,15 +18,19 @@ type Config struct {
 	SMTPUser        string
 	SMTPPass        string
 	SessionTTL      time.Duration
-	CookieSecret    string
-	CSRFSecret      string
 	WebURL          string
+	SecureCookies   bool
 	DefaultCurrency string
 }
 
 func Load() (*Config, error) {
 	sessionTTL := defaultEnv("MY_SESSION_TTL", "168h")
 	dur, err := time.ParseDuration(sessionTTL)
+	if err != nil {
+		return nil, err
+	}
+	webURL := defaultEnv("MY_WEB_URL", "http://localhost:5173")
+	secureCookies, err := secureCookies(webURL)
 	if err != nil {
 		return nil, err
 	}
@@ -40,11 +46,21 @@ func Load() (*Config, error) {
 		SMTPUser:        os.Getenv("MY_SMTP_USER"),
 		SMTPPass:        os.Getenv("MY_SMTP_PASS"),
 		SessionTTL:      dur,
-		CookieSecret:    os.Getenv("MY_COOKIE_SECRET"),
-		CSRFSecret:      os.Getenv("MY_CSRF_SECRET"),
-		WebURL:          defaultEnv("MY_WEB_URL", "http://localhost:5173"),
+		WebURL:          webURL,
+		SecureCookies:   secureCookies,
 		DefaultCurrency: defaultEnv("MY_DEFAULT_CURRENCY", "PHP"),
 	}, nil
+}
+
+func secureCookies(webURL string) (bool, error) {
+	if value := os.Getenv("MY_SECURE_COOKIES"); value != "" {
+		secure, err := strconv.ParseBool(value)
+		if err != nil {
+			return false, err
+		}
+		return secure, nil
+	}
+	return strings.HasPrefix(strings.ToLower(webURL), "https://"), nil
 }
 
 func defaultEnv(key, fallback string) string {

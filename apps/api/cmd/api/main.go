@@ -62,7 +62,7 @@ func main() {
 	mailer := mail.NewSMTPSender(cfg.SMTPHost, cfg.SMTPPort, cfg.SMTPFrom, cfg.SMTPUser, cfg.SMTPPass)
 	tokenRepo := infrastructure.NewTokenRepoLibSQL(db)
 	authSvc := application.NewAuthService(tokenRepo, sessions, mailer, cfg)
-	authHandler := accesshttp.NewAuthHandler(authSvc, cfg.CookieSecret, cfg.CSRFSecret)
+	authHandler := accesshttp.NewAuthHandler(authSvc, cfg.SecureCookies, cfg.SessionTTL)
 
 	// Finance
 	txRepo := financeinfra.NewTransactionRepoLibSQL(db)
@@ -110,12 +110,13 @@ func main() {
 		})
 
 		// Public auth routes
-		r.Route("/auth", authHandler.Routes)
+		r.Route("/auth", authHandler.PublicRoutes)
 
 		// Protected routes
 		r.Group(func(r chi.Router) {
 			r.Use(middleware.RequireAuth(sessions))
 			r.Use(middleware.CSRFProtect())
+			r.Route("/auth", authHandler.ProtectedRoutes)
 
 			// Finance
 			r.Route("/finance", func(r chi.Router) {

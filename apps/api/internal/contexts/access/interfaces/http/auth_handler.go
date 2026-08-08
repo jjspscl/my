@@ -14,24 +14,27 @@ import (
 )
 
 type AuthHandler struct {
-	svc          *application.AuthService
-	cookieSecret string
-	csrfSecret   string
+	svc           *application.AuthService
+	secureCookies bool
+	sessionTTL    time.Duration
 }
 
-func NewAuthHandler(svc *application.AuthService, cookieSecret, csrfSecret string) *AuthHandler {
+func NewAuthHandler(svc *application.AuthService, secureCookies bool, sessionTTL time.Duration) *AuthHandler {
 	return &AuthHandler{
-		svc:          svc,
-		cookieSecret: cookieSecret,
-		csrfSecret:   csrfSecret,
+		svc:           svc,
+		secureCookies: secureCookies,
+		sessionTTL:    sessionTTL,
 	}
 }
 
-func (h *AuthHandler) Routes(r chi.Router) {
+func (h *AuthHandler) PublicRoutes(r chi.Router) {
 	r.Post("/magic-link", h.RequestMagicLink)
 	r.Post("/verify", h.VerifyToken)
-	r.Post("/logout", h.Logout)
 	r.Get("/me", h.Me)
+}
+
+func (h *AuthHandler) ProtectedRoutes(r chi.Router) {
+	r.Post("/logout", h.Logout)
 }
 
 type magicLinkRequest struct {
@@ -91,9 +94,9 @@ func (h *AuthHandler) VerifyToken(w http.ResponseWriter, r *http.Request) {
 		Value:    sessionID,
 		Path:     "/",
 		HttpOnly: true,
-		Secure:   r.Host != "localhost:8080",
+		Secure:   h.secureCookies,
 		SameSite: http.SameSiteLaxMode,
-		MaxAge:   int((7 * 24 * time.Hour).Seconds()),
+		MaxAge:   int(h.sessionTTL.Seconds()),
 	})
 
 	// Set CSRF cookie (JS-readable)
@@ -103,9 +106,9 @@ func (h *AuthHandler) VerifyToken(w http.ResponseWriter, r *http.Request) {
 		Value:    csrfToken,
 		Path:     "/",
 		HttpOnly: false,
-		Secure:   r.Host != "localhost:8080",
+		Secure:   h.secureCookies,
 		SameSite: http.SameSiteLaxMode,
-		MaxAge:   int((7 * 24 * time.Hour).Seconds()),
+		MaxAge:   int(h.sessionTTL.Seconds()),
 	})
 
 	response.WriteJSON(w, http.StatusOK, apiResponse{OK: true})
@@ -130,7 +133,7 @@ func (h *AuthHandler) Logout(w http.ResponseWriter, r *http.Request) {
 		Path:     "/",
 		MaxAge:   -1,
 		HttpOnly: true,
-		Secure:   r.Host != "localhost:8080",
+		Secure:   h.secureCookies,
 	})
 
 	http.SetCookie(w, &http.Cookie{
@@ -139,7 +142,7 @@ func (h *AuthHandler) Logout(w http.ResponseWriter, r *http.Request) {
 		Path:     "/",
 		MaxAge:   -1,
 		HttpOnly: false,
-		Secure:   r.Host != "localhost:8080",
+		Secure:   h.secureCookies,
 	})
 
 	response.WriteJSON(w, http.StatusOK, apiResponse{OK: true})

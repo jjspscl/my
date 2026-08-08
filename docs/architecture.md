@@ -88,7 +88,8 @@ apps/api/internal/shared/      middleware, response helpers
 
 `internal/platform/mcp` is an inbound transport adapter across active contexts,
 not a bounded context. It exposes application services through stdio and
-optional streamable HTTP without making HTTP self-calls.
+optional streamable HTTP without making HTTP self-calls. HTTP MCP uses a
+dedicated listener so bind policy is enforced by the OS, not request headers.
 
 ## Frontend layout
 

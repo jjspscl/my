@@ -76,7 +76,7 @@ Implemented areas:
 - `/api/v1/auth/*`
 - `/api/v1/finance/*`
 - `/api/v1/habits/*`
-- optional `/mcp` streamable HTTP endpoint, protected by bearer token
+- optional `/mcp` streamable HTTP endpoint on dedicated `MY_MCP_BIND:MY_MCP_PORT`, protected by bearer token
 
 ## Logging and middleware
 

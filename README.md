@@ -155,7 +155,9 @@ curl -fsSL https://raw.githubusercontent.com/jjspscl/my/v1.0.1/scripts/install-m
 
 Installer verifies release checksum and GitHub attestation when `gh` is available. It prints client configuration; it never edits agent config files.
 
-`my-mcp` uses stdio and needs direct access to same database and Redis as dashboard. Configure it in Codex, Claude Code, opencode, Hermes, or OpenClaw using `~/.local/bin/my-mcp`. For remote HTTP access, run dashboard with `MY_MCP_ENABLED=true` and a 32+ character `MY_MCP_TOKEN`; endpoint is `http://127.0.0.1:8080/mcp` by default.
+`my-mcp` uses stdio and needs direct access to the same database and Redis as the dashboard, so it only works on a machine that already holds your `my` data. Configure it in Codex, Claude Code, opencode, Hermes, or OpenClaw using `~/.local/bin/my-mcp`.
+
+For HTTP access, run the dashboard with `MY_MCP_ENABLED=true` and a 32+ character `MY_MCP_TOKEN`. MCP listens on its own loopback-bound listener at `http://127.0.0.1:8081/mcp`, separate from the dashboard port.
 
 Full tool/resource/prompt inventory, client configuration, security model, release, and update instructions: [`docs/mcp.md`](docs/mcp.md).
 

@@ -31,7 +31,7 @@ Run from repo root: `mise run dev|build|build:mcp|test|lint|typecheck|migrate|se
 
 Production: Vite assets copy to `apps/api/internal/platform/web/static/`, then embed in `bin/my`. Development: API `:8080`, Vite `:5173`, Redis `:6379`, Mailpit SMTP `:1025` / UI `:8025`.
 
-MCP: main binary serves optional bearer-protected `/mcp`; standalone `bin/my-mcp` serves stdio. `MY_MCP_ENABLED=false` by default. Full setup lives in `docs/mcp.md`.
+MCP: main binary serves optional bearer-protected `/mcp` on dedicated `MY_MCP_BIND:MY_MCP_PORT` (defaults `127.0.0.1:8081`); standalone `bin/my-mcp` serves stdio. `MY_MCP_ENABLED=false` by default. Full setup lives in `docs/mcp.md`.
 
 ## Workflow
 

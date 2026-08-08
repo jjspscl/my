@@ -46,20 +46,27 @@ export MY_MCP_TOKEN="$(openssl rand -hex 32)"
 mise run dev:api
 ```
 
-Endpoint: `http://127.0.0.1:8080/mcp`.
+Endpoint: `http://127.0.0.1:8081/mcp`.
 
-Default bind policy rejects non-loopback clients. `MY_MCP_BIND=0.0.0.0` permits remote clients and logs warning. Use only behind network controls or tunnel. HTTP uses bearer auth and does not use dashboard cookie/CSRF auth.
+MCP runs on its own listener, separate from the dashboard. It is **not** served on `MY_API_PORT`; requesting `/mcp` on the dashboard port returns 404. The dedicated listener is what makes `MY_MCP_BIND` a real interface restriction, and binding to loopback is also what activates the SDK's DNS rebinding protection, which rejects requests carrying a non-loopback `Host` header with 403.
+
+Setting `MY_MCP_BIND` to anything other than loopback exposes the full finance read and write surface to the network behind only a static bearer token, disables the rebinding protection, and logs a warning at startup. Do that only behind deliberate network controls or a tunnel.
+
+HTTP uses bearer auth. It does not use the dashboard's session cookie or CSRF protection: those are browser mechanisms and do not fit a CLI client.
 
 Required HTTP variables:
 
 | Variable | Default | Meaning |
 |---|---|---|
-| `MY_MCP_ENABLED` | `false` | Register `/mcp`; disabled returns 404 |
-| `MY_MCP_TOKEN` | empty | Minimum 32 chars when HTTP enabled |
-| `MY_MCP_BIND` | `127.0.0.1` | Local-only policy unless widened |
+| `MY_MCP_ENABLED` | `false` | Start the MCP listener; disabled means no listener at all |
+| `MY_MCP_TOKEN` | empty | Minimum 32 chars; server refuses to boot otherwise |
+| `MY_MCP_BIND` | `127.0.0.1` | Interface the MCP listener binds to |
+| `MY_MCP_PORT` | `8081` | Port for the MCP listener |
 | `MY_MCP_READONLY` | `false` | Omit all write tools when true |
 
-Never commit token. Full CRUD can modify or delete finance data.
+The server also requires `MY_USER_EMAIL`, `MY_DATABASE_URL`, and `MY_REDIS_URL`. `MY_USER_EMAIL` has no default and every tool uses it as the data ownership key, so the server refuses to boot when it is unset.
+
+Never commit the token. Full CRUD can modify or delete finance data.
 
 ## Tools
 
@@ -115,6 +122,8 @@ Write tools are omitted from MCP `tools/list` when `MY_MCP_READONLY=true`.
 
 All resources return JSON. Dashboard snapshot composes today's total, upcoming bill count, and habit completion ratio.
 
+Clients differ in how they consume resources. Some read them as ambient context; others, including Hermes, expose them as on-demand list and read tools rather than fetching them at startup. Resources are advertised either way.
+
 ## Prompts
 
 - `weekly_finance_review`
@@ -130,7 +139,7 @@ Client CLI/config syntax changes across releases. Verify each client's current h
 ### Claude Code HTTP
 
 ```bash
-claude mcp add --transport http my http://127.0.0.1:8080/mcp \
+claude mcp add --transport http my http://127.0.0.1:8081/mcp \
   --header "Authorization: Bearer $MY_MCP_TOKEN"
 ```
 
@@ -157,14 +166,57 @@ command = "/Users/you/.local/bin/my-mcp"
 ### OpenClaw HTTP
 
 ```bash
-openclaw mcp add my --launch "streamable-http http://127.0.0.1:8080/mcp"
+openclaw mcp add my --launch "streamable-http http://127.0.0.1:8081/mcp"
 ```
 
 Configure bearer token through OpenClaw's environment/header mechanism. Do not put token in shell history or committed config.
 
 ### Hermes
 
-Configure custom MCP server with transport `Streamable HTTP`, URL `http://127.0.0.1:8080/mcp`, and bearer token sourced from an environment variable. Hermes' UI/config names may change; confirm current client instructions.
+Config lives at `~/.hermes/config.yaml`:
+
+```yaml
+mcp_servers:
+  my:
+    url: "http://127.0.0.1:8081/mcp"
+    headers:
+      Authorization: "Bearer ${MY_MCP_TOKEN}"
+    connect_timeout: 60
+    timeout: 120
+    sampling:
+      enabled: false
+```
+
+`${MY_MCP_TOKEN}` resolves from `~/.hermes/.env`, then system environment, then defaults. Put the same value the server uses in `~/.hermes/.env`:
+
+```
+MY_MCP_TOKEN=<same value as the API's MY_MCP_TOKEN>
+```
+
+Hermes prefixes tools as `mcp_my_<tool>`, so `finance_list_transactions` is called as `mcp_my_finance_list_transactions`.
+
+`sampling: {enabled: false}` is set because this server never issues `sampling/createMessage` requests. Leaving it enabled grants a capability nothing uses.
+
+Resources and prompts are available on demand rather than injected at startup: Hermes registers `mcp_my_list_resources`, `mcp_my_read_resource`, `mcp_my_list_prompts`, and `mcp_my_get_prompt` when the server advertises those capabilities.
+
+Hermes does not enforce `destructiveHint` or `readOnlyHint`. An agent may choose to confirm before destructive calls, but the client applies no technical gate. Run the server with `MY_MCP_READONLY=true` if you want write tools to be genuinely unavailable rather than merely discouraged.
+
+For stdio instead, note that Hermes strips the subprocess environment to `PATH`, `HOME`, `USER`, `LANG`, `LC_ALL`, `TERM`, `SHELL`, `TMPDIR`, and `XDG_*`. Anything else must be listed explicitly under `env` or it is dropped:
+
+```yaml
+mcp_servers:
+  my:
+    command: "/Users/<you>/.local/bin/my-mcp"
+    env:
+      MY_DATABASE_URL: "${MY_DATABASE_URL}"
+      MY_REDIS_URL: "${MY_REDIS_URL}"
+      MY_USER_EMAIL: "you@example.com"
+      MY_MCP_READONLY: "true"
+    connect_timeout: 60
+    timeout: 120
+```
+
+Omitting any of those three causes the binary to exit at startup rather than fall back to defaults.
 
 ## Releases
 
@@ -206,7 +258,8 @@ Do not push a tag until snapshot and full validation pass.
 
 - MCP disabled by default.
 - HTTP token minimum length: 32 characters.
-- HTTP defaults to loopback-only remote policy.
+- HTTP defaults to a dedicated loopback-bound listener at `127.0.0.1:8081`.
+- `MY_USER_EMAIL` is required; server refuses to boot when unset.
 - Bearer comparison uses constant-time comparison.
 - Session cookie and CSRF middleware do not protect `/mcp`; bearer token does.
 - Tool audit logs include name, duration, outcome, and error text only. Arguments/results are never logged.

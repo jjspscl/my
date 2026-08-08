@@ -1,10 +1,18 @@
 # HANDOFF — Track 1: Data Integrity + Security Fixes
 
-Status: ready for `build`. No code written yet.
+Status: **implemented and validated** on branch `fix/track-1-security-integrity`.
+
+Commits:
+
+- `5d2aa3b` — wallet ownership and archive validation for goals/contributions
+- `3fe08ff` — configurable secure cookies, dead secret removal, CSRF-protected logout
+- `3318da7` — auth cache exclusion, 10-minute API cache, logout purge
+
+Validation complete: `mise run test`, `mise run lint`, `mise run typecheck`, and `mise run build` passed. Frontend lint retains 18 pre-existing Fast Refresh warnings. Manual magic-link login smoke test remains unrun.
 
 Scope: backend-heavy. No DB migration. No API contract break. One frontend change.
 
-Execute as **three commits**, in order. Validate after each. Do not squash.
+Implementation details below remain as completed-task reference only. No further build work required unless review finds defects.
 
 ---
 

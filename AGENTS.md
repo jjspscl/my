@@ -81,6 +81,9 @@ Auth is single-user magic-link auth, not JWT/refresh-token auth.
 - verify via `/api/v1/auth/verify`
 - authenticated session stored in Redis-backed opaque session cookie `my_session`
 - CSRF token stored in JS-readable cookie `my_csrf` and sent as `X-CSRF-Token`
+- logout requires an authenticated session plus matching CSRF cookie/header
+- cookie `Secure` behavior uses `MY_SECURE_COOKIES`; when unset, it follows the `MY_WEB_URL` scheme
+- `MY_COOKIE_SECRET` and `MY_CSRF_SECRET` are not runtime settings; opaque sessions and random double-submit CSRF tokens do not use signing secrets
 
 ## Offline/sync truth
 
@@ -93,7 +96,8 @@ Current state:
 - online/offline state tracked with Zustand
 - drain runs on startup, on reconnect, and every 30s
 - replay re-sends original HTTP mutations with cookies + CSRF header
-- Vite PWA uses Workbox `NetworkFirst` runtime caching for `/api/v1/*`
+- Vite PWA uses Workbox `NetworkFirst` runtime caching for non-auth `/api/v1/*` responses with 10-minute expiry
+- successful logout clears the Workbox `api-cache`
 
 Important limitation:
 

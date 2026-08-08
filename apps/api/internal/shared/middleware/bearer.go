@@ -3,20 +3,21 @@ package middleware
 import (
 	"crypto/subtle"
 	"encoding/json"
-	"net"
 	"net/http"
 	"strings"
 )
 
-func RequireBearerToken(expected string, localOnly bool) func(http.Handler) http.Handler {
+// RequireBearerToken rejects requests without a matching bearer token.
+//
+// It deliberately performs no network-origin check. Restricting which
+// interfaces may reach a handler is the listener's job: behind a reverse proxy
+// every RemoteAddr is loopback, so an address check there would report a
+// local-only guarantee it cannot enforce. Callers bind a dedicated listener
+// instead.
+func RequireBearerToken(expected string) func(http.Handler) http.Handler {
 	expectedBytes := []byte(expected)
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			if localOnly && !isLoopbackRemote(r.RemoteAddr) {
-				writeBearerError(w)
-				return
-			}
-
 			const prefix = "Bearer "
 			header := r.Header.Get("Authorization")
 			if !strings.HasPrefix(header, prefix) {
@@ -31,15 +32,6 @@ func RequireBearerToken(expected string, localOnly bool) func(http.Handler) http
 			next.ServeHTTP(w, r)
 		})
 	}
-}
-
-func isLoopbackRemote(remoteAddr string) bool {
-	host, _, err := net.SplitHostPort(remoteAddr)
-	if err != nil {
-		host = remoteAddr
-	}
-	ip := net.ParseIP(host)
-	return ip != nil && ip.IsLoopback()
 }
 
 func writeBearerError(w http.ResponseWriter) {

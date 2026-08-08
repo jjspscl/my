@@ -1,11 +1,17 @@
 package main
 
 import (
+	"context"
+	"errors"
 	"flag"
 	"fmt"
 	"log/slog"
+	"net"
 	"net/http"
 	"os"
+	"os/signal"
+	"syscall"
+	"time"
 
 	accesshttp "github.com/jjspscl/my/internal/contexts/access/interfaces/http"
 	financehttp "github.com/jjspscl/my/internal/contexts/finance/interfaces/http"
@@ -59,22 +65,6 @@ func main() {
 	// Habits
 	habitHandler := habithttp.NewHabitHandler(app.Habit)
 
-	var mcpHandler http.Handler
-	if cfg.MCPEnabled {
-		if cfg.MCPBind != "127.0.0.1" && cfg.MCPBind != "localhost" {
-			log.Warn("MCP server configured beyond localhost; bearer token protects full data mutation surface", slog.String("bind", cfg.MCPBind))
-		}
-		mcpServer := platformmcp.NewServer(app, platformmcp.Options{ReadOnly: cfg.MCPReadOnly})
-		mcpHandler = mcpsdk.NewStreamableHTTPHandler(func(*http.Request) *mcpsdk.Server {
-			return mcpServer
-		}, &mcpsdk.StreamableHTTPOptions{
-			JSONResponse: true,
-			Logger:       log,
-		})
-		mcpHandler = http.MaxBytesHandler(mcpHandler, 1<<20)
-		mcpHandler = middleware.RequireBearerToken(cfg.MCPToken, cfg.MCPBind == "127.0.0.1" || cfg.MCPBind == "localhost")(mcpHandler)
-	}
-
 	r := newRouter(routerDeps{
 		log:             log,
 		sessions:        app.Sessions,
@@ -86,13 +76,88 @@ func main() {
 		walletHandler:   walletHandler,
 		transferHandler: transferHandler,
 		habitHandler:    habitHandler,
-		mcpHandler:      mcpHandler,
 	})
 
-	addr := ":" + cfg.APIPort
-	log.Info("server starting", slog.String("addr", addr), slog.Int("pid", os.Getpid()))
-	if err := http.ListenAndServe(addr, r); err != nil {
-		log.Error("server failed", slog.Any("error", err))
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	defer stop()
+
+	apiServer := newHTTPServer(":"+cfg.APIPort, r)
+	servers := []*http.Server{apiServer}
+	log.Info("server starting", slog.String("addr", apiServer.Addr), slog.Int("pid", os.Getpid()))
+
+	if cfg.MCPEnabled {
+		mcpServer := newHTTPServer(cfg.MCPAddr(), mcpHandler(app, cfg, log))
+		servers = append(servers, mcpServer)
+		if !isLoopbackHost(cfg.MCPBind) {
+			log.Warn("MCP listener is not loopback-bound; full finance read and write surface is reachable from the network with only a static bearer token",
+				slog.String("addr", mcpServer.Addr))
+		}
+		log.Info("MCP server starting",
+			slog.String("addr", mcpServer.Addr),
+			slog.Bool("read_only", cfg.MCPReadOnly))
+	}
+
+	errs := make(chan error, len(servers))
+	for _, srv := range servers {
+		go func(srv *http.Server) {
+			if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
+				errs <- fmt.Errorf("listen %s: %w", srv.Addr, err)
+			}
+		}(srv)
+	}
+
+	var listenErr error
+	select {
+	case <-ctx.Done():
+	case listenErr = <-errs:
+		log.Error("server failed", slog.Any("error", listenErr))
+	}
+
+	shutdownCtx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	for _, srv := range servers {
+		if err := srv.Shutdown(shutdownCtx); err != nil {
+			log.Error("server shutdown failed", slog.String("addr", srv.Addr), slog.Any("error", err))
+		}
+	}
+	if listenErr != nil {
 		os.Exit(1)
 	}
+	log.Info("server stopped")
+}
+
+// newHTTPServer applies timeouts so a slow or idle client cannot hold a
+// connection open indefinitely (Slowloris).
+func newHTTPServer(addr string, handler http.Handler) *http.Server {
+	return &http.Server{
+		Addr:              addr,
+		Handler:           handler,
+		ReadHeaderTimeout: 10 * time.Second,
+		IdleTimeout:       120 * time.Second,
+	}
+}
+
+// mcpHandler builds the MCP endpoint. Requests are authenticated with a bearer
+// token and capped in size. Streamable HTTP responses may stream indefinitely,
+// so no write timeout is applied to this listener.
+func mcpHandler(app *bootstrap.App, cfg *config.Config, log *slog.Logger) http.Handler {
+	server := platformmcp.NewServer(app, platformmcp.Options{ReadOnly: cfg.MCPReadOnly})
+	var handler http.Handler = mcpsdk.NewStreamableHTTPHandler(
+		func(*http.Request) *mcpsdk.Server { return server },
+		&mcpsdk.StreamableHTTPOptions{JSONResponse: true, Logger: log},
+	)
+	handler = http.MaxBytesHandler(handler, 1<<20)
+	handler = middleware.RequireBearerToken(cfg.MCPToken)(handler)
+
+	mux := http.NewServeMux()
+	mux.Handle("/mcp", handler)
+	return mux
+}
+
+func isLoopbackHost(host string) bool {
+	if host == "localhost" {
+		return true
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
 }

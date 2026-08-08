@@ -99,3 +99,32 @@ func TestLoadRequiresUserEmail(t *testing.T) {
 		t.Fatal("Load() error = nil, want missing MY_USER_EMAIL error")
 	}
 }
+
+func TestMCPAddrDefaultsToLoopback(t *testing.T) {
+	t.Setenv("MY_USER_EMAIL", "user@example.com")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := cfg.MCPAddr(); got != "127.0.0.1:8081" {
+		t.Fatalf("MCPAddr() = %q, want %q", got, "127.0.0.1:8081")
+	}
+	if cfg.MCPAddr() == ":"+cfg.APIPort {
+		t.Fatal("MCP listener must not share the dashboard address")
+	}
+}
+
+func TestMCPAddrHonoursOverrides(t *testing.T) {
+	t.Setenv("MY_USER_EMAIL", "user@example.com")
+	t.Setenv("MY_MCP_BIND", "0.0.0.0")
+	t.Setenv("MY_MCP_PORT", "9100")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := cfg.MCPAddr(); got != "0.0.0.0:9100" {
+		t.Fatalf("MCPAddr() = %q, want %q", got, "0.0.0.0:9100")
+	}
+}

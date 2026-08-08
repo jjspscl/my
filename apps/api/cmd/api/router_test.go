@@ -12,12 +12,7 @@ import (
 	accesshttp "github.com/jjspscl/my/internal/contexts/access/interfaces/http"
 	financehttp "github.com/jjspscl/my/internal/contexts/finance/interfaces/http"
 	habithttp "github.com/jjspscl/my/internal/contexts/habits/interfaces/http"
-	"github.com/jjspscl/my/internal/platform/bootstrap"
-	"github.com/jjspscl/my/internal/platform/config"
-	platformmcp "github.com/jjspscl/my/internal/platform/mcp"
 	"github.com/jjspscl/my/internal/platform/session"
-	"github.com/jjspscl/my/internal/shared/middleware"
-	mcpsdk "github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
 type routerTestSessions struct{}
@@ -34,7 +29,7 @@ func (routerTestSessions) Get(_ context.Context, sessionID string) (string, erro
 }
 func (routerTestSessions) Delete(context.Context, string) error { return nil }
 
-func testRouter(t *testing.T, mcpHandler ...http.Handler) http.Handler {
+func testRouter(t *testing.T) http.Handler {
 	t.Helper()
 	authHandler := accesshttp.NewAuthHandler(nil, false, 0)
 	return newRouter(routerDeps{
@@ -48,15 +43,7 @@ func testRouter(t *testing.T, mcpHandler ...http.Handler) http.Handler {
 		walletHandler:   financehttp.NewWalletHandler(nil),
 		transferHandler: financehttp.NewTransferHandler(nil),
 		habitHandler:    habithttp.NewHabitHandler(nil),
-		mcpHandler:      firstHandler(mcpHandler),
 	})
-}
-
-func firstHandler(handlers []http.Handler) http.Handler {
-	if len(handlers) == 0 {
-		return nil
-	}
-	return handlers[0]
 }
 
 var _ session.Store = routerTestSessions{}
@@ -143,28 +130,16 @@ func TestRouterMeRemainsPublic(t *testing.T) {
 	}
 }
 
-func TestRouterMCPDisabled(t *testing.T) {
-	req := httptest.NewRequest(http.MethodPost, "/mcp", nil)
-	res := httptest.NewRecorder()
-	testRouter(t).ServeHTTP(res, req)
+func TestRouterDoesNotServeMCP(t *testing.T) {
+	// MCP lives on a dedicated listener. Requests to the dashboard port must 404
+	// rather than fall through to the SPA handler and return index.html.
+	for _, method := range []string{http.MethodGet, http.MethodPost} {
+		req := httptest.NewRequest(method, "/mcp", nil)
+		res := httptest.NewRecorder()
+		testRouter(t).ServeHTTP(res, req)
 
-	if res.Code != http.StatusNotFound {
-		t.Fatalf("status = %d, want %d", res.Code, http.StatusNotFound)
-	}
-}
-
-func TestRouterMCPRequiresBearerToken(t *testing.T) {
-	app := &bootstrap.App{Cfg: &config.Config{}}
-	server := platformmcp.NewServer(app, platformmcp.Options{ReadOnly: true})
-	var handler http.Handler = mcpsdk.NewStreamableHTTPHandler(func(*http.Request) *mcpsdk.Server { return server }, &mcpsdk.StreamableHTTPOptions{JSONResponse: true})
-	handler = middleware.RequireBearerToken("test-token", true)(handler)
-
-	req := httptest.NewRequest(http.MethodPost, "/mcp", nil)
-	req.RemoteAddr = "127.0.0.1:1234"
-	res := httptest.NewRecorder()
-	testRouter(t, handler).ServeHTTP(res, req)
-
-	if res.Code != http.StatusUnauthorized {
-		t.Fatalf("status = %d, want %d", res.Code, http.StatusUnauthorized)
+		if res.Code != http.StatusNotFound {
+			t.Fatalf("%s /mcp status = %d, want %d", method, res.Code, http.StatusNotFound)
+		}
 	}
 }

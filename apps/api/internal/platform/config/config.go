@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"net"
 	"os"
 	"strconv"
 	"strings"
@@ -25,7 +26,15 @@ type Config struct {
 	MCPEnabled      bool
 	MCPToken        string
 	MCPBind         string
+	MCPPort         string
 	MCPReadOnly     bool
+}
+
+// MCPAddr is the listen address for the dedicated MCP listener. It is separate
+// from the dashboard listener so MCPBind genuinely restricts which interfaces
+// can reach the MCP surface.
+func (c *Config) MCPAddr() string {
+	return net.JoinHostPort(c.MCPBind, c.MCPPort)
 }
 
 func Load() (*Config, error) {
@@ -75,6 +84,7 @@ func Load() (*Config, error) {
 		MCPEnabled:      mcpEnabled,
 		MCPToken:        mcpToken,
 		MCPBind:         defaultEnv("MY_MCP_BIND", "127.0.0.1"),
+		MCPPort:         defaultEnv("MY_MCP_PORT", "8081"),
 		MCPReadOnly:     mcpReadOnly,
 	}, nil
 }

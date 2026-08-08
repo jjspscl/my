@@ -28,7 +28,6 @@ type routerDeps struct {
 	walletHandler   *financehttp.WalletHandler
 	transferHandler *financehttp.TransferHandler
 	habitHandler    *habithttp.HabitHandler
-	mcpHandler      http.Handler
 }
 
 func newRouter(deps routerDeps) chi.Router {
@@ -73,11 +72,10 @@ func newRouter(deps routerDeps) chi.Router {
 			r.Route("/habits", deps.habitHandler.Routes)
 		})
 	})
-	if deps.mcpHandler != nil {
-		r.Handle("/mcp", deps.mcpHandler)
-	} else {
-		r.Handle("/mcp", http.NotFoundHandler())
-	}
+	// MCP is served on its own listener (see cmd/api/main.go) so MY_MCP_BIND can
+	// genuinely restrict it. Answer /mcp here explicitly so a client pointed at
+	// the dashboard port gets a 404 instead of the SPA's index.html.
+	r.Handle("/mcp", http.NotFoundHandler())
 
 	r.Handle("/*", web.Handler())
 	return r

@@ -27,7 +27,7 @@ var expectedWriteTools = []string{
 }
 
 func TestToolRegistry(t *testing.T) {
-	server := NewServer(&bootstrap.App{Cfg: &config.Config{}}, Options{})
+	server := NewServer(&bootstrap.App{Cfg: &config.Config{UserEmail: "user@example.com"}}, Options{})
 	result := listTools(t, server)
 
 	want := append(append([]string{}, expectedReadTools...), expectedWriteTools...)
@@ -51,7 +51,7 @@ func TestToolRegistry(t *testing.T) {
 }
 
 func TestReadOnlyToolRegistry(t *testing.T) {
-	server := NewServer(&bootstrap.App{Cfg: &config.Config{}}, Options{ReadOnly: true})
+	server := NewServer(&bootstrap.App{Cfg: &config.Config{UserEmail: "user@example.com"}}, Options{ReadOnly: true})
 	result := listTools(t, server)
 	want := append([]string{}, expectedReadTools...)
 	sort.Strings(want)
@@ -59,7 +59,7 @@ func TestReadOnlyToolRegistry(t *testing.T) {
 }
 
 func TestToolAnnotations(t *testing.T) {
-	server := NewServer(&bootstrap.App{Cfg: &config.Config{}}, Options{})
+	server := NewServer(&bootstrap.App{Cfg: &config.Config{UserEmail: "user@example.com"}}, Options{})
 	result := listTools(t, server)
 	for _, tool := range result.Tools {
 		if tool.Annotations == nil {
@@ -115,4 +115,13 @@ func contains(values []string, value string) bool {
 		}
 	}
 	return false
+}
+
+func TestNewServerRejectsEmptyUserEmail(t *testing.T) {
+	defer func() {
+		if recover() == nil {
+			t.Fatal("NewServer() did not panic on empty UserEmail")
+		}
+	}()
+	NewServer(&bootstrap.App{Cfg: &config.Config{}}, Options{})
 }

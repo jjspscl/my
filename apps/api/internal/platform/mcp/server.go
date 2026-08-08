@@ -20,9 +20,17 @@ type Options struct {
 }
 
 func NewServer(app *bootstrap.App, opts Options) *mcpsdk.Server {
+	// Every tool and resource uses UserEmail as the data ownership key. An empty
+	// value would read and write against a phantom tenant, so refuse to build a
+	// server that could do that. config.Load rejects this first; this guard
+	// protects callers that construct Config directly.
+	if app.Cfg.UserEmail == "" {
+		panic("mcp: NewServer requires a non-empty Cfg.UserEmail")
+	}
+
 	server := mcpsdk.NewServer(&mcpsdk.Implementation{
 		Name:    "my",
-		Version: appVersion(app),
+		Version: platformversion.Version,
 	}, &mcpsdk.ServerOptions{
 		Logger: app.Log,
 		Instructions: "Personal dashboard for finance, habits, and daily life. " +
@@ -36,10 +44,6 @@ func NewServer(app *bootstrap.App, opts Options) *mcpsdk.Server {
 	registerResources(server, app)
 	registerPrompts(server)
 	return server
-}
-
-func appVersion(app *bootstrap.App) string {
-	return platformversion.Version
 }
 
 type toolHandler[In any] func(context.Context, In) (any, error)

@@ -12,6 +12,7 @@ func TestLoadSecureCookiesExplicitValue(t *testing.T) {
 		{name: "false", value: "false", want: false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv("MY_USER_EMAIL", "user@example.com")
 			t.Setenv("MY_SECURE_COOKIES", tc.value)
 			t.Setenv("MY_WEB_URL", "http://localhost:5173")
 
@@ -27,6 +28,7 @@ func TestLoadSecureCookiesExplicitValue(t *testing.T) {
 }
 
 func TestLoadSecureCookiesRejectsInvalidValue(t *testing.T) {
+	t.Setenv("MY_USER_EMAIL", "user@example.com")
 	t.Setenv("MY_SECURE_COOKIES", "maybe")
 	if _, err := Load(); err == nil {
 		t.Fatal("Load() error = nil, want invalid boolean error")
@@ -43,6 +45,7 @@ func TestLoadSecureCookiesDerivesFromWebURL(t *testing.T) {
 		{name: "http", url: "http://localhost:5173", want: false},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
+			t.Setenv("MY_USER_EMAIL", "user@example.com")
 			t.Setenv("MY_WEB_URL", tc.url)
 			t.Setenv("MY_SECURE_COOKIES", "")
 
@@ -58,6 +61,7 @@ func TestLoadSecureCookiesDerivesFromWebURL(t *testing.T) {
 }
 
 func TestLoadMCPConfig(t *testing.T) {
+	t.Setenv("MY_USER_EMAIL", "user@example.com")
 	t.Setenv("MY_MCP_ENABLED", "true")
 	t.Setenv("MY_MCP_TOKEN", "test-token-0000000000000000000000000000")
 	t.Setenv("MY_MCP_READONLY", "true")
@@ -73,6 +77,7 @@ func TestLoadMCPConfig(t *testing.T) {
 }
 
 func TestLoadMCPRejectsShortToken(t *testing.T) {
+	t.Setenv("MY_USER_EMAIL", "user@example.com")
 	t.Setenv("MY_MCP_ENABLED", "true")
 	t.Setenv("MY_MCP_TOKEN", "too-short")
 	if _, err := Load(); err == nil {
@@ -81,8 +86,16 @@ func TestLoadMCPRejectsShortToken(t *testing.T) {
 }
 
 func TestLoadMCPRejectsInvalidBoolean(t *testing.T) {
+	t.Setenv("MY_USER_EMAIL", "user@example.com")
 	t.Setenv("MY_MCP_ENABLED", "maybe")
 	if _, err := Load(); err == nil {
 		t.Fatal("Load() error = nil, want invalid boolean error")
+	}
+}
+
+func TestLoadRequiresUserEmail(t *testing.T) {
+	t.Setenv("MY_USER_EMAIL", "")
+	if _, err := Load(); err == nil {
+		t.Fatal("Load() error = nil, want missing MY_USER_EMAIL error")
 	}
 }

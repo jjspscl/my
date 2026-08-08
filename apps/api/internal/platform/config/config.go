@@ -46,6 +46,12 @@ func Load() (*Config, error) {
 	if mcpEnabled && len(mcpToken) < 32 {
 		return nil, fmt.Errorf("MY_MCP_TOKEN must be at least 32 characters when MY_MCP_ENABLED=true")
 	}
+	// Required with no default: every request path uses this as the data
+	// ownership key. An empty value would silently create a phantom tenant.
+	userEmail := os.Getenv("MY_USER_EMAIL")
+	if userEmail == "" {
+		return nil, fmt.Errorf("MY_USER_EMAIL is required")
+	}
 	webURL := defaultEnv("MY_WEB_URL", "http://localhost:5173")
 	secureCookies, err := secureCookies(webURL)
 	if err != nil {
@@ -56,7 +62,7 @@ func Load() (*Config, error) {
 		APIPort:         defaultEnv("MY_API_PORT", "8080"),
 		DatabaseURL:     defaultEnv("MY_DATABASE_URL", "file:my_dev.db"),
 		RedisURL:        defaultEnv("MY_REDIS_URL", "redis://localhost:6379"),
-		UserEmail:       os.Getenv("MY_USER_EMAIL"),
+		UserEmail:       userEmail,
 		SMTPHost:        defaultEnv("MY_SMTP_HOST", "localhost"),
 		SMTPPort:        defaultEnv("MY_SMTP_PORT", "1025"),
 		SMTPFrom:        defaultEnv("MY_SMTP_FROM", "my@localhost"),

@@ -1,10 +1,10 @@
 # HANDOFF — v1.0.2: fix phantom tenant + Hermes docs
 
-Status: **implementation in progress, not released**. Commits 1–4 landed locally; v1.0.2 not tagged.
+Status: **implemented and released**. v1.0.2 published; tree clean and synced with origin.
 
 Goal: fix unvalidated `MY_USER_EMAIL` creating a phantom tenant via MCP, correct Hermes config docs and resource claim, release v1.0.2.
 
-Branch: work on `main`. Tree has current handoff/install-doc changes; latest published tag `v1.0.1`.
+Branch: `main`. Latest published tag `v1.0.2`.
 
 ---
 
@@ -403,3 +403,13 @@ None block v1.0.2. User chose not to fold them into this release.
 - `MY_USER_EMAIL` unset → boot fails with "required" error
 - `MY_USER_EMAIL` set → `/mcp` serves `initialize` and `tools/list`
 - No regression in HTTP API or migrations
+
+## Completed result
+
+- ✅ `MY_USER_EMAIL` empty now fails before listener bind.
+- ✅ MCP binds dedicated `MY_MCP_BIND:MY_MCP_PORT`, default `127.0.0.1:8081`.
+- ✅ SDK DNS-rebinding protection active on loopback listener.
+- ✅ Dashboard `/mcp` returns 404; MCP endpoint works only on dedicated port.
+- ✅ SIGTERM gracefully shuts down dashboard and MCP servers.
+- ✅ Hermes config documents on-demand resources/prompts and server-side read-only gate.
+- ✅ v1.0.2 published with 9 assets; live pinned installer verifies checksum and provenance.

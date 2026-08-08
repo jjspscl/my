@@ -8,6 +8,13 @@ import {
   verifyToken as verifyTokenApi,
 } from '../api/auth.api'
 
+const API_CACHE_NAME = 'api-cache'
+
+export async function clearApiCache() {
+  if (typeof caches === 'undefined') return
+  await caches.delete(API_CACHE_NAME)
+}
+
 export function useCurrentUser() {
   return useQuery({
     queryKey: authKeys.me(),
@@ -44,6 +51,7 @@ export function useLogout() {
     mutationFn: logoutApi,
     onSuccess: () => {
       queryClient.clear()
+      void clearApiCache().catch(() => undefined)
       navigate({ to: '/login' })
     },
   })

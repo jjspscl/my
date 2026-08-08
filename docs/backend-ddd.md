@@ -49,6 +49,7 @@ Protected routes use:
 
 - Redis-backed session lookup
 - CSRF protection via `X-CSRF-Token`
+- Session and CSRF cookies use configurable `Secure` behavior via `MY_SECURE_COOKIES`; when unset, it follows `MY_WEB_URL` scheme.
 
 ## Database
 

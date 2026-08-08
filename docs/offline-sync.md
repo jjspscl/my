@@ -13,7 +13,9 @@ Document current behavior, not roadmap-only behavior.
 - web manifest via `vite-plugin-pwa`
 - service worker with `registerType: 'autoUpdate'`
 - Workbox runtime caching for `/api/v1/*`
-- `NetworkFirst` API cache with 5s network timeout
+- `NetworkFirst` API cache with 5s network timeout and 10-minute expiry
+- Auth endpoints are excluded from runtime caching.
+- API cache is purged after successful logout.
 
 ### Client-side offline infra
 

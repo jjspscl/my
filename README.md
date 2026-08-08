@@ -111,6 +111,7 @@ Current auth is **single-user magic-link auth**.
 - Redis-backed opaque session cookie: `my_session`
 - JS-readable CSRF cookie: `my_csrf`
 - no JWT access tokens or refresh token rotation in the current implementation
+- cookie `Secure` behavior follows `MY_WEB_URL` by default; set `MY_SECURE_COOKIES` explicitly when needed
 
 ### Offline/sync
 

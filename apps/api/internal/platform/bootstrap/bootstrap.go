@@ -35,6 +35,7 @@ type App struct {
 	Goal     *financeapp.GoalService
 	Wallet   *financeapp.WalletService
 	Transfer *financeapp.TransferService
+	Category *financeapp.CategoryService
 	Habit    *habitapp.HabitService
 
 	closeOnce sync.Once
@@ -95,6 +96,9 @@ func NewWithOptions(cfg *config.Config, log *slog.Logger, opts Options) (*App, e
 	walletSvc := financeapp.NewWalletService(walletRepo)
 	transferSvc := financeapp.NewTransferService(transferRepo, walletRepo)
 
+	categoryRepo := financeinfra.NewCategoryRepoLibSQL(db)
+	categorySvc := financeapp.NewCategoryService(categoryRepo)
+
 	habitRepo := habitinfra.NewHabitRepoLibSQL(db)
 	habitSvc := habitapp.NewHabitService(habitRepo)
 
@@ -111,6 +115,7 @@ func NewWithOptions(cfg *config.Config, log *slog.Logger, opts Options) (*App, e
 		Goal:     goalSvc,
 		Wallet:   walletSvc,
 		Transfer: transferSvc,
+		Category: categorySvc,
 		Habit:    habitSvc,
 	}, nil
 }

@@ -15,4 +15,6 @@ export const financeKeys = {
   walletList: () => [...financeKeys.wallets(), 'list'] as const,
   transfers: () => [...financeKeys.all, 'transfers'] as const,
   transferList: () => [...financeKeys.transfers(), 'list'] as const,
+  categories: () => [...financeKeys.all, 'categories'] as const,
+  categoryList: () => [...financeKeys.categories(), 'list'] as const,
 }

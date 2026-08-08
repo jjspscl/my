@@ -65,3 +65,11 @@ type GoalRepository interface {
 	GetCurrentAmountByGoal(ctx context.Context, goalID string) (int64, error)
 	GetCurrentAmountsByGoals(ctx context.Context, goalIDs []string) (map[string]int64, error)
 }
+
+// CategoryRepository is unscoped: the app is single-user, so categories are
+// global and carry no user_email column.
+type CategoryRepository interface {
+	List(ctx context.Context) ([]*Category, error)
+	FindByName(ctx context.Context, name string) (*Category, error)
+	Update(ctx context.Context, category *Category) error
+}

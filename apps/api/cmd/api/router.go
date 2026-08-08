@@ -27,6 +27,7 @@ type routerDeps struct {
 	goalHandler     *financehttp.GoalHandler
 	walletHandler   *financehttp.WalletHandler
 	transferHandler *financehttp.TransferHandler
+	categoryHandler *financehttp.CategoryHandler
 	habitHandler    *habithttp.HabitHandler
 }
 
@@ -67,6 +68,7 @@ func newRouter(deps routerDeps) chi.Router {
 				r.Route("/goals", deps.goalHandler.Routes)
 				r.Route("/wallets", deps.walletHandler.Routes)
 				r.Route("/transfers", deps.transferHandler.Routes)
+				r.Route("/categories", deps.categoryHandler.Routes)
 			})
 
 			r.Route("/habits", deps.habitHandler.Routes)

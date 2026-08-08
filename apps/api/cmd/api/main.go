@@ -61,6 +61,7 @@ func main() {
 	goalHandler := financehttp.NewGoalHandler(app.Goal)
 	walletHandler := financehttp.NewWalletHandler(app.Wallet)
 	transferHandler := financehttp.NewTransferHandler(app.Transfer)
+	categoryHandler := financehttp.NewCategoryHandler(app.Category)
 
 	// Habits
 	habitHandler := habithttp.NewHabitHandler(app.Habit)
@@ -75,6 +76,7 @@ func main() {
 		goalHandler:     goalHandler,
 		walletHandler:   walletHandler,
 		transferHandler: transferHandler,
+		categoryHandler: categoryHandler,
 		habitHandler:    habitHandler,
 	})
 

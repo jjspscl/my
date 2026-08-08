@@ -19,6 +19,7 @@ import { BudgetPage } from '@/features/finance/components/budget-page'
 import { BillsPage } from '@/features/finance/components/bills-page'
 import { GoalsPage } from '@/features/finance/components/goals-page'
 import { WalletsPage } from '@/features/finance/components/wallets-page'
+import { CategoriesPage } from '@/features/finance/components/categories-page'
 import {
   useTransactions,
   useDeleteTransaction,
@@ -81,6 +82,7 @@ function FinancePage() {
           <TabsTrigger value="bills">Bills</TabsTrigger>
           <TabsTrigger value="goals">Goals</TabsTrigger>
           <TabsTrigger value="wallets">Wallets</TabsTrigger>
+          <TabsTrigger value="categories">Categories</TabsTrigger>
         </TabsList>
 
         <TabsContent value="transactions" className="space-y-4 pt-4">
@@ -187,6 +189,10 @@ function FinancePage() {
 
         <TabsContent value="wallets" className="pt-4">
           <WalletsPage />
+        </TabsContent>
+
+        <TabsContent value="categories" className="pt-4">
+          <CategoriesPage />
         </TabsContent>
       </Tabs>
     </div>

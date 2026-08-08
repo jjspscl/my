@@ -371,3 +371,85 @@ func TestOptionalStringPinsNilForEmpty(t *testing.T) {
 		t.Fatalf("non-empty string should round trip, got %v", got)
 	}
 }
+
+// TestCategoryRepoSeedAndUpdate pins the Phase 1 migration contract: the seed
+// contains the nine presets plus one row per distinct transaction category,
+// all unclassified and non-essential; Update reclassifies in place and the
+// round trip preserves classification, essential, and active.
+func TestCategoryRepoSeedAndUpdate(t *testing.T) {
+	db := newTestDB(t)
+	ctx := context.Background()
+	walletRepo := NewWalletRepoLibSQL(db)
+	txRepo := NewTransactionRepoLibSQL(db)
+	categoryRepo := NewCategoryRepoLibSQL(db)
+
+	// Seed rows from the migration's preset list.
+	categories, err := categoryRepo.List(ctx)
+	if err != nil {
+		t.Fatalf("list categories: %v", err)
+	}
+	byName := map[string]*domain.Category{}
+	for _, c := range categories {
+		byName[c.Name] = c
+	}
+	for _, preset := range []string{"Food", "Transport", "Groceries", "Bills", "Entertainment", "Health", "Shopping", "Education", "Other"} {
+		if _, ok := byName[preset]; !ok {
+			t.Errorf("seed missing preset %q", preset)
+		}
+	}
+	if got := len(categories); got < 9 {
+		t.Fatalf("expected at least 9 seeded categories, got %d", got)
+	}
+	if c := byName["Food"]; c.Classification != domain.ClassificationUnclassified || c.Essential {
+		t.Errorf("seed must be unclassified/non-essential, got %q/%v", c.Classification, c.Essential)
+	}
+
+	// The migration seeds one row per distinct transaction category with the
+	// same INSERT ... SELECT. Run that statement against a transaction that
+	// exists now to pin the SQL semantics (dedupe via ON CONFLICT, empty
+	// categories skipped) against the real table.
+	mustWallet(t, walletRepo, "w-php", "PHP", 0)
+	mustTransaction(t, txRepo, "tx-cat", "PHP", "Travel", 500, domain.TransactionExpense, time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC), "w-php")
+	if _, err := db.ExecContext(ctx, `
+		INSERT INTO finance_categories (name)
+		SELECT DISTINCT category FROM transactions
+		WHERE category IS NOT NULL AND category != ''
+		ON CONFLICT(name) DO NOTHING
+	`); err != nil {
+		t.Fatalf("seed distinct categories: %v", err)
+	}
+	categories, err = categoryRepo.List(ctx)
+	if err != nil {
+		t.Fatalf("list categories: %v", err)
+	}
+	byName = map[string]*domain.Category{}
+	for _, c := range categories {
+		byName[c.Name] = c
+	}
+	if _, ok := byName["Travel"]; !ok {
+		t.Fatal("expected distinct transaction category 'Travel' to be seeded")
+	}
+
+	// Update in place: reclassify Food as needs + essential.
+	food := byName["Food"]
+	food.Classification = domain.ClassificationNeeds
+	food.Essential = true
+	food.Active = false
+	if err := categoryRepo.Update(ctx, food); err != nil {
+		t.Fatalf("update category: %v", err)
+	}
+
+	got, err := categoryRepo.FindByName(ctx, "Food")
+	if err != nil {
+		t.Fatalf("find category: %v", err)
+	}
+	if got.Classification != domain.ClassificationNeeds || !got.Essential || got.Active {
+		t.Errorf("round trip failed: got %q essential=%v active=%v", got.Classification, got.Essential, got.Active)
+	}
+
+	// Updating an unknown category must fail.
+	ghost := &domain.Category{Name: "Ghost", UpdatedAt: time.Now().UTC()}
+	if err := categoryRepo.Update(ctx, ghost); err == nil {
+		t.Fatal("expected error updating unknown category")
+	}
+}

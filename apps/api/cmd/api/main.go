@@ -1,28 +1,32 @@
 package main
 
 import (
+	"flag"
+	"fmt"
 	"log/slog"
 	"net/http"
 	"os"
 
-	"github.com/jjspscl/my/internal/contexts/access/application"
-	"github.com/jjspscl/my/internal/contexts/access/infrastructure"
 	accesshttp "github.com/jjspscl/my/internal/contexts/access/interfaces/http"
-	financeapp "github.com/jjspscl/my/internal/contexts/finance/application"
-	financeinfra "github.com/jjspscl/my/internal/contexts/finance/infrastructure"
 	financehttp "github.com/jjspscl/my/internal/contexts/finance/interfaces/http"
-	habitapp "github.com/jjspscl/my/internal/contexts/habits/application"
-	habitinfra "github.com/jjspscl/my/internal/contexts/habits/infrastructure"
 	habithttp "github.com/jjspscl/my/internal/contexts/habits/interfaces/http"
+	"github.com/jjspscl/my/internal/platform/bootstrap"
 	"github.com/jjspscl/my/internal/platform/config"
-	"github.com/jjspscl/my/internal/platform/database"
 	plogger "github.com/jjspscl/my/internal/platform/logger"
-	"github.com/jjspscl/my/internal/platform/mail"
-	predis "github.com/jjspscl/my/internal/platform/redis"
-	"github.com/jjspscl/my/internal/platform/session"
+	platformmcp "github.com/jjspscl/my/internal/platform/mcp"
+	platformversion "github.com/jjspscl/my/internal/platform/version"
+	"github.com/jjspscl/my/internal/shared/middleware"
+	mcpsdk "github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
 func main() {
+	showVersion := flag.Bool("version", false, "print version and exit")
+	flag.Parse()
+	if *showVersion {
+		fmt.Println(platformversion.String())
+		return
+	}
+
 	log := plogger.New()
 
 	cfg, err := config.Load()
@@ -31,68 +35,49 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Database
-	db, err := database.Open(cfg.DatabaseURL)
+	app, err := bootstrap.New(cfg, log)
 	if err != nil {
-		log.Error("database open failed", slog.Any("error", err))
+		log.Error("application bootstrap failed", slog.Any("error", err))
 		os.Exit(1)
 	}
-	defer db.Close()
+	defer func() {
+		if err := app.Close(); err != nil {
+			log.Error("application close failed", slog.Any("error", err))
+		}
+	}()
 
-	if err := database.Migrate(db, "migrations"); err != nil {
-		log.Error("migration failed", slog.Any("error", err))
-		os.Exit(1)
-	}
-
-	// Redis
-	rdb, err := predis.NewClient(cfg.RedisURL)
-	if err != nil {
-		log.Error("redis connect failed", slog.Any("error", err))
-		os.Exit(1)
-	}
-	defer rdb.Close()
-
-	// Dependencies
-	sessions := session.NewRedisStore(rdb, cfg.SessionTTL)
-	mailer := mail.NewSMTPSender(cfg.SMTPHost, cfg.SMTPPort, cfg.SMTPFrom, cfg.SMTPUser, cfg.SMTPPass)
-	tokenRepo := infrastructure.NewTokenRepoLibSQL(db)
-	authSvc := application.NewAuthService(tokenRepo, sessions, mailer, cfg)
-	authHandler := accesshttp.NewAuthHandler(authSvc, cfg.SecureCookies, cfg.SessionTTL)
+	authHandler := accesshttp.NewAuthHandler(app.Auth, cfg.SecureCookies, cfg.SessionTTL)
 
 	// Finance
-	txRepo := financeinfra.NewTransactionRepoLibSQL(db)
-	walletRepo := financeinfra.NewWalletRepoLibSQL(db)
-	txSvc := financeapp.NewTransactionService(txRepo, walletRepo, cfg.DefaultCurrency)
-	financeHandler := financehttp.NewFinanceHandler(txSvc)
-
-	budgetRepo := financeinfra.NewBudgetRepoLibSQL(db)
-	budgetSvc := financeapp.NewBudgetService(budgetRepo)
-	budgetHandler := financehttp.NewBudgetHandler(budgetSvc)
-
-	billRepo := financeinfra.NewBillRepoLibSQL(db)
-	billSvc := financeapp.NewBillService(billRepo)
-	billHandler := financehttp.NewBillHandler(billSvc)
-	txSvc.WithBillAutoMatcher(billSvc)
-
-	goalRepo := financeinfra.NewGoalRepoLibSQL(db)
-	transferRepo := financeinfra.NewTransferRepoLibSQL(db)
-	goalSvc := financeapp.NewGoalService(goalRepo, transferRepo, walletRepo)
-	goalHandler := financehttp.NewGoalHandler(goalSvc)
-
-	walletSvc := financeapp.NewWalletService(walletRepo)
-	walletHandler := financehttp.NewWalletHandler(walletSvc)
-
-	transferSvc := financeapp.NewTransferService(transferRepo, walletRepo)
-	transferHandler := financehttp.NewTransferHandler(transferSvc)
+	financeHandler := financehttp.NewFinanceHandler(app.Tx)
+	budgetHandler := financehttp.NewBudgetHandler(app.Budget)
+	billHandler := financehttp.NewBillHandler(app.Bill)
+	goalHandler := financehttp.NewGoalHandler(app.Goal)
+	walletHandler := financehttp.NewWalletHandler(app.Wallet)
+	transferHandler := financehttp.NewTransferHandler(app.Transfer)
 
 	// Habits
-	habitRepo := habitinfra.NewHabitRepoLibSQL(db)
-	habitSvc := habitapp.NewHabitService(habitRepo)
-	habitHandler := habithttp.NewHabitHandler(habitSvc)
+	habitHandler := habithttp.NewHabitHandler(app.Habit)
+
+	var mcpHandler http.Handler
+	if cfg.MCPEnabled {
+		if cfg.MCPBind != "127.0.0.1" && cfg.MCPBind != "localhost" {
+			log.Warn("MCP server configured beyond localhost; bearer token protects full data mutation surface", slog.String("bind", cfg.MCPBind))
+		}
+		mcpServer := platformmcp.NewServer(app, platformmcp.Options{ReadOnly: cfg.MCPReadOnly})
+		mcpHandler = mcpsdk.NewStreamableHTTPHandler(func(*http.Request) *mcpsdk.Server {
+			return mcpServer
+		}, &mcpsdk.StreamableHTTPOptions{
+			JSONResponse: true,
+			Logger:       log,
+		})
+		mcpHandler = http.MaxBytesHandler(mcpHandler, 1<<20)
+		mcpHandler = middleware.RequireBearerToken(cfg.MCPToken, cfg.MCPBind == "127.0.0.1" || cfg.MCPBind == "localhost")(mcpHandler)
+	}
 
 	r := newRouter(routerDeps{
 		log:             log,
-		sessions:        sessions,
+		sessions:        app.Sessions,
 		authHandler:     authHandler,
 		financeHandler:  financeHandler,
 		budgetHandler:   budgetHandler,
@@ -101,6 +86,7 @@ func main() {
 		walletHandler:   walletHandler,
 		transferHandler: transferHandler,
 		habitHandler:    habitHandler,
+		mcpHandler:      mcpHandler,
 	})
 
 	addr := ":" + cfg.APIPort

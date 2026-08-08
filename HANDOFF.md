@@ -1,18 +1,19 @@
 # HANDOFF — Track 1: Data Integrity + Security Fixes
 
-Status: **implemented and validated** on branch `fix/track-1-security-integrity`.
+Status: **implemented, corrected, and validated** on branch `fix/track-1-security-integrity`.
 
 Commits:
 
 - `5d2aa3b` — wallet ownership and archive validation for goals/contributions
 - `3fe08ff` — configurable secure cookies, dead secret removal, CSRF-protected logout
 - `3318da7` — auth cache exclusion, 10-minute API cache, logout purge
+- pending fix — single auth mount, router regression tests, runtime boot verification
 
-Validation complete: `mise run test`, `mise run lint`, `mise run typecheck`, and `mise run build` passed. Frontend lint retains 18 pre-existing Fast Refresh warnings. Manual magic-link login smoke test remains unrun.
+Initial validation missed a Chi startup panic caused by mounting `/auth` twice. Fixed by mounting auth once with nested protected logout middleware. Router tests now cover construction, auth middleware ordering, public auth reachability, and protected routes. Frontend lint retains 18 pre-existing Fast Refresh warnings.
 
 Scope: backend-heavy. No DB migration. No API contract break. One frontend change.
 
-Implementation details below remain as completed-task reference only. No further build work required unless review finds defects.
+Implementation details below remain completed-task reference. Startup panic correction is recorded in the follow-up section at end.
 
 ---
 
@@ -307,3 +308,17 @@ Branch: create a feature branch, do not commit directly to `main`.
 - manual login smoke test result (commit 2) — state explicitly whether it was run
 - any existing test assertions that had to change, and why
 - anything that turned out different from this handoff's assumptions
+
+---
+
+## Follow-up — Chi auth mount panic
+
+The first implementation mounted `/api/v1/auth` twice: once for public routes and once inside the protected route group. Chi panicked during startup with:
+
+```
+chi: attempting to Mount() a handler on an existing path, '/auth'
+```
+
+Correction: `cmd/api/router.go` now mounts `/auth` once and nests protected logout middleware inside that mount. `cmd/api/router_test.go` constructs the complete router and checks auth/public/protected route behavior, preventing regression.
+
+Manual `mise run dev` startup was rerun by the user and confirmed working.

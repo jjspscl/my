@@ -84,6 +84,7 @@ Auth is single-user magic-link auth, not JWT/refresh-token auth.
 - logout requires an authenticated session plus matching CSRF cookie/header
 - cookie `Secure` behavior uses `MY_SECURE_COOKIES`; when unset, it follows the `MY_WEB_URL` scheme
 - `MY_COOKIE_SECRET` and `MY_CSRF_SECRET` are not runtime settings; opaque sessions and random double-submit CSRF tokens do not use signing secrets
+- auth routes mount once under `/api/v1/auth`; logout uses nested auth + CSRF middleware
 
 ## Offline/sync truth
 

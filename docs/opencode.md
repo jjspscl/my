@@ -69,10 +69,14 @@ Repo-local skills currently available:
 - `tanstack-router-query`
 - `go-ddd-api`
 - `offline-pwa-sync`
+- `git-commit-and-push`
 - `test-quality`
 - `security-review`
 
 Load them on demand. Do not assume every task needs every skill.
+
+Before any commit, push, or PR task, load `git-commit-and-push` and follow it
+for message format, commit splitting, validation, and push workflow.
 
 ## MCP inventory
 
@@ -83,6 +87,7 @@ Load them on demand. Do not assume every task needs every skill.
 - `filesystem` — repo-scoped file access
 - `playwright` — browser automation for PWA/offline/browser flows
 - `gh_grep` — GitHub code search examples
+- `engram` — local persistent memory MCP, project-scoped to `my`
 
 Reason: MCP servers add context cost. Browser automation and broad code search should still be used only when the task needs them.
 
@@ -92,6 +97,7 @@ Reason: MCP servers add context cost. Browser automation and broad code search s
 - use `brave-search` for recent docs, blog posts, or ecosystem/tooling research
 - use `playwright` only for browser-state or PWA verification tasks
 - use `gh_grep` when example code from public repos is more useful than prose docs
+- use `mem_context` after compaction or context reset; save significant decisions and discoveries with `mem_save`
 
 If Playwright MCP needs an extension token, provide it locally through `PLAYWRIGHT_MCP_EXTENSION_TOKEN`. Never commit the real value.
 

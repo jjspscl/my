@@ -111,6 +111,7 @@ Default workflow:
 - `plan` scopes work, prepares/reviews `HANDOFF.md`, and verifies output
 - `build` executes implementation work
 - `HANDOFF.md` is temporary coordination state for the current task only
+- before any commit, push, or PR task, load repo-local `git-commit-and-push` skill
 
 ## MCP/tooling rules
 
@@ -121,6 +122,7 @@ Current enabled MCPs in OpenCode config:
 - `filesystem` — repo-scoped file access
 - `playwright` — browser automation for PWA/offline/browser flows
 - `gh_grep` — GitHub code example search
+- `engram` — local persistent memory MCP, project-scoped to `my`
 
 Guidance:
 
@@ -128,6 +130,7 @@ Guidance:
 - use `brave-search` for general web/current-state research
 - use `playwright` only when browser-state or PWA verification is required
 - use `gh_grep` when public code examples are more useful than prose docs
+- use `mem_context` after compaction or context reset; save significant decisions and discoveries with `mem_save`
 - keep tokens and PATs out of committed files
 
 ## Documentation rules

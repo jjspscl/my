@@ -10,7 +10,7 @@ A personal dashboard for finance, habits, and daily life.
 - **Frontend**: React 19, Vite 8, TypeScript 6, TanStack Router, TanStack Query, Zod, React Hook Form, shadcn/ui-style components, Tailwind CSS v4
 - **Architecture**: DDD-inspired modular monolith, feature-based frontend, single-binary production deploy
 - **Offline**: PWA manifest + Workbox runtime caching, IndexedDB mutation queue, reconnect/interval replay engine
-- **AI workflow**: OpenCode with root `AGENTS.md`, repo-local skills, and optional MCP servers
+- **AI workflow**: OpenCode with root `AGENTS.md`, repo-local skills, optional MCP clients, and released `my-mcp` server
 
 ## Quick start
 
@@ -37,12 +37,15 @@ mise run dev
 | `mise run dev:mail` | Start Mailpit (SMTP :1025, UI :8025) |
 | `mise run dev:mail:ui` | Open Mailpit UI in browser |
 | `mise run build` | Build Vite assets, copy them into Go embed dir, build production binary |
+| `mise run build:mcp` | Build standalone MCP stdio server |
 | `mise run test` | Run all tests |
 | `mise run lint` | Run Go vet and frontend ESLint |
 | `mise run typecheck` | Run frontend type checking |
 | `mise run migrate` | Run database migrations |
 | `mise run seed` | Seed local dev data |
 | `mise run clean` | Clean build outputs |
+| `mise run release:check` | Snapshot GoReleaser build without publishing |
+| `MISE_RELEASE_VERSION=v1.0.0 mise run release:tag` | Validate and create annotated release tag; push manually |
 
 ## Runtime
 
@@ -142,6 +145,26 @@ Current workflow:
 - `HANDOFF.md` is temporary task state, not durable project documentation
 - repo-local skills live in `.opencode/skills/`
 
+### MCP server for coding agents
+
+Install latest standalone MCP server on macOS or Linux:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/jjspscl/my/v1.0.0/scripts/install-mcp.sh | sh
+```
+
+Installer verifies release checksum and GitHub attestation when `gh` is available. It prints client configuration; it never edits agent config files.
+
+`my-mcp` uses stdio and needs direct access to same database and Redis as dashboard. Configure it in Codex, Claude Code, opencode, Hermes, or OpenClaw using `~/.local/bin/my-mcp`. For remote HTTP access, run dashboard with `MY_MCP_ENABLED=true` and a 32+ character `MY_MCP_TOKEN`; endpoint is `http://127.0.0.1:8080/mcp` by default.
+
+Full tool/resource/prompt inventory, client configuration, security model, release, and update instructions: [`docs/mcp.md`](docs/mcp.md).
+
+Agents can check installed binary version without self-updating:
+
+```bash
+my-mcp --check-update
+```
+
 ### MCP/tooling
 
 Enabled OpenCode MCPs:
@@ -151,6 +174,7 @@ Enabled OpenCode MCPs:
 - `filesystem`
 - `playwright`
 - `gh_grep`
+- `engram`
 
 Use heavier MCPs only when the task actually needs browser automation or public code example lookup.
 
@@ -158,6 +182,7 @@ Use heavier MCPs only when the task actually needs browser automation or public 
 
 - `AGENTS.md` — project rules and current-state truth for agents
 - `docs/opencode.md` — OpenCode config, agents, MCP notes
+- `docs/mcp.md` — provided MCP server, install, clients, and releases
 - `docs/architecture.md` — runtime and directory architecture
 - `docs/backend-ddd.md` — backend patterns and current auth/data reality
 - `docs/frontend.md` — frontend conventions

@@ -90,6 +90,9 @@ for message format, commit splitting, validation, and push workflow.
 - `gh_grep` — GitHub code search examples
 - `engram` — local persistent memory MCP, pinned to `my` with lean `agent` tool profile
 
+These are MCPs consumed by project development. Separately, `my` provides a
+released `my-mcp` server for external agents; see [`docs/mcp.md`](mcp.md).
+
 Reason: MCP servers add context cost. Browser automation and broad code search should still be used only when the task needs them.
 
 ## MCP guidance

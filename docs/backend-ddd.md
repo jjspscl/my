@@ -23,6 +23,10 @@ Implemented application slices today:
 - `finance`
 - `habits`
 
+MCP is an inbound adapter in `internal/platform/mcp`, not a fourth bounded
+context. Its handlers call application services directly and inject the
+configured single-user email server-side.
+
 Other context folders are scaffolds/placeholders, not full production slices yet.
 
 ## Layering rules
@@ -72,6 +76,7 @@ Implemented areas:
 - `/api/v1/auth/*`
 - `/api/v1/finance/*`
 - `/api/v1/habits/*`
+- optional `/mcp` streamable HTTP endpoint, protected by bearer token
 
 ## Logging and middleware
 

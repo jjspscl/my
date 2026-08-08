@@ -82,9 +82,13 @@ Not every scaffolded context currently has every layer populated.
 ### Platform and shared code
 
 ```text
-apps/api/internal/platform/    config, database, logger, redis, session, web
+apps/api/internal/platform/    bootstrap, config, database, logger, mcp, redis, session, update, version, web
 apps/api/internal/shared/      middleware, response helpers
 ```
+
+`internal/platform/mcp` is an inbound transport adapter across active contexts,
+not a bounded context. It exposes application services through stdio and
+optional streamable HTTP without making HTTP self-calls.
 
 ## Frontend layout
 

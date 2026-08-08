@@ -114,8 +114,8 @@ func registerReadTools(server *mcpsdk.Server, app *bootstrap.App) {
 	registerTool(server, app.Log, &mcpsdk.Tool{Name: "finance_list_transactions", Description: "List transactions in a UTC date range.", Annotations: readOnly}, func(ctx context.Context, in listTransactionsInput) (any, error) {
 		return app.Tx.List(ctx, app.Cfg.UserEmail, financeapp.TransactionFilter{From: in.From, To: in.To, Limit: in.Limit, Offset: in.Offset})
 	})
-	registerTool(server, app.Log, &mcpsdk.Tool{Name: "finance_today_total", Description: "Return today's income, expense, and net total.", Annotations: readOnly}, func(ctx context.Context, _ todayTotalInput) (any, error) {
-		return app.Tx.GetTodayTotal(ctx, app.Cfg.UserEmail)
+	registerTool(server, app.Log, &mcpsdk.Tool{Name: "finance_today_total", Description: "Return today's income, expense, and net total in the default currency.", Annotations: readOnly}, func(ctx context.Context, _ todayTotalInput) (any, error) {
+		return app.Tx.GetTodayTotal(ctx, app.Cfg.UserEmail, app.Cfg.DefaultCurrency)
 	})
 	registerTool(server, app.Log, &mcpsdk.Tool{Name: "finance_budget_summary", Description: "Return allocated, spent, and remaining budget by category for a month.", Annotations: readOnly}, func(ctx context.Context, in budgetSummaryInput) (any, error) {
 		return app.Budget.GetSummary(ctx, app.Cfg.UserEmail, in.Month)
@@ -156,6 +156,7 @@ type createTransactionInput struct {
 	Type            financedomain.TransactionType `json:"type"`
 	WalletID        string                        `json:"wallet_id,omitempty"`
 	TransactionDate time.Time                     `json:"transaction_date"`
+	IdempotencyKey  string                        `json:"idempotency_key,omitempty"`
 }
 
 type idInput struct {
@@ -171,6 +172,7 @@ type createBillInput struct {
 	Name         string                  `json:"name"`
 	Category     string                  `json:"category"`
 	AmountCents  int64                   `json:"amount_cents"`
+	Currency     string                  `json:"currency,omitempty"`
 	Frequency    financedomain.Frequency `json:"frequency"`
 	DayOfMonth   int                     `json:"day_of_month"`
 	StartDate    time.Time               `json:"start_date"`
@@ -184,6 +186,7 @@ type updateBillInput struct {
 	Name         string                  `json:"name"`
 	Category     string                  `json:"category"`
 	AmountCents  int64                   `json:"amount_cents"`
+	Currency     string                  `json:"currency,omitempty"`
 	Frequency    financedomain.Frequency `json:"frequency"`
 	DayOfMonth   int                     `json:"day_of_month"`
 	StartDate    time.Time               `json:"start_date"`
@@ -214,11 +217,13 @@ type updateGoalInput struct {
 }
 
 type goalContributionInput struct {
-	GoalID         string    `json:"goal_id"`
-	AmountCents    int64     `json:"amount_cents"`
-	ContributedAt  time.Time `json:"contributed_at"`
-	Note           *string   `json:"note,omitempty"`
-	SourceWalletID *string   `json:"source_wallet_id,omitempty"`
+	GoalID          string    `json:"goal_id"`
+	AmountCents     int64     `json:"amount_cents"`
+	ContributedAt   time.Time `json:"contributed_at"`
+	Note            *string   `json:"note,omitempty"`
+	SourceWalletID  *string   `json:"source_wallet_id,omitempty"`
+	FromAmountCents *int64    `json:"from_amount_cents,omitempty"`
+	IdempotencyKey  string    `json:"idempotency_key,omitempty"`
 }
 
 type createWalletInput struct {
@@ -235,11 +240,14 @@ type updateWalletInput struct {
 }
 
 type createTransferInput struct {
-	FromWalletID string    `json:"from_wallet_id"`
-	ToWalletID   string    `json:"to_wallet_id"`
-	AmountCents  int64     `json:"amount_cents"`
-	Description  string    `json:"description,omitempty"`
-	TransferDate time.Time `json:"transfer_date"`
+	FromWalletID    string    `json:"from_wallet_id"`
+	ToWalletID      string    `json:"to_wallet_id"`
+	AmountCents     int64     `json:"amount_cents"`
+	FromAmountCents *int64    `json:"from_amount_cents,omitempty"`
+	ToAmountCents   *int64    `json:"to_amount_cents,omitempty"`
+	Description     string    `json:"description,omitempty"`
+	TransferDate    time.Time `json:"transfer_date"`
+	IdempotencyKey  string    `json:"idempotency_key,omitempty"`
 }
 
 type createHabitInput struct {
@@ -260,8 +268,8 @@ func registerWriteTools(server *mcpsdk.Server, app *bootstrap.App) {
 	}
 	writable := &mcpsdk.ToolAnnotations{DestructiveHint: boolPointer(false)}
 
-	registerTool(server, app.Log, &mcpsdk.Tool{Name: "finance_create_transaction", Description: "Create an income or expense transaction. Amount is positive minor currency units.", Annotations: writable}, func(ctx context.Context, in createTransactionInput) (any, error) {
-		return app.Tx.Create(ctx, app.Cfg.UserEmail, financeapp.CreateTransactionInput{AmountCents: in.AmountCents, Category: in.Category, Description: in.Description, Type: in.Type, WalletID: in.WalletID, TransactionDate: in.TransactionDate})
+	registerTool(server, app.Log, &mcpsdk.Tool{Name: "finance_create_transaction", Description: "Create an income or expense transaction. Amount is positive minor currency units. Idempotency key makes retries safe.", Annotations: writable}, func(ctx context.Context, in createTransactionInput) (any, error) {
+		return app.Tx.Create(ctx, app.Cfg.UserEmail, financeapp.CreateTransactionInput{AmountCents: in.AmountCents, Category: in.Category, Description: in.Description, Type: in.Type, WalletID: in.WalletID, TransactionDate: in.TransactionDate, IdempotencyKey: in.IdempotencyKey})
 	})
 	registerTool(server, app.Log, &mcpsdk.Tool{Name: "finance_delete_transaction", Description: "Permanently delete a transaction. This action is irreversible.", Annotations: destructive()}, func(ctx context.Context, in idInput) (any, error) {
 		return nil, app.Tx.Delete(ctx, in.ID, app.Cfg.UserEmail)
@@ -269,16 +277,16 @@ func registerWriteTools(server *mcpsdk.Server, app *bootstrap.App) {
 	registerTool(server, app.Log, &mcpsdk.Tool{Name: "finance_upsert_budget", Description: "Create or replace a month's budget categories.", Annotations: writable}, func(ctx context.Context, in upsertBudgetInput) (any, error) {
 		return app.Budget.UpsertBudget(ctx, app.Cfg.UserEmail, financeapp.UpsertBudgetInput{Month: in.Month, Categories: in.Categories})
 	})
-	registerTool(server, app.Log, &mcpsdk.Tool{Name: "finance_create_bill", Description: "Create a recurring bill.", Annotations: writable}, func(ctx context.Context, in createBillInput) (any, error) {
-		return app.Bill.Create(ctx, app.Cfg.UserEmail, financeapp.CreateBillInput{Name: in.Name, Category: in.Category, AmountCents: in.AmountCents, Frequency: in.Frequency, DayOfMonth: in.DayOfMonth, StartDate: in.StartDate, EndDate: in.EndDate, AutoMatch: in.AutoMatch, MatchPattern: in.MatchPattern})
+	registerTool(server, app.Log, &mcpsdk.Tool{Name: "finance_create_bill", Description: "Create a recurring bill. Currency defaults to the dashboard default when omitted.", Annotations: writable}, func(ctx context.Context, in createBillInput) (any, error) {
+		return app.Bill.Create(ctx, app.Cfg.UserEmail, financeapp.CreateBillInput{Name: in.Name, Category: in.Category, AmountCents: in.AmountCents, Currency: in.Currency, Frequency: in.Frequency, DayOfMonth: in.DayOfMonth, StartDate: in.StartDate, EndDate: in.EndDate, AutoMatch: in.AutoMatch, MatchPattern: in.MatchPattern})
 	})
-	registerTool(server, app.Log, &mcpsdk.Tool{Name: "finance_update_bill", Description: "Update an existing recurring bill.", Annotations: writable}, func(ctx context.Context, in updateBillInput) (any, error) {
-		return app.Bill.Update(ctx, app.Cfg.UserEmail, financeapp.UpdateBillInput{ID: in.ID, Name: in.Name, Category: in.Category, AmountCents: in.AmountCents, Frequency: in.Frequency, DayOfMonth: in.DayOfMonth, StartDate: in.StartDate, EndDate: in.EndDate, AutoMatch: in.AutoMatch, MatchPattern: in.MatchPattern})
+	registerTool(server, app.Log, &mcpsdk.Tool{Name: "finance_update_bill", Description: "Update an existing recurring bill. Empty currency keeps the current value.", Annotations: writable}, func(ctx context.Context, in updateBillInput) (any, error) {
+		return app.Bill.Update(ctx, app.Cfg.UserEmail, financeapp.UpdateBillInput{ID: in.ID, Name: in.Name, Category: in.Category, AmountCents: in.AmountCents, Currency: in.Currency, Frequency: in.Frequency, DayOfMonth: in.DayOfMonth, StartDate: in.StartDate, EndDate: in.EndDate, AutoMatch: in.AutoMatch, MatchPattern: in.MatchPattern})
 	})
 	registerTool(server, app.Log, &mcpsdk.Tool{Name: "finance_delete_bill", Description: "Permanently delete a recurring bill. This action is irreversible.", Annotations: destructive()}, func(ctx context.Context, in idInput) (any, error) {
 		return nil, app.Bill.Delete(ctx, in.ID, app.Cfg.UserEmail)
 	})
-	registerTool(server, app.Log, &mcpsdk.Tool{Name: "finance_pay_bill", Description: "Mark a bill occurrence paid. This writes a payment record and is irreversible through MCP.", Annotations: destructive()}, func(ctx context.Context, in payBillInput) (any, error) {
+	registerTool(server, app.Log, &mcpsdk.Tool{Name: "finance_pay_bill", Description: "Mark a bill occurrence paid. Writes a payment record; rerunning for the same due date is safe.", Annotations: writable}, func(ctx context.Context, in payBillInput) (any, error) {
 		return app.Bill.MarkPaid(ctx, in.BillID, app.Cfg.UserEmail, in.DueDate, in.TransactionID)
 	})
 	registerTool(server, app.Log, &mcpsdk.Tool{Name: "finance_create_goal", Description: "Create a savings goal.", Annotations: writable}, func(ctx context.Context, in createGoalInput) (any, error) {
@@ -290,8 +298,8 @@ func registerWriteTools(server *mcpsdk.Server, app *bootstrap.App) {
 	registerTool(server, app.Log, &mcpsdk.Tool{Name: "finance_delete_goal", Description: "Permanently delete a savings goal. This action is irreversible.", Annotations: destructive()}, func(ctx context.Context, in idInput) (any, error) {
 		return nil, app.Goal.Delete(ctx, in.ID, app.Cfg.UserEmail)
 	})
-	registerTool(server, app.Log, &mcpsdk.Tool{Name: "finance_add_goal_contribution", Description: "Add money to a savings goal, optionally creating a wallet transfer.", Annotations: writable}, func(ctx context.Context, in goalContributionInput) (any, error) {
-		return app.Goal.AddContribution(ctx, app.Cfg.UserEmail, financeapp.AddContributionInput{GoalID: in.GoalID, AmountCents: in.AmountCents, ContributedAt: in.ContributedAt, Note: in.Note, SourceWalletID: in.SourceWalletID})
+	registerTool(server, app.Log, &mcpsdk.Tool{Name: "finance_add_goal_contribution", Description: "Add money to a savings goal, optionally creating a wallet transfer. Idempotency key makes retries safe.", Annotations: writable}, func(ctx context.Context, in goalContributionInput) (any, error) {
+		return app.Goal.AddContribution(ctx, app.Cfg.UserEmail, financeapp.AddContributionInput{GoalID: in.GoalID, AmountCents: in.AmountCents, ContributedAt: in.ContributedAt, Note: in.Note, SourceWalletID: in.SourceWalletID, FromAmountCents: in.FromAmountCents, IdempotencyKey: in.IdempotencyKey})
 	})
 	registerTool(server, app.Log, &mcpsdk.Tool{Name: "finance_create_wallet", Description: "Create a wallet. Amount is opening balance in minor currency units.", Annotations: writable}, func(ctx context.Context, in createWalletInput) (any, error) {
 		return app.Wallet.Create(ctx, app.Cfg.UserEmail, app.Cfg.DefaultCurrency, financeapp.CreateWalletInput{Name: in.Name, Kind: in.Kind, OpeningBalanceCents: in.OpeningBalanceCents})
@@ -302,8 +310,16 @@ func registerWriteTools(server *mcpsdk.Server, app *bootstrap.App) {
 	registerTool(server, app.Log, &mcpsdk.Tool{Name: "finance_archive_wallet", Description: "Archive a wallet. This action is destructive and cannot be undone through MCP.", Annotations: destructive()}, func(ctx context.Context, in idInput) (any, error) {
 		return nil, app.Wallet.Archive(ctx, in.ID, app.Cfg.UserEmail)
 	})
-	registerTool(server, app.Log, &mcpsdk.Tool{Name: "finance_create_transfer", Description: "Transfer money between two wallets.", Annotations: writable}, func(ctx context.Context, in createTransferInput) (any, error) {
-		return app.Transfer.Create(ctx, app.Cfg.UserEmail, financeapp.CreateTransferInput{FromWalletID: in.FromWalletID, ToWalletID: in.ToWalletID, AmountCents: in.AmountCents, Description: in.Description, TransferDate: in.TransferDate})
+	registerTool(server, app.Log, &mcpsdk.Tool{Name: "finance_create_transfer", Description: "Transfer money between two wallets. For same-currency wallets amount_cents is used for both legs; cross-currency transfers must supply from_amount_cents and to_amount_cents.", Annotations: writable}, func(ctx context.Context, in createTransferInput) (any, error) {
+		fromAmount := in.AmountCents
+		if in.FromAmountCents != nil {
+			fromAmount = *in.FromAmountCents
+		}
+		toAmount := in.AmountCents
+		if in.ToAmountCents != nil {
+			toAmount = *in.ToAmountCents
+		}
+		return app.Transfer.Create(ctx, app.Cfg.UserEmail, financeapp.CreateTransferInput{FromWalletID: in.FromWalletID, ToWalletID: in.ToWalletID, FromAmountCents: fromAmount, ToAmountCents: toAmount, Description: in.Description, TransferDate: in.TransferDate, IdempotencyKey: in.IdempotencyKey})
 	})
 	registerTool(server, app.Log, &mcpsdk.Tool{Name: "habits_create", Description: "Create a habit.", Annotations: writable}, func(ctx context.Context, in createHabitInput) (any, error) {
 		return app.Habit.Create(ctx, app.Cfg.UserEmail, habitapp.CreateHabitInput{Name: in.Name, Color: in.Color, Frequency: in.Frequency, TargetPerWeek: in.TargetPerWeek})
@@ -330,7 +346,7 @@ func registerResources(server *mcpsdk.Server, app *bootstrap.App) {
 			return resourceJSON("my://wallets", value, err)
 		}},
 		{"budget-current", "my://budget/current", "Current month's budget summary.", func(ctx context.Context, _ *mcpsdk.ReadResourceRequest) (*mcpsdk.ReadResourceResult, error) {
-			value, err := app.Budget.GetSummary(ctx, app.Cfg.UserEmail, time.Now().UTC().Format("2006-01"))
+			value, err := app.Budget.GetSummary(ctx, app.Cfg.UserEmail, time.Now().In(app.Cfg.Location).Format("2006-01"))
 			return resourceJSON("my://budget/current", value, err)
 		}},
 		{"bills-upcoming", "my://bills/upcoming", "Upcoming bills for the next fourteen days.", func(ctx context.Context, _ *mcpsdk.ReadResourceRequest) (*mcpsdk.ReadResourceResult, error) {
@@ -347,7 +363,7 @@ func registerResources(server *mcpsdk.Server, app *bootstrap.App) {
 	}
 
 	server.AddResource(&mcpsdk.Resource{Name: "dashboard-snapshot", URI: "my://dashboard/snapshot", Description: "Composite daily dashboard snapshot.", MIMEType: "application/json"}, func(ctx context.Context, _ *mcpsdk.ReadResourceRequest) (*mcpsdk.ReadResourceResult, error) {
-		total, err := app.Tx.GetTodayTotal(ctx, app.Cfg.UserEmail)
+		total, err := app.Tx.GetTodayTotal(ctx, app.Cfg.UserEmail, app.Cfg.DefaultCurrency)
 		if err != nil {
 			return nil, err
 		}

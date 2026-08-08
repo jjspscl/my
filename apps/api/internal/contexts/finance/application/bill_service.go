@@ -3,25 +3,45 @@ package application
 import (
 	"context"
 	"fmt"
+	"sort"
 	"time"
 
 	"github.com/google/uuid"
 
 	"github.com/jjspscl/my/internal/contexts/finance/domain"
+	"github.com/jjspscl/my/internal/platform/timeutil"
 )
 
 type BillService struct {
 	billRepo domain.BillRepository
+	currency string
+	clock    *timeutil.Clock
 }
 
 func NewBillService(billRepo domain.BillRepository) *BillService {
-	return &BillService{billRepo: billRepo}
+	return &BillService{billRepo: billRepo, currency: "PHP", clock: timeutil.New(time.UTC)}
+}
+
+// WithCurrency sets the default currency for new bills. Bills are expectations
+// without a wallet, so they default to the reporting base currency.
+func (s *BillService) WithCurrency(c string) *BillService {
+	if c != "" {
+		s.currency = c
+	}
+	return s
+}
+
+// WithClock pins the calendar used for due-date computation.
+func (s *BillService) WithClock(c *timeutil.Clock) *BillService {
+	s.clock = c
+	return s
 }
 
 type CreateBillInput struct {
 	Name         string
 	Category     string
 	AmountCents  int64
+	Currency     string
 	Frequency    domain.Frequency
 	DayOfMonth   int
 	StartDate    time.Time
@@ -35,6 +55,7 @@ type UpdateBillInput struct {
 	Name         string
 	Category     string
 	AmountCents  int64
+	Currency     string
 	Frequency    domain.Frequency
 	DayOfMonth   int
 	StartDate    time.Time
@@ -44,12 +65,18 @@ type UpdateBillInput struct {
 }
 
 func (s *BillService) Create(ctx context.Context, userEmail string, input CreateBillInput) (*domain.RecurringBill, error) {
+	currency := input.Currency
+	if currency == "" {
+		currency = s.currency
+	}
+
 	bill, err := domain.NewRecurringBill(
 		uuid.New().String(),
 		userEmail,
 		input.Name,
 		input.Category,
 		input.AmountCents,
+		currency,
 		input.Frequency,
 		input.DayOfMonth,
 		input.StartDate,
@@ -77,12 +104,18 @@ func (s *BillService) Update(ctx context.Context, userEmail string, input Update
 		return nil, fmt.Errorf("bill not found")
 	}
 
+	currency := input.Currency
+	if currency == "" {
+		currency = existing.Currency
+	}
+
 	bill, err := domain.NewRecurringBill(
 		input.ID,
 		userEmail,
 		input.Name,
 		input.Category,
 		input.AmountCents,
+		currency,
 		input.Frequency,
 		input.DayOfMonth,
 		input.StartDate,
@@ -119,77 +152,89 @@ type UpcomingBillResult struct {
 }
 
 // GetUpcoming returns upcoming bills with computed due dates and status.
-// It generates occurrences for each bill starting from start_date up to now + daysAhead,
-// and checks bill_payments for paid status.
+// Occurrences are generated per bill, then all payment records for the window
+// are fetched in one batched query (no per-occurrence FindPayment N+1).
 func (s *BillService) GetUpcoming(ctx context.Context, userEmail string, daysAhead int) ([]UpcomingBillResult, error) {
 	bills, err := s.billRepo.ListBills(ctx, userEmail)
 	if err != nil {
 		return nil, fmt.Errorf("list bills: %w", err)
 	}
 
-	now := time.Now().UTC().Truncate(24 * time.Hour)
+	now := s.clock.TodayStart()
 	cutoff := now.AddDate(0, 0, daysAhead)
+	windowStart := now.AddDate(0, 0, -60)
 
-	var results []UpcomingBillResult
+	// Collect every due date we will need to look up, per bill.
+	type occurrence struct {
+		bill    *domain.RecurringBill
+		dueDate time.Time
+	}
+	var occurrences []occurrence
+	billIDs := make([]string, 0, len(bills))
+	seen := make(map[string]bool, len(bills))
 	for _, bill := range bills {
-		// Generate occurrences from start date to cutoff
-		occurrences := generateOccurrences(bill, now.AddDate(0, 0, -60), cutoff)
-
-		for _, dueDate := range occurrences {
-			dueStr := dueDate.Format("2006-01-02")
-
-			// Check if bill has an end date
+		if !seen[bill.ID] {
+			seen[bill.ID] = true
+			billIDs = append(billIDs, bill.ID)
+		}
+		for _, dueDate := range generateOccurrences(bill, windowStart, cutoff) {
 			if bill.EndDate != nil && dueDate.After(*bill.EndDate) {
 				continue
 			}
+			occurrences = append(occurrences, occurrence{bill: bill, dueDate: dueDate})
+		}
+	}
 
-			// Look for payment record
-			payment, err := s.billRepo.FindPayment(ctx, bill.ID, dueStr)
-			if err != nil && err.Error() != "payment not found" {
-				return nil, fmt.Errorf("find payment: %w", err)
-			}
+	// One batched query for all payments in the window.
+	payments, err := s.billRepo.ListPaymentsByBills(ctx, billIDs, windowStart, cutoff)
+	if err != nil {
+		return nil, fmt.Errorf("list payments: %w", err)
+	}
+	paymentByKey := make(map[string]*domain.BillPayment, len(payments))
+	for _, p := range payments {
+		paymentByKey[p.BillID+"|"+p.DueDate.Format("2006-01-02")] = p
+	}
 
-			status := domain.OccurrencePending
-			var paidAmount *int64
-			var paidDate *time.Time
+	results := make([]UpcomingBillResult, 0, len(occurrences))
+	for _, occ := range occurrences {
+		dueStr := occ.dueDate.Format("2006-01-02")
+		payment := paymentByKey[occ.bill.ID+"|"+dueStr]
 
-			if payment != nil {
-				switch payment.Status {
-				case domain.OccurrencePaid:
-					status = domain.OccurrencePaid
-					paidAmount = &payment.AmountCents
-					paidDate = payment.PaidDate
-				case domain.OccurrenceOverdue:
-					status = domain.OccurrenceOverdue
-				case domain.OccurrenceSkipped:
-					status = domain.OccurrenceSkipped
-				default:
-					if dueDate.Before(now) {
-						status = domain.OccurrenceOverdue
-					}
-				}
-			} else if dueDate.Before(now) {
+		status := domain.OccurrencePending
+		var paidAmount *int64
+		var paidDate *time.Time
+
+		if payment != nil {
+			switch payment.Status {
+			case domain.OccurrencePaid:
+				status = domain.OccurrencePaid
+				paidAmount = &payment.AmountCents
+				paidDate = payment.PaidDate
+			case domain.OccurrenceOverdue:
 				status = domain.OccurrenceOverdue
+			case domain.OccurrenceSkipped:
+				status = domain.OccurrenceSkipped
+			default:
+				if occ.dueDate.Before(now) {
+					status = domain.OccurrenceOverdue
+				}
 			}
-
-			results = append(results, UpcomingBillResult{
-				Bill:            *bill,
-				DueDate:         dueDate,
-				Status:          status,
-				PaidAmountCents: paidAmount,
-				PaidDate:        paidDate,
-			})
+		} else if occ.dueDate.Before(now) {
+			status = domain.OccurrenceOverdue
 		}
+
+		results = append(results, UpcomingBillResult{
+			Bill:            *occ.bill,
+			DueDate:         occ.dueDate,
+			Status:          status,
+			PaidAmountCents: paidAmount,
+			PaidDate:        paidDate,
+		})
 	}
 
-	// Sort by due date ascending
-	for i := 0; i < len(results); i++ {
-		for j := i + 1; j < len(results); j++ {
-			if results[j].DueDate.Before(results[i].DueDate) {
-				results[i], results[j] = results[j], results[i]
-			}
-		}
-	}
+	sort.Slice(results, func(i, j int) bool {
+		return results[i].DueDate.Before(results[j].DueDate)
+	})
 
 	return results, nil
 }
@@ -210,7 +255,7 @@ func (s *BillService) MarkPaid(ctx context.Context, billID, userEmail string, du
 		return nil, fmt.Errorf("find payment: %w", err)
 	}
 
-	now := time.Now().UTC()
+	now := s.clock.Now()
 
 	payment := existing
 	if payment == nil {

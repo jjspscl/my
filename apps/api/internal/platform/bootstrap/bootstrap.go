@@ -17,6 +17,7 @@ import (
 	"github.com/jjspscl/my/internal/platform/mail"
 	predis "github.com/jjspscl/my/internal/platform/redis"
 	"github.com/jjspscl/my/internal/platform/session"
+	"github.com/jjspscl/my/internal/platform/timeutil"
 	redis "github.com/redis/go-redis/v9"
 )
 
@@ -77,18 +78,20 @@ func NewWithOptions(cfg *config.Config, log *slog.Logger, opts Options) (*App, e
 
 	txRepo := financeinfra.NewTransactionRepoLibSQL(db)
 	walletRepo := financeinfra.NewWalletRepoLibSQL(db)
-	txSvc := financeapp.NewTransactionService(txRepo, walletRepo, cfg.DefaultCurrency)
+	coordinator := financeinfra.NewCoordinator(db)
+	clock := timeutil.New(cfg.Location)
+	txSvc := financeapp.NewTransactionService(txRepo, walletRepo, clock)
 
 	budgetRepo := financeinfra.NewBudgetRepoLibSQL(db)
-	budgetSvc := financeapp.NewBudgetService(budgetRepo)
+	budgetSvc := financeapp.NewBudgetService(budgetRepo).WithCurrency(cfg.DefaultCurrency).WithClock(clock)
 
 	billRepo := financeinfra.NewBillRepoLibSQL(db)
-	billSvc := financeapp.NewBillService(billRepo)
+	billSvc := financeapp.NewBillService(billRepo).WithCurrency(cfg.DefaultCurrency).WithClock(clock)
 	txSvc.WithBillAutoMatcher(billSvc)
 
 	goalRepo := financeinfra.NewGoalRepoLibSQL(db)
 	transferRepo := financeinfra.NewTransferRepoLibSQL(db)
-	goalSvc := financeapp.NewGoalService(goalRepo, transferRepo, walletRepo)
+	goalSvc := financeapp.NewGoalService(goalRepo, transferRepo, walletRepo).WithClock(clock).WithCoordinator(coordinator)
 	walletSvc := financeapp.NewWalletService(walletRepo)
 	transferSvc := financeapp.NewTransferService(transferRepo, walletRepo)
 

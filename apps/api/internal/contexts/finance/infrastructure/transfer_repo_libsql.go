@@ -18,11 +18,11 @@ func NewTransferRepoLibSQL(db *sql.DB) *TransferRepoLibSQL {
 }
 
 func (r *TransferRepoLibSQL) Save(ctx context.Context, t *domain.WalletTransfer) error {
-	_, err := r.db.ExecContext(ctx, `
-		INSERT INTO wallet_transfers (id, user_email, from_wallet_id, to_wallet_id, amount_cents, description, transfer_date, created_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-	`, t.ID, t.UserEmail, t.FromWalletID, t.ToWalletID, t.AmountCents, t.Description,
-		t.TransferDate.Format("2006-01-02"), t.CreatedAt.Format(time.RFC3339))
+	_, err := executor(ctx, r.db).ExecContext(ctx, `
+		INSERT INTO wallet_transfers (id, user_email, from_wallet_id, to_wallet_id, amount_cents, from_amount_cents, to_amount_cents, description, transfer_date, idempotency_key, created_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`, t.ID, t.UserEmail, t.FromWalletID, t.ToWalletID, t.FromAmountCents, t.FromAmountCents, t.ToAmountCents, t.Description,
+		t.TransferDate.Format("2006-01-02"), optionalString(t.IdempotencyKey), t.CreatedAt.Format(time.RFC3339))
 	if err != nil {
 		return fmt.Errorf("save transfer: %w", err)
 	}
@@ -30,11 +30,23 @@ func (r *TransferRepoLibSQL) Save(ctx context.Context, t *domain.WalletTransfer)
 }
 
 func (r *TransferRepoLibSQL) FindByID(ctx context.Context, id string) (*domain.WalletTransfer, error) {
-	row := r.db.QueryRowContext(ctx, `
-		SELECT id, user_email, from_wallet_id, to_wallet_id, amount_cents, description, transfer_date, created_at
+	row := executor(ctx, r.db).QueryRowContext(ctx, `
+		SELECT id, user_email, from_wallet_id, to_wallet_id, amount_cents, from_amount_cents, to_amount_cents, description, transfer_date, idempotency_key, created_at
 		FROM wallet_transfers WHERE id = ?
 	`, id)
 	return scanTransfer(row)
+}
+
+func (r *TransferRepoLibSQL) FindByIdempotencyKey(ctx context.Context, userEmail, key string) (*domain.WalletTransfer, error) {
+	row := executor(ctx, r.db).QueryRowContext(ctx, `
+		SELECT id, user_email, from_wallet_id, to_wallet_id, amount_cents, from_amount_cents, to_amount_cents, description, transfer_date, idempotency_key, created_at
+		FROM wallet_transfers WHERE user_email = ? AND idempotency_key = ?
+	`, userEmail, key)
+	t, err := scanTransfer(row)
+	if err != nil && err.Error() == "transfer not found" {
+		return nil, nil
+	}
+	return t, err
 }
 
 func (r *TransferRepoLibSQL) ListByUser(ctx context.Context, userEmail string, limit, offset int) ([]*domain.WalletTransfer, error) {
@@ -42,8 +54,8 @@ func (r *TransferRepoLibSQL) ListByUser(ctx context.Context, userEmail string, l
 		limit = 50
 	}
 
-	rows, err := r.db.QueryContext(ctx, `
-		SELECT id, user_email, from_wallet_id, to_wallet_id, amount_cents, description, transfer_date, created_at
+	rows, err := executor(ctx, r.db).QueryContext(ctx, `
+		SELECT id, user_email, from_wallet_id, to_wallet_id, amount_cents, from_amount_cents, to_amount_cents, description, transfer_date, idempotency_key, created_at
 		FROM wallet_transfers WHERE user_email = ?
 		ORDER BY transfer_date DESC, created_at DESC
 		LIMIT ? OFFSET ?
@@ -67,8 +79,10 @@ func (r *TransferRepoLibSQL) ListByUser(ctx context.Context, userEmail string, l
 func scanTransfer(row scannable) (*domain.WalletTransfer, error) {
 	var t domain.WalletTransfer
 	var transferDate, createdAt string
+	var amountCents, fromAmountCents, toAmountCents sql.NullInt64
+	var idempotencyKey *string
 
-	err := row.Scan(&t.ID, &t.UserEmail, &t.FromWalletID, &t.ToWalletID, &t.AmountCents, &t.Description, &transferDate, &createdAt)
+	err := row.Scan(&t.ID, &t.UserEmail, &t.FromWalletID, &t.ToWalletID, &amountCents, &fromAmountCents, &toAmountCents, &t.Description, &transferDate, &idempotencyKey, &createdAt)
 	if err == sql.ErrNoRows {
 		return nil, fmt.Errorf("transfer not found")
 	}
@@ -76,8 +90,20 @@ func scanTransfer(row scannable) (*domain.WalletTransfer, error) {
 		return nil, fmt.Errorf("scan transfer: %w", err)
 	}
 
+	t.FromAmountCents = fromAmountCents.Int64
+	if !fromAmountCents.Valid {
+		t.FromAmountCents = amountCents.Int64
+	}
+	t.ToAmountCents = toAmountCents.Int64
+	if !toAmountCents.Valid {
+		t.ToAmountCents = amountCents.Int64
+	}
+
 	t.TransferDate, _ = time.Parse("2006-01-02", transferDate)
 	t.CreatedAt, _ = time.Parse(time.RFC3339, createdAt)
+	if idempotencyKey != nil {
+		t.IdempotencyKey = *idempotencyKey
+	}
 
 	return &t, nil
 }

@@ -3,18 +3,38 @@ package application
 import (
 	"context"
 	"fmt"
+	"time"
 
 	"github.com/google/uuid"
 
 	"github.com/jjspscl/my/internal/contexts/finance/domain"
+	"github.com/jjspscl/my/internal/platform/timeutil"
 )
 
 type BudgetService struct {
 	budgetRepo domain.BudgetRepository
+	currency   string
+	clock      *timeutil.Clock
 }
 
 func NewBudgetService(budgetRepo domain.BudgetRepository) *BudgetService {
-	return &BudgetService{budgetRepo: budgetRepo}
+	return &BudgetService{budgetRepo: budgetRepo, currency: "PHP", clock: timeutil.New(time.UTC)}
+}
+
+// WithCurrency sets the reporting base currency. Budgets track spending in a
+// single currency; transactions in other currencies are excluded from the
+// spent totals rather than silently summed.
+func (s *BudgetService) WithCurrency(c string) *BudgetService {
+	if c != "" {
+		s.currency = c
+	}
+	return s
+}
+
+// WithClock pins the calendar used for month boundaries.
+func (s *BudgetService) WithClock(c *timeutil.Clock) *BudgetService {
+	s.clock = c
+	return s
 }
 
 type UpsertBudgetInput struct {
@@ -35,7 +55,7 @@ func (s *BudgetService) UpsertBudget(ctx context.Context, userEmail string, inpu
 	}
 
 	if budget == nil {
-		budget, err = domain.NewBudget(uuid.New().String(), userEmail, input.Month)
+		budget, err = domain.NewBudget(uuid.New().String(), userEmail, input.Month, s.currency)
 		if err != nil {
 			return nil, err
 		}
@@ -79,7 +99,13 @@ func (s *BudgetService) GetSummary(ctx context.Context, userEmail, month string)
 		return nil, fmt.Errorf("get categories: %w", err)
 	}
 
-	spentMap, err := s.budgetRepo.GetSpentByCategory(ctx, userEmail, month)
+	// Half-open month range so the (user_email, transaction_date) index applies.
+	from, to, err := s.clock.MonthRange(month)
+	if err != nil {
+		return nil, fmt.Errorf("month range: %w", err)
+	}
+
+	spentMap, err := s.budgetRepo.GetSpentByCategory(ctx, userEmail, budget.Currency, from, to)
 	if err != nil {
 		return nil, fmt.Errorf("get spent: %w", err)
 	}

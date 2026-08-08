@@ -8,6 +8,7 @@ import { ArrowRightLeft } from 'lucide-react'
 import { useCreateTransfer } from '../hooks/use-transfers'
 import { useWallets } from '../hooks/use-wallets'
 import type { Wallet } from '../schemas/wallet.schemas'
+import { todayLocalStr } from '@/shared/lib/utils'
 
 interface TransferDialogProps {
   trigger?: React.ReactNode
@@ -19,7 +20,7 @@ export function TransferDialog({ trigger }: TransferDialogProps) {
   const [toWalletId, setToWalletId] = useState('')
   const [amount, setAmount] = useState('')
   const [description, setDescription] = useState('')
-  const [transferDate, setTransferDate] = useState(new Date().toISOString().split('T')[0] ?? '')
+  const [transferDate, setTransferDate] = useState(todayLocalStr())
 
   const { data: wallets } = useWallets()
   const createTransfer = useCreateTransfer()

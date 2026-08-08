@@ -68,7 +68,7 @@ func TestToolAnnotations(t *testing.T) {
 		if contains(expectedReadTools, tool.Name) && !tool.Annotations.ReadOnlyHint {
 			t.Errorf("read tool %q lacks read-only hint", tool.Name)
 		}
-		if contains([]string{"finance_delete_transaction", "finance_delete_bill", "finance_pay_bill", "finance_delete_goal", "finance_archive_wallet", "habits_archive"}, tool.Name) && (tool.Annotations.DestructiveHint == nil || !*tool.Annotations.DestructiveHint) {
+		if contains([]string{"finance_delete_transaction", "finance_delete_bill", "finance_delete_goal", "finance_archive_wallet", "habits_archive"}, tool.Name) && (tool.Annotations.DestructiveHint == nil || !*tool.Annotations.DestructiveHint) {
 			t.Errorf("destructive tool %q lacks destructive hint", tool.Name)
 		}
 	}

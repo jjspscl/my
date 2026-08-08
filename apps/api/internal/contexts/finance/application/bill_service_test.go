@@ -88,6 +88,23 @@ func (m *mockBillRepo) ListPaymentsByBill(_ context.Context, billID string) ([]*
 	return result, nil
 }
 
+func (m *mockBillRepo) ListPaymentsByBills(_ context.Context, billIDs []string, from, to time.Time) ([]*domain.BillPayment, error) {
+	var result []*domain.BillPayment
+	for _, p := range m.payments {
+		inIDs := false
+		for _, id := range billIDs {
+			if p.BillID == id {
+				inIDs = true
+				break
+			}
+		}
+		if inIDs && !p.DueDate.Before(from) && p.DueDate.Before(to) {
+			result = append(result, p)
+		}
+	}
+	return result, nil
+}
+
 func (m *mockBillRepo) ListUpcomingBills(_ context.Context, _ string, _ int) ([]*domain.BillWithPayment, error) {
 	return nil, nil
 }

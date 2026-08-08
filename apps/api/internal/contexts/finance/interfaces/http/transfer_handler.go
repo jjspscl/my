@@ -29,34 +29,41 @@ func (h *TransferHandler) Routes(r chi.Router) {
 // --- Request types ---
 
 type createTransferRequest struct {
-	FromWalletID string `json:"fromWalletId"`
-	ToWalletID   string `json:"toWalletId"`
-	AmountCents  int64  `json:"amountCents"`
-	Description  string `json:"description"`
-	TransferDate string `json:"transferDate"`
+	FromWalletID    string `json:"fromWalletId"`
+	ToWalletID      string `json:"toWalletId"`
+	AmountCents     int64  `json:"amountCents"`
+	FromAmountCents *int64 `json:"fromAmountCents,omitempty"`
+	ToAmountCents   *int64 `json:"toAmountCents,omitempty"`
+	Description     string `json:"description"`
+	TransferDate    string `json:"transferDate"`
+	IdempotencyKey  string `json:"idempotencyKey,omitempty"`
 }
 
 // --- Response types ---
 
 type transferResponse struct {
-	ID           string `json:"id"`
-	FromWalletID string `json:"fromWalletId"`
-	ToWalletID   string `json:"toWalletId"`
-	AmountCents  int64  `json:"amountCents"`
-	Description  string `json:"description"`
-	TransferDate string `json:"transferDate"`
-	CreatedAt    string `json:"createdAt"`
+	ID              string `json:"id"`
+	FromWalletID    string `json:"fromWalletId"`
+	ToWalletID      string `json:"toWalletId"`
+	AmountCents     int64  `json:"amountCents"`
+	FromAmountCents int64  `json:"fromAmountCents"`
+	ToAmountCents   int64  `json:"toAmountCents"`
+	Description     string `json:"description"`
+	TransferDate    string `json:"transferDate"`
+	CreatedAt       string `json:"createdAt"`
 }
 
 func toTransferResponse(t *domain.WalletTransfer) transferResponse {
 	return transferResponse{
-		ID:           t.ID,
-		FromWalletID: t.FromWalletID,
-		ToWalletID:   t.ToWalletID,
-		AmountCents:  t.AmountCents,
-		Description:  t.Description,
-		TransferDate: t.TransferDate.Format("2006-01-02"),
-		CreatedAt:    t.CreatedAt.Format(time.RFC3339),
+		ID:              t.ID,
+		FromWalletID:    t.FromWalletID,
+		ToWalletID:      t.ToWalletID,
+		AmountCents:     t.FromAmountCents,
+		FromAmountCents: t.FromAmountCents,
+		ToAmountCents:   t.ToAmountCents,
+		Description:     t.Description,
+		TransferDate:    t.TransferDate.Format("2006-01-02"),
+		CreatedAt:       t.CreatedAt.Format(time.RFC3339),
 	}
 }
 
@@ -77,12 +84,25 @@ func (h *TransferHandler) Create(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Dual-leg amounts: when omitted, both legs default to amountCents
+	// (same-currency transfer). Cross-currency transfers must supply both.
+	fromAmount := req.AmountCents
+	if req.FromAmountCents != nil {
+		fromAmount = *req.FromAmountCents
+	}
+	toAmount := req.AmountCents
+	if req.ToAmountCents != nil {
+		toAmount = *req.ToAmountCents
+	}
+
 	transfer, err := h.svc.Create(r.Context(), email, application.CreateTransferInput{
-		FromWalletID: req.FromWalletID,
-		ToWalletID:   req.ToWalletID,
-		AmountCents:  req.AmountCents,
-		Description:  req.Description,
-		TransferDate: transferDate,
+		FromWalletID:    req.FromWalletID,
+		ToWalletID:      req.ToWalletID,
+		FromAmountCents: fromAmount,
+		ToAmountCents:   toAmount,
+		Description:     req.Description,
+		TransferDate:    transferDate,
+		IdempotencyKey:  req.IdempotencyKey,
 	})
 	if err != nil {
 		response.WriteError(w, r, http.StatusBadRequest, err.Error(), err)

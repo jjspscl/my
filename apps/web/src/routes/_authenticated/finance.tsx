@@ -23,6 +23,7 @@ import {
   useTransactions,
   useDeleteTransaction,
 } from '@/features/finance/hooks/use-transactions'
+import { toLocalDateStr, todayLocalStr } from '@/shared/lib/utils'
 
 function formatPHP(cents: number): string {
   return new Intl.NumberFormat('en-PH', {
@@ -38,10 +39,10 @@ export const Route = createFileRoute('/_authenticated/finance')({
 })
 
 function FinancePage() {
-  const today = new Date().toISOString().split('T')[0]
+  const today = todayLocalStr()
   const thirtyDaysAgo = new Date()
   thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30)
-  const defaultFrom = thirtyDaysAgo.toISOString().split('T')[0]
+  const defaultFrom = toLocalDateStr(thirtyDaysAgo)
 
   const [from, setFrom] = useState(defaultFrom)
   const [to, setTo] = useState(today)

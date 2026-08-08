@@ -44,20 +44,20 @@ type updateWalletRequest struct {
 // --- Response types ---
 
 type walletResponse struct {
-	ID                  string  `json:"id"`
-	Name                string  `json:"name"`
-	Kind                string  `json:"kind"`
-	Currency            string  `json:"currency"`
-	OpeningBalanceCents int64   `json:"openingBalanceCents"`
-	BalanceCents        int64   `json:"balanceCents"`
-	IncomeCents         int64   `json:"incomeCents"`
-	ExpenseCents        int64   `json:"expenseCents"`
-	IncomingTransferCents int64 `json:"incomingTransferCents"`
-	OutgoingTransferCents int64 `json:"outgoingTransferCents"`
-	IsDefault           bool    `json:"isDefault"`
-	ArchivedAt          *string `json:"archivedAt,omitempty"`
-	CreatedAt           string  `json:"createdAt"`
-	UpdatedAt           string  `json:"updatedAt"`
+	ID                    string  `json:"id"`
+	Name                  string  `json:"name"`
+	Kind                  string  `json:"kind"`
+	Currency              string  `json:"currency"`
+	OpeningBalanceCents   int64   `json:"openingBalanceCents"`
+	BalanceCents          int64   `json:"balanceCents"`
+	IncomeCents           int64   `json:"incomeCents"`
+	ExpenseCents          int64   `json:"expenseCents"`
+	IncomingTransferCents int64   `json:"incomingTransferCents"`
+	OutgoingTransferCents int64   `json:"outgoingTransferCents"`
+	IsDefault             bool    `json:"isDefault"`
+	ArchivedAt            *string `json:"archivedAt,omitempty"`
+	CreatedAt             string  `json:"createdAt"`
+	UpdatedAt             string  `json:"updatedAt"`
 }
 
 func toWalletResponse(w *domain.Wallet) walletResponse {

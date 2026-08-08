@@ -1,5 +1,6 @@
 import { Receipt, Loader2 } from 'lucide-react'
 import { useTransactions } from '@/features/finance/hooks/use-transactions'
+import { toLocalDateStr } from '@/shared/lib/utils'
 
 function formatPHP(cents: number): string {
   return new Intl.NumberFormat('en-PH', {
@@ -13,8 +14,8 @@ export function RecentTransactionsWidget() {
   const thirtyDaysAgo = new Date(today)
   thirtyDaysAgo.setDate(thirtyDaysAgo.getDate() - 30)
 
-  const from = thirtyDaysAgo.toISOString().split('T')[0]
-  const to = today.toISOString().split('T')[0]
+  const from = toLocalDateStr(thirtyDaysAgo)
+  const to = toLocalDateStr(today)
 
   const { data, isLoading, isError } = useTransactions(from, to)
 

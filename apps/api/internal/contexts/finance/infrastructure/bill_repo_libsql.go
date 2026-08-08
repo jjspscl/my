@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/jjspscl/my/internal/contexts/finance/domain"
@@ -29,10 +30,10 @@ func (r *BillRepoLibSQL) SaveBill(ctx context.Context, bill *domain.RecurringBil
 		autoMatch = 1
 	}
 
-	_, err := r.db.ExecContext(ctx, `
-		INSERT INTO recurring_bills (id, user_email, name, category, amount_cents, frequency, day_of_month, start_date, end_date, auto_match, match_pattern, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-	`, bill.ID, bill.UserEmail, bill.Name, bill.Category, bill.AmountCents, string(bill.Frequency), bill.DayOfMonth, bill.StartDate.Format("2006-01-02"), endDate, autoMatch, matchPattern, bill.CreatedAt.Format(time.RFC3339), bill.UpdatedAt.Format(time.RFC3339))
+	_, err := executor(ctx, r.db).ExecContext(ctx, `
+		INSERT INTO recurring_bills (id, user_email, name, category, amount_cents, currency, frequency, day_of_month, start_date, end_date, auto_match, match_pattern, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`, bill.ID, bill.UserEmail, bill.Name, bill.Category, bill.AmountCents, bill.Currency, string(bill.Frequency), bill.DayOfMonth, bill.StartDate.Format("2006-01-02"), endDate, autoMatch, matchPattern, bill.CreatedAt.Format(time.RFC3339), bill.UpdatedAt.Format(time.RFC3339))
 	if err != nil {
 		return fmt.Errorf("save bill: %w", err)
 	}
@@ -51,10 +52,10 @@ func (r *BillRepoLibSQL) UpdateBill(ctx context.Context, bill *domain.RecurringB
 		autoMatch = 1
 	}
 
-	_, err := r.db.ExecContext(ctx, `
-		UPDATE recurring_bills SET name = ?, category = ?, amount_cents = ?, frequency = ?, day_of_month = ?, start_date = ?, end_date = ?, auto_match = ?, match_pattern = ?, updated_at = ?
+	_, err := executor(ctx, r.db).ExecContext(ctx, `
+		UPDATE recurring_bills SET name = ?, category = ?, amount_cents = ?, currency = ?, frequency = ?, day_of_month = ?, start_date = ?, end_date = ?, auto_match = ?, match_pattern = ?, updated_at = ?
 		WHERE id = ? AND user_email = ?
-	`, bill.Name, bill.Category, bill.AmountCents, string(bill.Frequency), bill.DayOfMonth, bill.StartDate.Format("2006-01-02"), endDate, autoMatch, matchPattern, bill.UpdatedAt.Format(time.RFC3339), bill.ID, bill.UserEmail)
+	`, bill.Name, bill.Category, bill.AmountCents, bill.Currency, string(bill.Frequency), bill.DayOfMonth, bill.StartDate.Format("2006-01-02"), endDate, autoMatch, matchPattern, bill.UpdatedAt.Format(time.RFC3339), bill.ID, bill.UserEmail)
 	if err != nil {
 		return fmt.Errorf("update bill: %w", err)
 	}
@@ -62,7 +63,7 @@ func (r *BillRepoLibSQL) UpdateBill(ctx context.Context, bill *domain.RecurringB
 }
 
 func (r *BillRepoLibSQL) DeleteBill(ctx context.Context, id, userEmail string) error {
-	result, err := r.db.ExecContext(ctx, "DELETE FROM recurring_bills WHERE id = ? AND user_email = ?", id, userEmail)
+	result, err := executor(ctx, r.db).ExecContext(ctx, "DELETE FROM recurring_bills WHERE id = ? AND user_email = ?", id, userEmail)
 	if err != nil {
 		return fmt.Errorf("delete bill: %w", err)
 	}
@@ -74,16 +75,16 @@ func (r *BillRepoLibSQL) DeleteBill(ctx context.Context, id, userEmail string) e
 }
 
 func (r *BillRepoLibSQL) FindBillByID(ctx context.Context, id string) (*domain.RecurringBill, error) {
-	row := r.db.QueryRowContext(ctx, `
-		SELECT id, user_email, name, category, amount_cents, frequency, day_of_month, start_date, end_date, auto_match, match_pattern, created_at, updated_at
+	row := executor(ctx, r.db).QueryRowContext(ctx, `
+		SELECT id, user_email, name, category, amount_cents, currency, frequency, day_of_month, start_date, end_date, auto_match, match_pattern, created_at, updated_at
 		FROM recurring_bills WHERE id = ?
 	`, id)
 	return scanBill(row)
 }
 
 func (r *BillRepoLibSQL) ListBills(ctx context.Context, userEmail string) ([]*domain.RecurringBill, error) {
-	rows, err := r.db.QueryContext(ctx, `
-		SELECT id, user_email, name, category, amount_cents, frequency, day_of_month, start_date, end_date, auto_match, match_pattern, created_at, updated_at
+	rows, err := executor(ctx, r.db).QueryContext(ctx, `
+		SELECT id, user_email, name, category, amount_cents, currency, frequency, day_of_month, start_date, end_date, auto_match, match_pattern, created_at, updated_at
 		FROM recurring_bills WHERE user_email = ? ORDER BY name ASC
 	`, userEmail)
 	if err != nil {
@@ -103,7 +104,7 @@ func (r *BillRepoLibSQL) ListBills(ctx context.Context, userEmail string) ([]*do
 }
 
 func (r *BillRepoLibSQL) SavePayment(ctx context.Context, payment *domain.BillPayment) error {
-	_, err := r.db.ExecContext(ctx, `
+	_, err := executor(ctx, r.db).ExecContext(ctx, `
 		INSERT INTO bill_payments (id, bill_id, transaction_id, due_date, paid_date, amount_cents, status, created_at)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
 		ON CONFLICT(bill_id, due_date) DO UPDATE SET status = ?, paid_date = ?, transaction_id = ?
@@ -115,7 +116,7 @@ func (r *BillRepoLibSQL) SavePayment(ctx context.Context, payment *domain.BillPa
 }
 
 func (r *BillRepoLibSQL) FindPayment(ctx context.Context, billID, dueDate string) (*domain.BillPayment, error) {
-	row := r.db.QueryRowContext(ctx, `
+	row := executor(ctx, r.db).QueryRowContext(ctx, `
 		SELECT id, bill_id, transaction_id, due_date, paid_date, amount_cents, status, created_at
 		FROM bill_payments WHERE bill_id = ? AND due_date = ?
 	`, billID, dueDate)
@@ -123,7 +124,7 @@ func (r *BillRepoLibSQL) FindPayment(ctx context.Context, billID, dueDate string
 }
 
 func (r *BillRepoLibSQL) ListPaymentsByBill(ctx context.Context, billID string) ([]*domain.BillPayment, error) {
-	rows, err := r.db.QueryContext(ctx, `
+	rows, err := executor(ctx, r.db).QueryContext(ctx, `
 		SELECT id, bill_id, transaction_id, due_date, paid_date, amount_cents, status, created_at
 		FROM bill_payments WHERE bill_id = ? ORDER BY due_date DESC
 	`, billID)
@@ -143,13 +144,52 @@ func (r *BillRepoLibSQL) ListPaymentsByBill(ctx context.Context, billID string) 
 	return payments, rows.Err()
 }
 
+// ListPaymentsByBills returns all payments for the given bills whose due date
+// falls in the half-open [from, to) range, in one query. This replaces the
+// per-occurrence FindPayment calls that made GetUpcoming an N+1.
+func (r *BillRepoLibSQL) ListPaymentsByBills(ctx context.Context, billIDs []string, from, to time.Time) ([]*domain.BillPayment, error) {
+	if len(billIDs) == 0 {
+		return nil, nil
+	}
+
+	placeholders := strings.TrimSuffix(strings.Repeat("?,", len(billIDs)), ",")
+	args := make([]any, 0, len(billIDs)+2)
+	for _, id := range billIDs {
+		args = append(args, id)
+	}
+	args = append(args, from.Format("2006-01-02"), to.Format("2006-01-02"))
+
+	rows, err := executor(ctx, r.db).QueryContext(ctx, `
+		SELECT id, bill_id, transaction_id, due_date, paid_date, amount_cents, status, created_at
+		FROM bill_payments
+		WHERE bill_id IN (`+placeholders+`)
+		  AND due_date >= ?
+		  AND due_date < ?
+		ORDER BY due_date ASC
+	`, args...)
+	if err != nil {
+		return nil, fmt.Errorf("list payments by bills: %w", err)
+	}
+	defer rows.Close()
+
+	var payments []*domain.BillPayment
+	for rows.Next() {
+		p, err := scanPayment(rows)
+		if err != nil {
+			return nil, err
+		}
+		payments = append(payments, p)
+	}
+	return payments, rows.Err()
+}
+
 // ListUpcomingBills returns bills with their most recent payment info (if any).
 // It joins recurring_bills with bill_payments to find upcoming/overdue occurrences.
 // limit controls how many bills to return.
 func (r *BillRepoLibSQL) ListUpcomingBills(ctx context.Context, userEmail string, limit int) ([]*domain.BillWithPayment, error) {
-	rows, err := r.db.QueryContext(ctx, `
+	rows, err := executor(ctx, r.db).QueryContext(ctx, `
 		SELECT
-			b.id, b.user_email, b.name, b.category, b.amount_cents, b.frequency, b.day_of_month,
+			b.id, b.user_email, b.name, b.category, b.amount_cents, b.currency, b.frequency, b.day_of_month,
 			b.start_date, b.end_date, b.auto_match, b.match_pattern, b.created_at, b.updated_at,
 			p.id, p.bill_id, p.transaction_id, p.due_date, p.paid_date, p.amount_cents, p.status, p.created_at
 		FROM recurring_bills b
@@ -183,7 +223,7 @@ func (r *BillRepoLibSQL) ListUpcomingBills(ctx context.Context, userEmail string
 		matchPattern := (*string)(nil)
 
 		err := rows.Scan(
-			&b.ID, &b.UserEmail, &b.Name, &b.Category, &b.AmountCents, (*string)(&b.Frequency),
+			&b.ID, &b.UserEmail, &b.Name, &b.Category, &b.AmountCents, &b.Currency, (*string)(&b.Frequency),
 			&b.DayOfMonth, &startDate, &endDate, &autoMatch, &matchPattern,
 			&createdAt, &updatedAt,
 			&payID, &payBillID, &payTransactionID, &payDueDate, &payPaidDate,
@@ -248,7 +288,7 @@ func (r *BillRepoLibSQL) FindTransactionByMatch(ctx context.Context, userEmail, 
 
 	args = append(args, userEmail, category, minAmount, maxAmount, date)
 
-	row := r.db.QueryRowContext(ctx, fmt.Sprintf(`
+	row := executor(ctx, r.db).QueryRowContext(ctx, fmt.Sprintf(`
 		SELECT id, user_email, amount_cents, currency, category, description, type, transaction_date, created_at
 		FROM transactions
 		WHERE user_email = ?
@@ -275,7 +315,7 @@ func scanBill(row scannable) (*domain.RecurringBill, error) {
 	matchPattern := (*string)(nil)
 
 	err := row.Scan(
-		&b.ID, &b.UserEmail, &b.Name, &b.Category, &b.AmountCents, (*string)(&b.Frequency),
+		&b.ID, &b.UserEmail, &b.Name, &b.Category, &b.AmountCents, &b.Currency, (*string)(&b.Frequency),
 		&b.DayOfMonth, &startDate, &endDate, &autoMatch, &matchPattern,
 		&createdAt, &updatedAt,
 	)

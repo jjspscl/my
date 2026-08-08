@@ -13,6 +13,7 @@ const (
 
 	MaxCategoryLen    = 100
 	MaxDescriptionLen = 500
+	MaxIdempotencyLen = 100
 )
 
 type Transaction struct {
@@ -27,6 +28,7 @@ type Transaction struct {
 	WalletName      string
 	TransactionDate time.Time
 	CreatedAt       time.Time
+	IdempotencyKey  string
 }
 
 type DailyTotal struct {
@@ -35,6 +37,16 @@ type DailyTotal struct {
 	ExpenseCents int64
 	IncomeCents  int64
 	Currency     string
+}
+
+// CurrencyTotal is a per-currency aggregation. Analytics must never sum across
+// currencies without an explicit conversion rate, so aggregates return one
+// CurrencyTotal per currency present in the range.
+type CurrencyTotal struct {
+	Currency     string
+	TotalCents   int64
+	ExpenseCents int64
+	IncomeCents  int64
 }
 
 // NewTransaction creates a validated transaction. Returns error if invariants fail.

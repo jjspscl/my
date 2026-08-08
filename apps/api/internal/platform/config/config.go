@@ -23,6 +23,8 @@ type Config struct {
 	WebURL          string
 	SecureCookies   bool
 	DefaultCurrency string
+	Timezone        string
+	Location        *time.Location
 	MCPEnabled      bool
 	MCPToken        string
 	MCPBind         string
@@ -67,6 +69,15 @@ func Load() (*Config, error) {
 		return nil, err
 	}
 
+	// The user's financial calendar. All "today", month boundary, and date-range
+	// aggregation must use this location so dates do not shift against the
+	// server's UTC clock. Defaults to the user's home timezone.
+	timezone := defaultEnv("MY_TIMEZONE", "Asia/Manila")
+	location, err := time.LoadLocation(timezone)
+	if err != nil {
+		return nil, fmt.Errorf("MY_TIMEZONE: %w", err)
+	}
+
 	return &Config{
 		APIPort:         defaultEnv("MY_API_PORT", "8080"),
 		DatabaseURL:     defaultEnv("MY_DATABASE_URL", "file:my_dev.db"),
@@ -81,6 +92,8 @@ func Load() (*Config, error) {
 		WebURL:          webURL,
 		SecureCookies:   secureCookies,
 		DefaultCurrency: defaultEnv("MY_DEFAULT_CURRENCY", "PHP"),
+		Timezone:        timezone,
+		Location:        location,
 		MCPEnabled:      mcpEnabled,
 		MCPToken:        mcpToken,
 		MCPBind:         defaultEnv("MY_MCP_BIND", "127.0.0.1"),

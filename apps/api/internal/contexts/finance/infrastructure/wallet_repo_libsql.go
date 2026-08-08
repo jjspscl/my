@@ -18,7 +18,7 @@ func NewWalletRepoLibSQL(db *sql.DB) *WalletRepoLibSQL {
 }
 
 func (r *WalletRepoLibSQL) Save(ctx context.Context, wallet *domain.Wallet) error {
-	_, err := r.db.ExecContext(ctx, `
+	_, err := executor(ctx, r.db).ExecContext(ctx, `
 		INSERT INTO wallets (id, user_email, name, kind, currency, opening_balance_cents, is_default, archived_at, created_at, updated_at)
 		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
 	`, wallet.ID, wallet.UserEmail, wallet.Name, wallet.Kind, wallet.Currency,
@@ -31,7 +31,7 @@ func (r *WalletRepoLibSQL) Save(ctx context.Context, wallet *domain.Wallet) erro
 }
 
 func (r *WalletRepoLibSQL) FindByID(ctx context.Context, id string) (*domain.Wallet, error) {
-	row := r.db.QueryRowContext(ctx, `
+	row := executor(ctx, r.db).QueryRowContext(ctx, `
 		SELECT id, user_email, name, kind, currency, opening_balance_cents, is_default, archived_at, created_at, updated_at
 		FROM wallets WHERE id = ?
 	`, id)
@@ -39,7 +39,7 @@ func (r *WalletRepoLibSQL) FindByID(ctx context.Context, id string) (*domain.Wal
 }
 
 func (r *WalletRepoLibSQL) ListByUser(ctx context.Context, userEmail string) ([]*domain.Wallet, error) {
-	rows, err := r.db.QueryContext(ctx, `
+	rows, err := executor(ctx, r.db).QueryContext(ctx, `
 		SELECT id, user_email, name, kind, currency, opening_balance_cents, is_default, archived_at, created_at, updated_at
 		FROM wallets WHERE user_email = ? AND archived_at IS NULL
 		ORDER BY is_default DESC, name ASC
@@ -61,7 +61,7 @@ func (r *WalletRepoLibSQL) ListByUser(ctx context.Context, userEmail string) ([]
 }
 
 func (r *WalletRepoLibSQL) Update(ctx context.Context, wallet *domain.Wallet) error {
-	_, err := r.db.ExecContext(ctx, `
+	_, err := executor(ctx, r.db).ExecContext(ctx, `
 		UPDATE wallets SET name = ?, kind = ?, opening_balance_cents = ?, is_default = ?, updated_at = ?
 		WHERE id = ? AND user_email = ?
 	`, wallet.Name, wallet.Kind, wallet.OpeningBalanceCents, boolToInt(wallet.IsDefault),
@@ -73,7 +73,7 @@ func (r *WalletRepoLibSQL) Update(ctx context.Context, wallet *domain.Wallet) er
 }
 
 func (r *WalletRepoLibSQL) Archive(ctx context.Context, id, userEmail string) error {
-	_, err := r.db.ExecContext(ctx, `
+	_, err := executor(ctx, r.db).ExecContext(ctx, `
 		UPDATE wallets SET archived_at = datetime('now'), updated_at = datetime('now')
 		WHERE id = ? AND user_email = ?
 	`, id, userEmail)
@@ -85,7 +85,7 @@ func (r *WalletRepoLibSQL) Archive(ctx context.Context, id, userEmail string) er
 
 func (r *WalletRepoLibSQL) FindDefault(ctx context.Context, userEmail string) (*domain.Wallet, error) {
 	// First try to find the explicit default
-	row := r.db.QueryRowContext(ctx, `
+	row := executor(ctx, r.db).QueryRowContext(ctx, `
 		SELECT id, user_email, name, kind, currency, opening_balance_cents, is_default, archived_at, created_at, updated_at
 		FROM wallets WHERE user_email = ? AND is_default = 1 AND archived_at IS NULL
 	`, userEmail)
@@ -95,7 +95,7 @@ func (r *WalletRepoLibSQL) FindDefault(ctx context.Context, userEmail string) (*
 	}
 
 	// Fallback: get the first active wallet
-	row = r.db.QueryRowContext(ctx, `
+	row = executor(ctx, r.db).QueryRowContext(ctx, `
 		SELECT id, user_email, name, kind, currency, opening_balance_cents, is_default, archived_at, created_at, updated_at
 		FROM wallets WHERE user_email = ? AND archived_at IS NULL
 		ORDER BY created_at ASC LIMIT 1
@@ -103,15 +103,19 @@ func (r *WalletRepoLibSQL) FindDefault(ctx context.Context, userEmail string) (*
 	return scanWallet(row)
 }
 
+// GetBalancesByUser computes wallet balances from opening balance, income and
+// expense transactions, and transfers. Transfer legs use the per-leg amounts
+// (to_amount_cents for incoming, from_amount_cents for outgoing) so
+// multi-currency transfers credit/debit the correct currency amount.
 func (r *WalletRepoLibSQL) GetBalancesByUser(ctx context.Context, userEmail string) ([]*domain.WalletBalance, error) {
-	rows, err := r.db.QueryContext(ctx, `
+	rows, err := executor(ctx, r.db).QueryContext(ctx, `
 		SELECT
 			w.id,
 			w.opening_balance_cents,
-			COALESCE((SELECT SUM(amount_cents) FROM transactions t WHERE t.wallet_id = w.id AND t.type = 'income'), 0) as income_cents,
-			COALESCE((SELECT SUM(amount_cents) FROM transactions t WHERE t.wallet_id = w.id AND t.type = 'expense'), 0) as expense_cents,
-			COALESCE((SELECT SUM(amount_cents) FROM wallet_transfers wt WHERE wt.to_wallet_id = w.id), 0) as incoming_transfer_cents,
-			COALESCE((SELECT SUM(amount_cents) FROM wallet_transfers wt WHERE wt.from_wallet_id = w.id), 0) as outgoing_transfer_cents
+			COALESCE((SELECT SUM(t.amount_cents) FROM transactions t WHERE t.wallet_id = w.id AND t.type = 'income'), 0) as income_cents,
+			COALESCE((SELECT SUM(t.amount_cents) FROM transactions t WHERE t.wallet_id = w.id AND t.type = 'expense'), 0) as expense_cents,
+			COALESCE((SELECT SUM(COALESCE(wt.to_amount_cents, wt.amount_cents)) FROM wallet_transfers wt WHERE wt.to_wallet_id = w.id), 0) as incoming_transfer_cents,
+			COALESCE((SELECT SUM(COALESCE(wt.from_amount_cents, wt.amount_cents)) FROM wallet_transfers wt WHERE wt.from_wallet_id = w.id), 0) as outgoing_transfer_cents
 		FROM wallets w
 		WHERE w.user_email = ? AND w.archived_at IS NULL
 		ORDER BY w.is_default DESC, w.name ASC

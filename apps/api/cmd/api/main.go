@@ -55,7 +55,7 @@ func main() {
 	authHandler := accesshttp.NewAuthHandler(app.Auth, cfg.SecureCookies, cfg.SessionTTL)
 
 	// Finance
-	financeHandler := financehttp.NewFinanceHandler(app.Tx)
+	financeHandler := financehttp.NewFinanceHandler(app.Tx, cfg.DefaultCurrency)
 	budgetHandler := financehttp.NewBudgetHandler(app.Budget)
 	billHandler := financehttp.NewBillHandler(app.Bill)
 	goalHandler := financehttp.NewGoalHandler(app.Goal)

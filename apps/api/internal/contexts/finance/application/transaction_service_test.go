@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/jjspscl/my/internal/contexts/finance/domain"
+	"github.com/jjspscl/my/internal/platform/timeutil"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
 )
@@ -59,12 +60,12 @@ func (m *mockWalletRepo) GetBalancesByUser(ctx context.Context, userEmail string
 }
 
 type mockTransactionRepo struct {
-	transactions []*domain.Transaction
-	saveFn       func(ctx context.Context, tx *domain.Transaction) error
-	findByIDFn   func(ctx context.Context, id string) (*domain.Transaction, error)
-	listFn       func(ctx context.Context, userEmail string, from, to time.Time, limit, offset int) ([]*domain.Transaction, error)
-	deleteFn     func(ctx context.Context, id, userEmail string) error
-	todayTotalFn func(ctx context.Context, userEmail string, date time.Time) (*domain.DailyTotal, error)
+	transactions  []*domain.Transaction
+	saveFn        func(ctx context.Context, tx *domain.Transaction) error
+	findByIDFn    func(ctx context.Context, id string) (*domain.Transaction, error)
+	listFn        func(ctx context.Context, userEmail string, from, to time.Time, limit, offset int) ([]*domain.Transaction, error)
+	deleteFn      func(ctx context.Context, id, userEmail string) error
+	todayTotalsFn func(ctx context.Context, userEmail string, date time.Time) ([]domain.CurrencyTotal, error)
 }
 
 func (m *mockTransactionRepo) Save(ctx context.Context, tx *domain.Transaction) error {
@@ -85,6 +86,15 @@ func (m *mockTransactionRepo) FindByID(ctx context.Context, id string) (*domain.
 		}
 	}
 	return nil, errors.New("transaction not found")
+}
+
+func (m *mockTransactionRepo) FindByIdempotencyKey(ctx context.Context, userEmail, key string) (*domain.Transaction, error) {
+	for _, tx := range m.transactions {
+		if tx.UserEmail == userEmail && tx.IdempotencyKey == key {
+			return tx, nil
+		}
+	}
+	return nil, nil
 }
 
 func (m *mockTransactionRepo) ListByUserAndDateRange(ctx context.Context, userEmail string, from, to time.Time, limit, offset int) ([]*domain.Transaction, error) {
@@ -117,9 +127,9 @@ func (m *mockTransactionRepo) Delete(ctx context.Context, id, userEmail string) 
 	return errors.New("transaction not found")
 }
 
-func (m *mockTransactionRepo) GetTodayTotal(ctx context.Context, userEmail string, date time.Time) (*domain.DailyTotal, error) {
-	if m.todayTotalFn != nil {
-		return m.todayTotalFn(ctx, userEmail, date)
+func (m *mockTransactionRepo) GetTodayTotals(ctx context.Context, userEmail string, date time.Time) ([]domain.CurrencyTotal, error) {
+	if m.todayTotalsFn != nil {
+		return m.todayTotalsFn(ctx, userEmail, date)
 	}
 	var expenseCents, incomeCents int64
 	dateStr := date.Format("2006-01-02")
@@ -132,23 +142,22 @@ func (m *mockTransactionRepo) GetTodayTotal(ctx context.Context, userEmail strin
 			}
 		}
 	}
-	return &domain.DailyTotal{
-		Date:         dateStr,
+	return []domain.CurrencyTotal{{
+		Currency:     "PHP",
 		TotalCents:   incomeCents - expenseCents,
 		ExpenseCents: expenseCents,
 		IncomeCents:  incomeCents,
-		Currency:     "PHP",
-	}, nil
+	}}, nil
 }
 
 func newTestTransactionService() *TransactionService {
 	repo := &mockTransactionRepo{}
 	walletRepo := &mockWalletRepo{
 		wallets: []*domain.Wallet{
-			{ID: "w-default", UserEmail: "user@test.com", Name: "Cash", IsDefault: true},
+			{ID: "w-default", UserEmail: "user@test.com", Name: "Cash", Currency: "PHP", IsDefault: true},
 		},
 	}
-	return NewTransactionService(repo, walletRepo, "PHP")
+	return NewTransactionService(repo, walletRepo, timeutil.New(time.UTC))
 }
 
 // ---- tests ----
@@ -249,7 +258,7 @@ func TestGetTodayTotal_NoTransactions_ReturnsZeros(t *testing.T) {
 	svc := newTestTransactionService()
 	ctx := context.Background()
 
-	total, err := svc.GetTodayTotal(ctx, "user@test.com")
+	total, err := svc.GetTodayTotal(ctx, "user@test.com", "PHP")
 	require.NoError(t, err)
 	assert.Equal(t, int64(0), total.ExpenseCents)
 	assert.Equal(t, int64(0), total.IncomeCents)
@@ -259,11 +268,11 @@ func TestGetTodayTotal_NoTransactions_ReturnsZeros(t *testing.T) {
 func TestGetTodayTotal_MixedTransactions_ReturnsCorrectAggregation(t *testing.T) {
 	walletRepo := &mockWalletRepo{
 		wallets: []*domain.Wallet{
-			{ID: "w-default", UserEmail: "user@test.com", Name: "Cash", IsDefault: true},
+			{ID: "w-default", UserEmail: "user@test.com", Name: "Cash", Currency: "PHP", IsDefault: true},
 		},
 	}
 	repo := &mockTransactionRepo{}
-	svc := NewTransactionService(repo, walletRepo, "PHP")
+	svc := NewTransactionService(repo, walletRepo, timeutil.New(time.UTC))
 	ctx := context.Background()
 	now := time.Now().UTC()
 
@@ -274,7 +283,7 @@ func TestGetTodayTotal_MixedTransactions_ReturnsCorrectAggregation(t *testing.T)
 		{ID: "tx-3", UserEmail: "user@test.com", AmountCents: 5000000, Type: domain.TransactionIncome, TransactionDate: now, WalletID: "w-default"},
 	}
 
-	total, err := svc.GetTodayTotal(ctx, "user@test.com")
+	total, err := svc.GetTodayTotal(ctx, "user@test.com", "PHP")
 	require.NoError(t, err)
 	assert.Equal(t, int64(150000), total.ExpenseCents)
 	assert.Equal(t, int64(5000000), total.IncomeCents)
@@ -284,11 +293,11 @@ func TestGetTodayTotal_MixedTransactions_ReturnsCorrectAggregation(t *testing.T)
 func TestList_DefaultLimit(t *testing.T) {
 	walletRepo := &mockWalletRepo{
 		wallets: []*domain.Wallet{
-			{ID: "w-default", UserEmail: "user@test.com", Name: "Cash", IsDefault: true},
+			{ID: "w-default", UserEmail: "user@test.com", Name: "Cash", Currency: "PHP", IsDefault: true},
 		},
 	}
 	repo := &mockTransactionRepo{}
-	svc := NewTransactionService(repo, walletRepo, "PHP")
+	svc := NewTransactionService(repo, walletRepo, timeutil.New(time.UTC))
 	ctx := context.Background()
 
 	// Add 200 transactions
@@ -312,11 +321,11 @@ func TestList_DefaultLimit(t *testing.T) {
 func TestDelete_ExistingTransaction_Succeeds(t *testing.T) {
 	walletRepo := &mockWalletRepo{
 		wallets: []*domain.Wallet{
-			{ID: "w-default", UserEmail: "user@test.com", Name: "Cash", IsDefault: true},
+			{ID: "w-default", UserEmail: "user@test.com", Name: "Cash", Currency: "PHP", IsDefault: true},
 		},
 	}
 	repo := &mockTransactionRepo{}
-	svc := NewTransactionService(repo, walletRepo, "PHP")
+	svc := NewTransactionService(repo, walletRepo, timeutil.New(time.UTC))
 	ctx := context.Background()
 
 	repo.transactions = []*domain.Transaction{
@@ -330,7 +339,7 @@ func TestDelete_ExistingTransaction_Succeeds(t *testing.T) {
 func TestCreate_RepoFailure_ReturnsError(t *testing.T) {
 	walletRepo := &mockWalletRepo{
 		wallets: []*domain.Wallet{
-			{ID: "w-default", UserEmail: "user@test.com", Name: "Cash", IsDefault: true},
+			{ID: "w-default", UserEmail: "user@test.com", Name: "Cash", Currency: "PHP", IsDefault: true},
 		},
 	}
 	repo := &mockTransactionRepo{
@@ -338,7 +347,7 @@ func TestCreate_RepoFailure_ReturnsError(t *testing.T) {
 			return errors.New("database error")
 		},
 	}
-	svc := NewTransactionService(repo, walletRepo, "PHP")
+	svc := NewTransactionService(repo, walletRepo, timeutil.New(time.UTC))
 	ctx := context.Background()
 
 	_, err := svc.Create(ctx, "user@test.com", CreateTransactionInput{
@@ -354,18 +363,18 @@ func TestCreate_RepoFailure_ReturnsError(t *testing.T) {
 func TestGetTodayTotal_EmptyDateRange_ReturnsNilDefault(t *testing.T) {
 	walletRepo := &mockWalletRepo{
 		wallets: []*domain.Wallet{
-			{ID: "w-default", UserEmail: "user@test.com", Name: "Cash", IsDefault: true},
+			{ID: "w-default", UserEmail: "user@test.com", Name: "Cash", Currency: "PHP", IsDefault: true},
 		},
 	}
 	repo := &mockTransactionRepo{
-		todayTotalFn: func(ctx context.Context, userEmail string, date time.Time) (*domain.DailyTotal, error) {
+		todayTotalsFn: func(ctx context.Context, userEmail string, date time.Time) ([]domain.CurrencyTotal, error) {
 			return nil, nil
 		},
 	}
-	svc := NewTransactionService(repo, walletRepo, "PHP")
+	svc := NewTransactionService(repo, walletRepo, timeutil.New(time.UTC))
 	ctx := context.Background()
 
-	total, err := svc.GetTodayTotal(ctx, "user@test.com")
+	total, err := svc.GetTodayTotal(ctx, "user@test.com", "PHP")
 	require.NoError(t, err)
 	assert.NotNil(t, total)
 	assert.Equal(t, int64(0), total.TotalCents)

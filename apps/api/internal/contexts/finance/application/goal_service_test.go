@@ -28,6 +28,10 @@ func (m *mockGoalTransferRepo) Save(_ context.Context, transfer *domain.WalletTr
 	return nil
 }
 
+func (m *mockGoalTransferRepo) FindByIdempotencyKey(_ context.Context, _, _ string) (*domain.WalletTransfer, error) {
+	return nil, nil
+}
+
 func (m *mockGoalTransferRepo) FindByID(_ context.Context, id string) (*domain.WalletTransfer, error) {
 	for _, transfer := range m.transfers {
 		if transfer.ID == id {
@@ -56,8 +60,8 @@ func newMockGoalRepo() *mockGoalRepo {
 
 func newGoalWalletRepo() *mockWalletRepo {
 	return &mockWalletRepo{wallets: []*domain.Wallet{
-		{ID: "w-1", UserEmail: "user@test.com"},
-		{ID: "w-2", UserEmail: "user@test.com"},
+		{ID: "w-1", UserEmail: "user@test.com", Currency: "PHP"},
+		{ID: "w-2", UserEmail: "user@test.com", Currency: "PHP"},
 	}}
 }
 
@@ -103,6 +107,10 @@ func (m *mockGoalRepo) SaveContribution(_ context.Context, c *domain.GoalContrib
 	return nil
 }
 
+func (m *mockGoalRepo) FindContributionByIdempotencyKey(_ context.Context, _ string) (*domain.GoalContribution, error) {
+	return nil, nil
+}
+
 func (m *mockGoalRepo) ListContributionsByGoal(_ context.Context, goalID string) ([]*domain.GoalContribution, error) {
 	return m.contributions[goalID], nil
 }
@@ -113,6 +121,15 @@ func (m *mockGoalRepo) GetCurrentAmountByGoal(_ context.Context, goalID string) 
 		total += c.AmountCents
 	}
 	return total, nil
+}
+
+func (m *mockGoalRepo) GetCurrentAmountsByGoals(_ context.Context, goalIDs []string) (map[string]int64, error) {
+	result := make(map[string]int64, len(goalIDs))
+	for _, id := range goalIDs {
+		total, _ := m.GetCurrentAmountByGoal(context.Background(), id)
+		result[id] = total
+	}
+	return result, nil
 }
 
 // --- Tests ---

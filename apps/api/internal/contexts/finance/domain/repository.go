@@ -18,15 +18,17 @@ type WalletRepository interface {
 type TransferRepository interface {
 	Save(ctx context.Context, transfer *WalletTransfer) error
 	FindByID(ctx context.Context, id string) (*WalletTransfer, error)
+	FindByIdempotencyKey(ctx context.Context, userEmail, key string) (*WalletTransfer, error)
 	ListByUser(ctx context.Context, userEmail string, limit, offset int) ([]*WalletTransfer, error)
 }
 
 type TransactionRepository interface {
 	Save(ctx context.Context, tx *Transaction) error
 	FindByID(ctx context.Context, id string) (*Transaction, error)
+	FindByIdempotencyKey(ctx context.Context, userEmail, key string) (*Transaction, error)
 	ListByUserAndDateRange(ctx context.Context, userEmail string, from, to time.Time, limit, offset int) ([]*Transaction, error)
 	Delete(ctx context.Context, id, userEmail string) error
-	GetTodayTotal(ctx context.Context, userEmail string, date time.Time) (*DailyTotal, error)
+	GetTodayTotals(ctx context.Context, userEmail string, date time.Time) ([]CurrencyTotal, error)
 }
 
 type BudgetRepository interface {
@@ -34,7 +36,7 @@ type BudgetRepository interface {
 	FindBudgetByMonth(ctx context.Context, userEmail, month string) (*Budget, error)
 	UpsertBudgetCategories(ctx context.Context, budgetID string, categories []*BudgetCategory) error
 	GetBudgetCategories(ctx context.Context, budgetID string) ([]*BudgetCategory, error)
-	GetSpentByCategory(ctx context.Context, userEmail, month string) (map[string]int64, error)
+	GetSpentByCategory(ctx context.Context, userEmail, currency string, from, to time.Time) (map[string]int64, error)
 }
 
 type BillRepository interface {
@@ -46,6 +48,7 @@ type BillRepository interface {
 	SavePayment(ctx context.Context, payment *BillPayment) error
 	FindPayment(ctx context.Context, billID, dueDate string) (*BillPayment, error)
 	ListPaymentsByBill(ctx context.Context, billID string) ([]*BillPayment, error)
+	ListPaymentsByBills(ctx context.Context, billIDs []string, from, to time.Time) ([]*BillPayment, error)
 	ListUpcomingBills(ctx context.Context, userEmail string, limit int) ([]*BillWithPayment, error)
 	FindTransactionByMatch(ctx context.Context, userEmail, category string, amountCents int64, date string, pattern string) (*Transaction, error)
 }
@@ -57,6 +60,8 @@ type GoalRepository interface {
 	FindGoalByID(ctx context.Context, id string) (*SavingsGoal, error)
 	ListGoals(ctx context.Context, userEmail string) ([]*SavingsGoal, error)
 	SaveContribution(ctx context.Context, contribution *GoalContribution) error
+	FindContributionByIdempotencyKey(ctx context.Context, key string) (*GoalContribution, error)
 	ListContributionsByGoal(ctx context.Context, goalID string) ([]*GoalContribution, error)
 	GetCurrentAmountByGoal(ctx context.Context, goalID string) (int64, error)
+	GetCurrentAmountsByGoals(ctx context.Context, goalIDs []string) (map[string]int64, error)
 }

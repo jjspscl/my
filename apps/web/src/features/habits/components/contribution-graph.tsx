@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { cn } from '@/shared/lib/utils'
+import { cn, toLocalDateStr } from '@/shared/lib/utils'
 import type { CompletionsMap } from '../schemas/habit.schemas'
 
 interface HabitContributionGraphProps {
@@ -23,7 +23,7 @@ function buildDateRange(weeks: number): string[] {
   for (let i = totalDays - 1; i >= 0; i--) {
     const d = new Date(now)
     d.setDate(d.getDate() - i)
-    days.push(d.toISOString()!.split('T')[0]!)
+    days.push(toLocalDateStr(d))
   }
   return days
 }
@@ -80,7 +80,7 @@ export function HabitContributionGraph({ data, weeks = 12, color = '--palette-gr
     return { backgroundColor: cssVar }
   }
 
-  const todayStr = new Date().toISOString().split('T')[0]
+  const todayStr = toLocalDateStr(new Date())
 
   return (
     <div className="relative">

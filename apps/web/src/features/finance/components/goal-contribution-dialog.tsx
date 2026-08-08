@@ -8,6 +8,7 @@ import { useAddContribution } from '../hooks/use-goals'
 import { useWallets } from '../hooks/use-wallets'
 import type { GoalSummary } from '../schemas/goal.schemas'
 import type { Wallet } from '../schemas/wallet.schemas'
+import { todayLocalStr } from '@/shared/lib/utils'
 
 interface GoalContributionDialogProps {
   goal: GoalSummary
@@ -17,7 +18,7 @@ interface GoalContributionDialogProps {
 
 export function GoalContributionDialog({ goal, open, onOpenChange }: GoalContributionDialogProps) {
   const [amount, setAmount] = useState('')
-  const [contributedAt, setContributedAt] = useState(new Date().toISOString().split('T')[0] ?? '')
+  const [contributedAt, setContributedAt] = useState(todayLocalStr())
   const [note, setNote] = useState('')
   const [sourceWalletId, setSourceWalletId] = useState('')
 

@@ -8,7 +8,7 @@ import (
 )
 
 func TestNewBudget_Valid(t *testing.T) {
-	b, err := NewBudget("b-1", "user@test.com", "2026-05")
+	b, err := NewBudget("b-1", "user@test.com", "2026-05", "PHP")
 	require.NoError(t, err)
 	assert.Equal(t, "2026-05", b.Month)
 	assert.Equal(t, "user@test.com", b.UserEmail)
@@ -16,18 +16,18 @@ func TestNewBudget_Valid(t *testing.T) {
 }
 
 func TestNewBudget_InvalidMonth(t *testing.T) {
-	_, err := NewBudget("b-2", "user@test.com", "2026-13")
+	_, err := NewBudget("b-2", "user@test.com", "2026-13", "PHP")
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "invalid month format")
 }
 
 func TestNewBudget_InvalidMonthFormat(t *testing.T) {
-	_, err := NewBudget("b-3", "user@test.com", "May 2026")
+	_, err := NewBudget("b-3", "user@test.com", "May 2026", "PHP")
 	assert.Error(t, err)
 }
 
 func TestNewBudget_EmptyEmail(t *testing.T) {
-	_, err := NewBudget("b-4", "", "2026-05")
+	_, err := NewBudget("b-4", "", "2026-05", "PHP")
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "user email")
 }

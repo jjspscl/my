@@ -1,6 +1,7 @@
 package main
 
 import (
+	"encoding/json"
 	"log/slog"
 	"net/http"
 
@@ -11,6 +12,7 @@ import (
 	financehttp "github.com/jjspscl/my/internal/contexts/finance/interfaces/http"
 	habithttp "github.com/jjspscl/my/internal/contexts/habits/interfaces/http"
 	"github.com/jjspscl/my/internal/platform/session"
+	platformversion "github.com/jjspscl/my/internal/platform/version"
 	"github.com/jjspscl/my/internal/platform/web"
 	"github.com/jjspscl/my/internal/shared/middleware"
 )
@@ -26,6 +28,7 @@ type routerDeps struct {
 	walletHandler   *financehttp.WalletHandler
 	transferHandler *financehttp.TransferHandler
 	habitHandler    *habithttp.HabitHandler
+	mcpHandler      http.Handler
 }
 
 func newRouter(deps routerDeps) chi.Router {
@@ -38,7 +41,10 @@ func newRouter(deps routerDeps) chi.Router {
 	r.Route("/api/v1", func(r chi.Router) {
 		r.Get("/health", func(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("Content-Type", "application/json")
-			_, _ = w.Write([]byte(`{"status":"ok"}`))
+			_ = json.NewEncoder(w).Encode(map[string]string{
+				"status":  "ok",
+				"version": platformversion.String(),
+			})
 		})
 
 		// Mount auth once. Public routes and protected logout share this subrouter.
@@ -67,6 +73,11 @@ func newRouter(deps routerDeps) chi.Router {
 			r.Route("/habits", deps.habitHandler.Routes)
 		})
 	})
+	if deps.mcpHandler != nil {
+		r.Handle("/mcp", deps.mcpHandler)
+	} else {
+		r.Handle("/mcp", http.NotFoundHandler())
+	}
 
 	r.Handle("/*", web.Handler())
 	return r

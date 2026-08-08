@@ -20,6 +20,7 @@ import (
 	"github.com/jjspscl/my/internal/platform/config"
 	plogger "github.com/jjspscl/my/internal/platform/logger"
 	platformmcp "github.com/jjspscl/my/internal/platform/mcp"
+	"github.com/jjspscl/my/internal/platform/timeutil"
 	platformversion "github.com/jjspscl/my/internal/platform/version"
 	"github.com/jjspscl/my/internal/shared/middleware"
 	mcpsdk "github.com/modelcontextprotocol/go-sdk/mcp"
@@ -62,22 +63,24 @@ func main() {
 	walletHandler := financehttp.NewWalletHandler(app.Wallet)
 	transferHandler := financehttp.NewTransferHandler(app.Transfer)
 	categoryHandler := financehttp.NewCategoryHandler(app.Category)
+	analyticsHandler := financehttp.NewAnalyticsHandler(app.Analytics, timeutil.New(app.Cfg.Location))
 
 	// Habits
 	habitHandler := habithttp.NewHabitHandler(app.Habit)
 
 	r := newRouter(routerDeps{
-		log:             log,
-		sessions:        app.Sessions,
-		authHandler:     authHandler,
-		financeHandler:  financeHandler,
-		budgetHandler:   budgetHandler,
-		billHandler:     billHandler,
-		goalHandler:     goalHandler,
-		walletHandler:   walletHandler,
-		transferHandler: transferHandler,
-		categoryHandler: categoryHandler,
-		habitHandler:    habitHandler,
+		log:              log,
+		sessions:         app.Sessions,
+		authHandler:      authHandler,
+		financeHandler:   financeHandler,
+		budgetHandler:    budgetHandler,
+		billHandler:      billHandler,
+		goalHandler:      goalHandler,
+		walletHandler:    walletHandler,
+		transferHandler:  transferHandler,
+		categoryHandler:  categoryHandler,
+		analyticsHandler: analyticsHandler,
+		habitHandler:     habitHandler,
 	})
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)

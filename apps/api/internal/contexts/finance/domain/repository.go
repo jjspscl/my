@@ -73,3 +73,31 @@ type CategoryRepository interface {
 	FindByName(ctx context.Context, name string) (*Category, error)
 	Update(ctx context.Context, category *Category) error
 }
+
+// AnalyticsRepository is the read-model surface for the analytics core. Every
+// aggregate is grouped by currency — never summed across currencies — and uses
+// half-open [from, to) ranges so the (user_email, transaction_date) index
+// applies.
+type AnalyticsRepository interface {
+	// GetCashFlow returns per-currency income/expense/net over [from, to).
+	GetCashFlow(ctx context.Context, userEmail string, from, to time.Time) ([]CurrencyTotal, error)
+	// GetMonthlyCashFlow returns per-currency per-month income/expense/net over
+	// [from, to), ordered by month.
+	GetMonthlyCashFlow(ctx context.Context, userEmail string, from, to time.Time) ([]MonthlyCashFlow, error)
+	// GetSpendingByClassification returns expense cents per currency and
+	// classification over [from, to). Categories with no finance_categories row
+	// are reported as ClassificationUnclassified.
+	GetSpendingByClassification(ctx context.Context, userEmail string, from, to time.Time) ([]ClassificationSpend, error)
+	// GetUnclassifiedSpending returns the unclassified-versus-total expense
+	// split per currency over [from, to).
+	GetUnclassifiedSpending(ctx context.Context, userEmail string, from, to time.Time) ([]UnclassifiedSpending, error)
+	// GetTopUnclassifiedCategories returns the largest unclassified expense
+	// categories over [from, to), ordered by amount descending.
+	GetTopUnclassifiedCategories(ctx context.Context, userEmail string, from, to time.Time, limit int) ([]CategorySpend, error)
+	// GetCategoryMonthlySpend returns monthly expense for one category in one
+	// currency over [from, to), ordered by month.
+	GetCategoryMonthlySpend(ctx context.Context, userEmail, category, currency string, from, to time.Time) ([]MonthlyAmount, error)
+	// GetUnbudgetedSpend returns expense in categories that have no budget
+	// allocation for the given month, restricted to one currency.
+	GetUnbudgetedSpend(ctx context.Context, userEmail, currency, month string, from, to time.Time) (int64, error)
+}

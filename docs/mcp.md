@@ -9,7 +9,7 @@ Server surface is single-user. MCP handlers inject `MY_USER_EMAIL`; clients cann
 macOS/Linux, amd64/arm64:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/jjspscl/my/v1.0.1/scripts/install-mcp.sh | sh
+curl -fsSL https://raw.githubusercontent.com/jjspscl/my/v1.0.2/scripts/install-mcp.sh | sh
 ```
 
 Installer resolves latest GitHub release unless `MY_MCP_VERSION` is set, verifies the archive SHA-256 against `checksums.txt`, verifies the archive's GitHub build provenance when `gh` exists, installs to `~/.local/bin/my-mcp`, and prints configuration. It does not edit client configuration.
@@ -247,7 +247,7 @@ Tag push runs `.github/workflows/release.yml`. The workflow publishes the releas
 Verify a downloaded archive manually:
 
 ```bash
-gh attestation verify my-mcp_1.0.1_darwin_arm64.tar.gz --repo jjspscl/my
+gh attestation verify my-mcp_1.0.2_darwin_arm64.tar.gz --repo jjspscl/my
 ```
 
 Note that `subject-checksums` attests the artifacts enumerated in the checksum file, not the checksum file itself. Verify an archive, not `checksums.txt`.

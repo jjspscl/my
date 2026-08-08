@@ -70,5 +70,5 @@ case ":${PATH:-}:" in
 esac
 printf '\nstdio command: %s/my-mcp\n' "$install_dir"
 printf 'Requires MY_DATABASE_URL, MY_REDIS_URL, and MY_USER_EMAIL, plus an already-migrated database.\n'
-printf 'HTTP transport (dashboard running): http://127.0.0.1:8080/mcp with MY_MCP_ENABLED=true and MY_MCP_TOKEN set.\n'
+printf 'HTTP transport (dashboard running): http://127.0.0.1:8081/mcp with MY_MCP_ENABLED=true and MY_MCP_TOKEN set.\n'
 printf 'Client configuration examples: https://github.com/%s/blob/main/docs/mcp.md\n' "$repo"

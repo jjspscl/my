@@ -1,6 +1,6 @@
 # HANDOFF — agent-native finance: analytics, semantic MCP, finance skills
 
-Status: **in progress**. Branch `v1.2.0`; Phase 3 (derived analytics) backend complete across `730aed6` (anomalies), `e1724e2` (recurring + bill reconciliation), `093c80b` (emergency fund + affordability + digest + docs). Remaining phases: MCP surface, skills/agent profile/dashboard/docs.
+Status: **in progress**. Branch `v1.2.0`; Phase 3 (derived analytics) backend complete across `730aed6` (anomalies), `e1724e2` (recurring + bill reconciliation), `093c80b` (emergency fund + affordability + digest + docs). Phase 4 (MCP surface) complete across `e19c756` (server split), `f4afc28` (pay-bill fix + `create_transaction`), `ad9c5c3` (12 analytics tools + prompts), `462de02` (classify tool + docs). Remaining: Phase 5 (skills, agent profile, dashboard, docs).
 
 Goal: turn the finance bounded context into a trustworthy analytics layer, expose it as a small semantic MCP surface, and layer end-user finance agent skills on top — without becoming a bank.
 
@@ -90,9 +90,16 @@ Application services with SQL `GROUP BY`, minor units, explicit `currency`, per-
 
 Monthly digest, recurring-charge summary, spending anomalies (median/MAD, mandatory human-readable `explanation`, no opaque scores), emergency-fund status, affordability check. Affordability returns a financial model with named assumptions, never a yes/no. Recurring-charge summary classifies against explicit bills as `tracked` / `untracked` / `amount_changed`, and never claims a charge is unused without usage data. Bill reconciliation fields land here.
 
-## Phase 4 — MCP surface
+## Phase 4 — MCP surface ✅
 
-Register analytics tools with `readOnlyHint` and `idempotentHint`. Fix the `finance_pay_bill` annotation and add its `create_transaction` flag. Add a category-classification write tool. Fold or drop redundant raw list reads so the surface stays near today's 28 tools. Update prompts to reference the new tools and contain zero numbers. Preserve read-only mode, loopback defaults, bearer auth, and the name/duration/outcome logging policy — audit that new error strings do not leak amounts.
+Complete on `v1.2.0`:
+
+- `e19c756` split the flat `mcp/server.go` into per-domain files (`tools_finance.go`, `tools_habits.go`, `resources.go`, `prompts.go`, `tools_analytics.go`) — pure move, zero behavior change.
+- `f4afc28` fixed `finance_pay_bill`: `MarkPaid` no longer nulls an existing transaction link when called without a transaction ID; added the `create_transaction` flag (default false) that books the expense transaction and payment in one `BeginTx`; corrected the destructive annotation (it is a writable upsert).
+- `ad9c5c3` registered the 12 analytics tools (`finance_spending_summary`, `finance_cash_flow_summary`, `finance_category_trend`, `finance_budget_health`, `finance_goal_health`, `finance_savings_rate`, `finance_anomalies`, `finance_recurring_charges`, `finance_bill_reconciliation`, `finance_emergency_fund`, `finance_affordability`, `finance_monthly_digest`) with `readOnlyHint` + `idempotentHint`; rewrote the 3 prompts to reference analytics tools with zero numbers.
+- `462de02` added the `finance_classify_category` write tool; updated `docs/mcp.md`.
+
+Surface is 41 tools (22 read + 19 write). User decision: keep all 12 raw list reads, add the analytics tools — do not fold or drop. Read-only mode, loopback defaults, bearer auth, and the name/duration/outcome logging policy preserved. Error-string audit: the only amount-bearing error is `ErrInsufficientClassification` (unclassified percentage + category names, no monetary amounts); it is surfaced as an MCP error.
 
 ## Phase 5 — skills, agent profile, dashboard, docs
 

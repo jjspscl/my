@@ -23,11 +23,12 @@ var expectedReadTools = []string{
 }
 
 var expectedWriteTools = []string{
-	"finance_create_transaction", "finance_delete_transaction", "finance_upsert_budget",
-	"finance_create_bill", "finance_update_bill", "finance_delete_bill", "finance_pay_bill",
-	"finance_create_goal", "finance_update_goal", "finance_delete_goal", "finance_add_goal_contribution",
-	"finance_create_wallet", "finance_update_wallet", "finance_archive_wallet", "finance_create_transfer",
-	"habits_create", "habits_toggle", "habits_archive",
+	"finance_classify_category", "finance_create_transaction", "finance_delete_transaction",
+	"finance_upsert_budget", "finance_create_bill", "finance_update_bill",
+	"finance_delete_bill", "finance_pay_bill", "finance_create_goal",
+	"finance_update_goal", "finance_delete_goal", "finance_add_goal_contribution",
+	"finance_create_wallet", "finance_update_wallet", "finance_archive_wallet",
+	"finance_create_transfer", "habits_create", "habits_toggle", "habits_archive",
 }
 
 func TestToolRegistry(t *testing.T) {

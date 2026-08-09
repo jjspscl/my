@@ -133,6 +133,13 @@ type createTransferInput struct {
 	IdempotencyKey  string    `json:"idempotency_key,omitempty"`
 }
 
+type classifyCategoryInput struct {
+	Name           string                       `json:"name"`
+	Classification financedomain.Classification `json:"classification"`
+	Essential      *bool                        `json:"essential,omitempty"`
+	Active         *bool                        `json:"active,omitempty"`
+}
+
 func registerFinanceReadTools(server *mcpsdk.Server, app *bootstrap.App) {
 	readOnly := &mcpsdk.ToolAnnotations{ReadOnlyHint: true, IdempotentHint: true}
 	registerTool(server, app.Log, &mcpsdk.Tool{Name: "finance_list_transactions", Description: "List transactions in a UTC date range.", Annotations: readOnly}, func(ctx context.Context, in listTransactionsInput) (any, error) {
@@ -217,5 +224,16 @@ func registerFinanceWriteTools(server *mcpsdk.Server, app *bootstrap.App) {
 			toAmount = *in.ToAmountCents
 		}
 		return app.Transfer.Create(ctx, app.Cfg.UserEmail, financeapp.CreateTransferInput{FromWalletID: in.FromWalletID, ToWalletID: in.ToWalletID, FromAmountCents: fromAmount, ToAmountCents: toAmount, Description: in.Description, TransferDate: in.TransferDate, IdempotencyKey: in.IdempotencyKey})
+	})
+	registerTool(server, app.Log, &mcpsdk.Tool{Name: "finance_classify_category", Description: "Set a category's classification (needs, wants, savings, income, debt, other, unclassified) and its essential and active flags. This metadata drives the analytics classification breakdown. essential defaults to false, active defaults to true.", Annotations: writable}, func(ctx context.Context, in classifyCategoryInput) (any, error) {
+		essential := false
+		if in.Essential != nil {
+			essential = *in.Essential
+		}
+		active := true
+		if in.Active != nil {
+			active = *in.Active
+		}
+		return app.Category.Update(ctx, in.Name, in.Classification, essential, active)
 	})
 }

@@ -84,6 +84,18 @@ Amounts use minor currency units, dates use RFC3339 unless tool says `YYYY-MM-DD
 | `finance_list_goals` | Savings goals and progress |
 | `finance_list_wallets` | Wallets with balances |
 | `finance_list_transfers` | Wallet transfers |
+| `finance_spending_summary` | Per-currency expense by classification |
+| `finance_cash_flow_summary` | Per-currency income/expense/net with monthly series |
+| `finance_category_trend` | Monthly spending series for one category |
+| `finance_budget_health` | Budget plan vs actuals, incl. unbudgeted |
+| `finance_goal_health` | Savings goal progress snapshot |
+| `finance_savings_rate` | Per-currency savings rate |
+| `finance_anomalies` | Unusual monthly spending per category |
+| `finance_recurring_charges` | Recurring charges vs explicit bills |
+| `finance_bill_reconciliation` | Expected vs paid per bill for a month |
+| `finance_emergency_fund` | Liquid balance vs essential-spend target |
+| `finance_affordability` | Purchase runway model, never a yes/no |
+| `finance_monthly_digest` | Composed monthly summary |
 | `habits_list` | Active habits, status, streak |
 | `habits_completions` | Grouped completions by date |
 
@@ -106,6 +118,7 @@ Amounts use minor currency units, dates use RFC3339 unless tool says `YYYY-MM-DD
 | `finance_update_wallet` | Update wallet |
 | `finance_archive_wallet` ⚠️ | Archive wallet |
 | `finance_create_transfer` | Transfer between wallets |
+| `finance_classify_category` | Set category classification and flags |
 | `habits_create` | Create habit |
 | `habits_toggle` | Toggle completion for date |
 | `habits_archive` ⚠️ | Archive habit |

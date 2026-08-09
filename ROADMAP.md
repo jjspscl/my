@@ -26,8 +26,8 @@
 - [x] Monthly spend widget
 - [x] Habit check-in
 - [x] Today habits widget
-- [ ] Offline mutation queue
-- [ ] Sync status indicator
+- [x] Offline mutation queue (IndexedDB, dead-letter state)
+- [x] Sync status indicator (offline badge, failed-items panel)
 
 ## Architecture Checklist
 
@@ -58,7 +58,7 @@
 - [x] Query key factories per feature
 - [x] Route loaders with ensureQueryData
 - [x] Zustand ephemeral UI stores
-- [ ] Offline IndexedDB mutation queue
+- [x] Offline IndexedDB mutation queue (persistent, FIFO, retry + dead-letter)
 - [x] React Hook Form + zodResolver forms
 
 ## Backend Checklist
@@ -88,7 +88,7 @@
 - [x] Dashboard grid layout
 - [x] Finance widgets
 - [x] Habits widgets
-- [ ] Feedback components (offline banner, sync badge, toasts)
+- [x] Feedback components (offline banner, sync badge, failed-items panel; toasts not built)
 
 ## Testing Checklist
 
@@ -198,9 +198,26 @@
 - e2e-ci.yml: Redis + Mailpit services, fresh e2e.db, report artifact on failure
 - MY_MAGIC_LINK_RATE raised for the test env (suite needs 7 links vs default 6)
 
+### Phase 10 — Offline Correctness
+- Dead-letter state for failed sync mutations: 4xx and retry-exhausted
+  entries are kept (never silently deleted), with per-item Retry/Discard
+  in the sync panel; unparseable entries parked in a separate corrupt
+  store
+- Post-drain reconciliation: TanStack Query invalidation + SW api-cache
+  purge after a successful drain (kills the stale-list duplicate trap)
+- Habit check-in made idempotent: optional `completed` set-state on the
+  toggle endpoint (non-breaking; MCP flip unchanged), habit card sends
+  explicit state + frozen date through the offline queue
+- First sync tests (13): queue persistence/FIFO/dead-letter/corrupt
+  parking + drain state machine; found and fixed a real corrupt-store
+  runtime bug
+- ROADMAP corrections: queue, sync indicator, feedback components
+
 ## Remaining Work
 
-- Phase 6: Offline/sync backend (client-side queue done, backend absent)
+- Phase 6: Offline/sync backend — server sync context (push/pull/status),
+  revision columns/tombstones, batch drain, conflict policy (client queue,
+  dead-letter, invalidation, idempotent habit check-in now exist)
 
 ## Known Issues
 

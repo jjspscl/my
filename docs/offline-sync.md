@@ -44,13 +44,19 @@ Queued mutation fields:
 Behavior:
 
 - queue entries validated with Zod on read
-- invalid/corrupt entries are discarded
+- unparseable entries are parked in a corrupt store, never deleted
 - drain runs on startup
 - drain runs when connectivity returns
 - drain also runs every 30 seconds
 - replay re-sends the original request with cookies and `X-CSRF-Token`
-- 4xx responses are treated as permanent failure and discarded
-- 5xx/network failures are retried until `maxRetries`
+- 4xx responses move the entry to a dead-letter state (failedReason
+  recorded) — the sync panel offers per-item Retry and Discard
+- 5xx/network failures are retried until `maxRetries`, then dead-lettered
+- after a fully successful drain, TanStack Query invalidates and the
+  service worker's api-cache is purged, so the UI refetches instead of
+  serving pre-mutation GETs
+- habit check-ins queue as explicit set-state (`completed` + frozen
+  date), which the server applies idempotently
 
 ## Important limitations
 
@@ -62,7 +68,11 @@ These are **not** currently implemented end to end:
 - conflict-resolution protocol between client/server revisions
 - universal adoption of queue-backed mutations across all features
 
-`offlineMutate()` currently exists as infrastructure, but feature hooks are not yet universally wired through it.
+`offlineMutate()` currently exists as infrastructure; feature hooks wired
+through it so far: transactions, transfers, goal contributions, and habit
+check-in (explicit set-state). Everything else calls the API directly.
+
+Tests: `apps/web/src/shared/sync/*.test.ts` (queue + drain, fake-indexeddb).
 
 ## Server-authoritative areas
 

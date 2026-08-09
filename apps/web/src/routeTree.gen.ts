@@ -21,6 +21,7 @@ import { Route as AuthenticatedFinanceGoalsRouteImport } from './routes/_authent
 import { Route as AuthenticatedFinanceCategoriesRouteImport } from './routes/_authenticated/finance/categories'
 import { Route as AuthenticatedFinanceBudgetRouteImport } from './routes/_authenticated/finance/budget'
 import { Route as AuthenticatedFinanceBillsRouteImport } from './routes/_authenticated/finance/bills'
+import { Route as AuthenticatedFinanceAnalyticsRouteImport } from './routes/_authenticated/finance/analytics'
 
 const LoginRoute = LoginRouteImport.update({
   id: '/login',
@@ -87,6 +88,12 @@ const AuthenticatedFinanceBillsRoute =
     path: '/bills',
     getParentRoute: () => AuthenticatedFinanceRoute,
   } as any)
+const AuthenticatedFinanceAnalyticsRoute =
+  AuthenticatedFinanceAnalyticsRouteImport.update({
+    id: '/analytics',
+    path: '/analytics',
+    getParentRoute: () => AuthenticatedFinanceRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof AuthenticatedIndexRoute
@@ -94,6 +101,7 @@ export interface FileRoutesByFullPath {
   '/finance': typeof AuthenticatedFinanceRouteWithChildren
   '/habits': typeof AuthenticatedHabitsRoute
   '/auth/verify': typeof AuthVerifyRoute
+  '/finance/analytics': typeof AuthenticatedFinanceAnalyticsRoute
   '/finance/bills': typeof AuthenticatedFinanceBillsRoute
   '/finance/budget': typeof AuthenticatedFinanceBudgetRoute
   '/finance/categories': typeof AuthenticatedFinanceCategoriesRoute
@@ -106,6 +114,7 @@ export interface FileRoutesByTo {
   '/habits': typeof AuthenticatedHabitsRoute
   '/auth/verify': typeof AuthVerifyRoute
   '/': typeof AuthenticatedIndexRoute
+  '/finance/analytics': typeof AuthenticatedFinanceAnalyticsRoute
   '/finance/bills': typeof AuthenticatedFinanceBillsRoute
   '/finance/budget': typeof AuthenticatedFinanceBudgetRoute
   '/finance/categories': typeof AuthenticatedFinanceCategoriesRoute
@@ -121,6 +130,7 @@ export interface FileRoutesById {
   '/_authenticated/habits': typeof AuthenticatedHabitsRoute
   '/auth/verify': typeof AuthVerifyRoute
   '/_authenticated/': typeof AuthenticatedIndexRoute
+  '/_authenticated/finance/analytics': typeof AuthenticatedFinanceAnalyticsRoute
   '/_authenticated/finance/bills': typeof AuthenticatedFinanceBillsRoute
   '/_authenticated/finance/budget': typeof AuthenticatedFinanceBudgetRoute
   '/_authenticated/finance/categories': typeof AuthenticatedFinanceCategoriesRoute
@@ -136,6 +146,7 @@ export interface FileRouteTypes {
     | '/finance'
     | '/habits'
     | '/auth/verify'
+    | '/finance/analytics'
     | '/finance/bills'
     | '/finance/budget'
     | '/finance/categories'
@@ -148,6 +159,7 @@ export interface FileRouteTypes {
     | '/habits'
     | '/auth/verify'
     | '/'
+    | '/finance/analytics'
     | '/finance/bills'
     | '/finance/budget'
     | '/finance/categories'
@@ -162,6 +174,7 @@ export interface FileRouteTypes {
     | '/_authenticated/habits'
     | '/auth/verify'
     | '/_authenticated/'
+    | '/_authenticated/finance/analytics'
     | '/_authenticated/finance/bills'
     | '/_authenticated/finance/budget'
     | '/_authenticated/finance/categories'
@@ -262,10 +275,18 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedFinanceBillsRouteImport
       parentRoute: typeof AuthenticatedFinanceRoute
     }
+    '/_authenticated/finance/analytics': {
+      id: '/_authenticated/finance/analytics'
+      path: '/analytics'
+      fullPath: '/finance/analytics'
+      preLoaderRoute: typeof AuthenticatedFinanceAnalyticsRouteImport
+      parentRoute: typeof AuthenticatedFinanceRoute
+    }
   }
 }
 
 interface AuthenticatedFinanceRouteChildren {
+  AuthenticatedFinanceAnalyticsRoute: typeof AuthenticatedFinanceAnalyticsRoute
   AuthenticatedFinanceBillsRoute: typeof AuthenticatedFinanceBillsRoute
   AuthenticatedFinanceBudgetRoute: typeof AuthenticatedFinanceBudgetRoute
   AuthenticatedFinanceCategoriesRoute: typeof AuthenticatedFinanceCategoriesRoute
@@ -275,6 +296,7 @@ interface AuthenticatedFinanceRouteChildren {
 }
 
 const AuthenticatedFinanceRouteChildren: AuthenticatedFinanceRouteChildren = {
+  AuthenticatedFinanceAnalyticsRoute: AuthenticatedFinanceAnalyticsRoute,
   AuthenticatedFinanceBillsRoute: AuthenticatedFinanceBillsRoute,
   AuthenticatedFinanceBudgetRoute: AuthenticatedFinanceBudgetRoute,
   AuthenticatedFinanceCategoriesRoute: AuthenticatedFinanceCategoriesRoute,

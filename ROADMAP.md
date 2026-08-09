@@ -97,8 +97,8 @@
 - [x] Playwright installed
 - [x] MSW installed
 - [x] First unit test
-- [ ] First component test
-- [x] First e2e test (3 specs, local-only — no CI webServer yet)
+- [x] First component test (auth verify route)
+- [x] First e2e test (CI: Playwright webServer, binary mode)
 - [x] Go table-driven tests
 - [x] Go httptest handler tests
 
@@ -189,10 +189,18 @@
 - Runtime fixes it unlocked: embedded migrations (no silent empty schema),
   tzdata import (boots on minimal images), POSIX copy-web-assets.sh
 
+### Phase 9 — E2E Tests in CI
+- Playwright suite runs against the production binary (binary mode: no Vite, no proxy)
+- Verify-route bug fixed en route: idle mutation state rendered a blank frame;
+  component test added (first .tsx test in the repo)
+- Environment parameterized (E2E_EMAIL, E2E_BASE_URL, E2E_MAILPIT_URL);
+  fixed sleeps and Tailwind-class selectors removed (accessible labels instead)
+- e2e-ci.yml: Redis + Mailpit services, fresh e2e.db, report artifact on failure
+- MY_MAGIC_LINK_RATE raised for the test env (suite needs 7 links vs default 6)
+
 ## Remaining Work
 
 - Phase 6: Offline/sync backend (client-side queue done, backend absent)
-- Phase 9: E2E tests in CI (Playwright webServer)
 
 ## Known Issues
 

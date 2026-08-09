@@ -84,13 +84,29 @@ Inside `apps/web/`:
 
 ### E2E runtime requirements
 
-The Playwright specs drive the real magic-link flow (Mailpit at
-`localhost:8025`). Each `beforeEach` requests a link and `retries: 1`
-doubles the count, so run the API with a raised limit:
+The Playwright specs drive the real magic-link flow and run against the
+**production binary** in binary mode: the suite's `webServer` starts
+`bin/my` (build it with `mise run build`) and tests the SPA it serves at
+`http://localhost:8080`.
 
 ```bash
-MY_MAGIC_LINK_RATE=100 mise run dev:api
+mise run build
+MY_USER_EMAIL=you@example.com MY_WEB_URL=http://localhost:8080 \
+  MY_MAGIC_LINK_RATE=100 pnpm --filter @my/web e2e
 ```
 
-Without this, the default limit (6 per 15 min per IP) trips a 429
-mid-suite and flakes the run.
+Environment variables (defaults in parentheses):
+
+- `E2E_EMAIL` (`jjspscl@gmail.com`) — login email; **must equal
+  `MY_USER_EMAIL`** or the backend silently no-ops and the suite times out
+- `E2E_BASE_URL` (`http://localhost:5173`) — origin the suite targets;
+  CI uses `http://localhost:8080`
+- `E2E_MAILPIT_URL` (`http://localhost:8025/api/v1`) — Mailpit HTTP API
+- `MY_MAGIC_LINK_RATE=100` — required: the suite issues 7 magic-link
+  requests; the production default (6 per 15 min per IP) trips a 429
+  mid-run
+
+The CI workflow (`.github/workflows/e2e-ci.yml`) starts Redis and
+Mailpit as service containers, builds the binary, and uploads the
+Playwright report on failure. It is advisory until it proves stable,
+then promoted to a required check.

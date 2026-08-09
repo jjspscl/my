@@ -2,6 +2,10 @@ import { get, set, del, keys, createStore } from 'idb-keyval'
 import { z } from 'zod'
 
 const mutationQueueStore = createStore('my-sync', 'mutations')
+// Raw entries that no longer parse (corruption, foreign writes). Kept instead
+// of deleted: the queue holds unsent user data, and silent deletion is data
+// loss. The UI surfaces these with a discard action.
+const corruptStore = createStore('my-sync', 'corrupt')
 
 const SCHEMA_VERSION = 1
 
@@ -14,11 +18,22 @@ export const QueuedMutationSchema = z.object({
   createdAt: z.string(),
   retries: z.number(),
   maxRetries: z.number(),
+  // 'failed' = dead letter: permanently rejected by the server (4xx) or
+  // retry-exhausted. Kept for the user to retry or discard, never deleted.
+  state: z.enum(['pending', 'failed']).default('pending'),
+  failedReason: z.string().nullable().default(null),
+  failedAt: z.string().nullable().default(null),
 })
 
 export type QueuedMutation = z.infer<typeof QueuedMutationSchema>
 
-export async function enqueue(mutation: Omit<QueuedMutation, 'id' | 'schemaVersion' | 'createdAt' | 'retries' | 'maxRetries'>): Promise<string> {
+export type FailedMutation = QueuedMutation & {
+  state: 'failed'
+  failedReason: string
+  failedAt: string
+}
+
+export async function enqueue(mutation: Omit<QueuedMutation, 'id' | 'schemaVersion' | 'createdAt' | 'retries' | 'maxRetries' | 'state' | 'failedReason' | 'failedAt'>): Promise<string> {
   const id = crypto.randomUUID()
   const entry: QueuedMutation = {
     ...mutation,
@@ -27,6 +42,9 @@ export async function enqueue(mutation: Omit<QueuedMutation, 'id' | 'schemaVersi
     createdAt: new Date().toISOString(),
     retries: 0,
     maxRetries: 5,
+    state: 'pending',
+    failedReason: null,
+    failedAt: null,
   }
   await set(id, entry, mutationQueueStore)
   return id
@@ -36,21 +54,77 @@ export async function dequeue(id: string): Promise<void> {
   await del(id, mutationQueueStore)
 }
 
-export async function getAll(): Promise<QueuedMutation[]> {
-  const allKeys = await keys(mutationQueueStore)
+export async function markFailed(id: string, reason: string): Promise<void> {
+  const raw = await get(id, mutationQueueStore)
+  if (raw == null) return
+  const parsed = QueuedMutationSchema.safeParse(raw)
+  if (!parsed.success) return
+  await set(
+    id,
+    {
+      ...parsed.data,
+      state: 'failed',
+      failedReason: reason,
+      failedAt: new Date().toISOString(),
+    },
+    mutationQueueStore,
+  )
+}
+
+export async function markPending(id: string): Promise<void> {
+  const raw = await get(id, mutationQueueStore)
+  if (raw == null) return
+  const parsed = QueuedMutationSchema.safeParse(raw)
+  if (!parsed.success) return
+  await set(
+    id,
+    { ...parsed.data, state: 'pending', retries: 0, failedReason: null, failedAt: null },
+    mutationQueueStore,
+  )
+}
+
+async function readEntries(store: typeof mutationQueueStore, corrupt: typeof corruptStore): Promise<{ entries: QueuedMutation[]; corrupt: unknown[] }> {
+  const allKeys = await keys(store)
   const entries: QueuedMutation[] = []
+  const corruptRaw: unknown[] = []
   for (const key of allKeys) {
-    const raw = await get(key, mutationQueueStore)
+    const raw = await get(key, store)
     const parsed = QueuedMutationSchema.safeParse(raw)
     if (parsed.success) {
       entries.push(parsed.data)
     } else {
-      // Invalid schema version or corrupted — discard
-      await del(key, mutationQueueStore)
+      // Never delete unparseable entries — park them in the corrupt store.
+      await set(key, raw, corrupt)
+      await del(key, store)
+      corruptRaw.push(raw)
     }
   }
   // Sort FIFO
-  return entries.sort((a, b) => a.createdAt.localeCompare(b.createdAt))
+  entries.sort((a, b) => a.createdAt.localeCompare(b.createdAt))
+  return { entries, corrupt: corruptRaw }
+}
+
+/** Pending (replayable) mutations, FIFO. */
+export async function getAll(): Promise<QueuedMutation[]> {
+  const { entries } = await readEntries(mutationQueueStore, corruptStore)
+  return entries.filter((e) => e.state === 'pending')
+}
+
+/** Dead-letter mutations: failed permanently, awaiting user decision. */
+export async function getAllFailed(): Promise<FailedMutation[]> {
+  const { entries } = await readEntries(mutationQueueStore, corruptStore)
+  return entries.filter((e): e is FailedMutation => e.state === 'failed' && e.failedReason != null && e.failedAt != null)
+}
+
+/** Unparseable entries parked instead of deleted. */
+export async function getCorruptCount(): Promise<number> {
+  return (await keys(corruptStore)).length
+}
+
+export async function discardCorrupt(): Promise<void> {
+  for (const key of await keys(corruptStore)) {
+    await del(key, corruptStore)
+  }
 }
 
 export async function incrementRetry(id: string): Promise<QueuedMutation | null> {
@@ -58,14 +132,11 @@ export async function incrementRetry(id: string): Promise<QueuedMutation | null>
   const parsed = QueuedMutationSchema.safeParse(raw)
   if (!parsed.success) return null
   const updated = { ...parsed.data, retries: parsed.data.retries + 1 }
-  if (updated.retries >= updated.maxRetries) {
-    await del(id, mutationQueueStore)
-    return null
-  }
+  // Exhaustion is the caller's decision (markFailed) — never delete here.
   await set(id, updated, mutationQueueStore)
   return updated
 }
 
 export async function queueSize(): Promise<number> {
-  return (await keys(mutationQueueStore)).length
+  return (await getAll()).length
 }

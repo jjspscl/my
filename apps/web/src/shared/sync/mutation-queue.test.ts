@@ -112,6 +112,8 @@ describe('mutation-queue', () => {
     const { get, set } = await import('idb-keyval')
     const store = (await import('idb-keyval')).createStore('my-sync', 'mutations')
     const raw = await get(id, store)
+    // Strip the dead-letter fields to simulate a pre-existing entry.
+    // eslint-disable-next-line @typescript-eslint/no-unused-vars
     const { state, failedReason, failedAt, ...legacy } = raw as QueuedMutation
     await set(id, legacy, store)
 

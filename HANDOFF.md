@@ -1,6 +1,6 @@
 # HANDOFF — agent-native finance: analytics, semantic MCP, finance skills
 
-Status: **in progress**. Branch `v1.2.0`; Phase 3 (derived analytics) backend complete across `730aed6` (anomalies), `e1724e2` (recurring + bill reconciliation), `093c80b` (emergency fund + affordability + digest + docs). Phase 4 (MCP surface) complete across `e19c756` (server split), `f4afc28` (pay-bill fix + `create_transaction`), `ad9c5c3` (12 analytics tools + prompts), `462de02` (classify tool + docs). Remaining: Phase 5 (skills, agent profile, dashboard, docs).
+Status: **complete**. Branch `v1.2.0`; Phase 3 (derived analytics) backend complete across `730aed6` (anomalies), `e1724e2` (recurring + bill reconciliation), `093c80b` (emergency fund + affordability + digest + docs). Phase 4 (MCP surface) complete across `e19c756` (server split), `f4afc28` (pay-bill fix + `create_transaction`), `ad9c5c3` (12 analytics tools + prompts), `462de02` (classify tool + docs). Phase 5 (skills, agent profile, dashboard, docs) complete across `b818e6c` (skills), `c359c28` (agent profile), `aaaf7df` (docs), `6f269af` (analytics data layer), `fced594` (finance layout + child routes), `bac6883` (analytics overview).
 
 Goal: turn the finance bounded context into a trustworthy analytics layer, expose it as a small semantic MCP surface, and layer end-user finance agent skills on top — without becoming a bank.
 

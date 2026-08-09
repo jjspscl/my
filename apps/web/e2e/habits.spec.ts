@@ -64,13 +64,12 @@ test.describe('Habits', () => {
     await page.getByRole('button', { name: 'Create Habit' }).click()
     await expect(page.getByText(name)).toBeVisible()
 
-    // Toggle it — find the check button in the habit card
-    // Note: getByText finds the <p> inside the name div. Go up 2 levels to reach the card container.
-    const habitCard = page.getByText(name).locator('..').locator('..')
-    const toggleButton = habitCard.locator('button[class*="h-8 w-8"]')
+    // Toggle it — the card's toggle button carries a stable accessible name.
+    const toggleButton = page.getByRole('button', { name: `Toggle ${name}` })
     await toggleButton.click()
 
-    // Button should show filled (completed) state after toggle
-    await expect(toggleButton).toHaveClass(/bg-foreground/)
+    // Button should report the completed state (optimistic update flips
+    // aria-pressed immediately).
+    await expect(toggleButton).toHaveAttribute('aria-pressed', 'true')
   })
 })

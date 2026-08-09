@@ -40,6 +40,8 @@ export function HabitCard({ habit }: HabitCardProps) {
       <Button
         variant={habit.completedToday ? 'default' : 'outline'}
         size="icon"
+        aria-label={`Toggle ${habit.name}`}
+        aria-pressed={habit.completedToday}
         className={cn(
           'h-8 w-8 shrink-0',
           habit.completedToday && 'bg-foreground text-background hover:bg-foreground/90',

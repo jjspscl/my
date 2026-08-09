@@ -82,8 +82,8 @@ test.describe('Finance', () => {
     await page.getByLabel('Opening Balance').fill('50000')
     await page.getByRole('button', { name: 'Create Wallet' }).click()
     await expect(page.getByText(walletName)).toBeVisible()
-    // Ensure dialog is fully closed before interacting with tabs
-    await page.waitForTimeout(500)
+    // Wait for the dialog to fully detach before interacting with the tabs.
+    await expect(page.getByRole('dialog')).toHaveCount(0)
 
     // Switch to Goals tab
     await page.getByRole('tab', { name: 'Goals' }).click()

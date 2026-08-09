@@ -21,6 +21,7 @@ type routerDeps struct {
 	log                     *slog.Logger
 	sessions                session.Store
 	authHandler             *accesshttp.AuthHandler
+	magicLinkRate           int
 	financeHandler          *financehttp.FinanceHandler
 	budgetHandler           *financehttp.BudgetHandler
 	billHandler             *financehttp.BillHandler
@@ -51,7 +52,7 @@ func newRouter(deps routerDeps) chi.Router {
 
 		// Mount auth once. Public routes and protected logout share this subrouter.
 		r.Route("/auth", func(r chi.Router) {
-			deps.authHandler.PublicRoutes(r)
+			deps.authHandler.PublicRoutes(r, deps.magicLinkRate)
 			r.Group(func(r chi.Router) {
 				r.Use(middleware.RequireAuth(deps.sessions))
 				r.Use(middleware.CSRFProtect())

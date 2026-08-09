@@ -36,6 +36,7 @@ func testRouter(t *testing.T) http.Handler {
 		log:             slog.Default(),
 		sessions:        routerTestSessions{},
 		authHandler:     authHandler,
+		magicLinkRate:   6,
 		financeHandler:  financehttp.NewFinanceHandler(nil, ""),
 		budgetHandler:   financehttp.NewBudgetHandler(nil),
 		billHandler:     financehttp.NewBillHandler(nil),

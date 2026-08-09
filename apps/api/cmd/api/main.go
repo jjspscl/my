@@ -77,6 +77,7 @@ func main() {
 		log:                     log,
 		sessions:                app.Sessions,
 		authHandler:             authHandler,
+		magicLinkRate:           cfg.MagicLinkRate,
 		financeHandler:          financeHandler,
 		budgetHandler:           budgetHandler,
 		billHandler:             billHandler,

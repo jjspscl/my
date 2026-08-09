@@ -474,7 +474,7 @@ func TestGetMonthlyDigestOmitsSpendingOnInsufficientClassification(t *testing.T)
 		unclassified: []domain.UnclassifiedSpending{
 			{Currency: "PHP", TotalCents: 40000, UnclassifiedCents: 20000}, // 50% unclassified
 		},
-		topUnclassified: []domain.CategorySpend{{Category: "Misc", AmountCents: 20000}},
+		topUnclassified:  []domain.CategorySpend{{Category: "Misc", AmountCents: 20000}},
 		essentialMonthly: essentialSeries(30000),
 	}
 	wallet := &mockWalletRepo{balances: []*domain.WalletBalance{

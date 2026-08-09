@@ -4,6 +4,7 @@ import type { PaletteToken } from '@/shared/theme/palette'
 import { Button } from '@/components/ui/button'
 import type { Habit } from '../schemas/habit.schemas'
 import { useToggleHabit } from '../hooks/use-habits'
+import { todayLocal } from '../api/habits.api'
 
 interface HabitCardProps {
   habit: Habit
@@ -13,7 +14,13 @@ export function HabitCard({ habit }: HabitCardProps) {
   const toggle = useToggleHabit()
 
   const handleToggle = () => {
-    toggle.mutate({ habitId: habit.id })
+    // Explicit set-state + frozen date: offline the call is queued, and the
+    // replay must complete the intended day idempotently.
+    toggle.mutate({
+      habitId: habit.id,
+      date: todayLocal(),
+      completed: !habit.completedToday,
+    })
   }
 
   const color = habit.color as PaletteToken

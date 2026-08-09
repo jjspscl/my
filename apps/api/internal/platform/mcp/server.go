@@ -33,6 +33,7 @@ func NewServer(app *bootstrap.App, opts Options) *mcpsdk.Server {
 	})
 
 	registerFinanceReadTools(server, app)
+	registerAnalyticsReadTools(server, app)
 	registerHabitsReadTools(server, app)
 	if !opts.ReadOnly {
 		registerFinanceWriteTools(server, app)

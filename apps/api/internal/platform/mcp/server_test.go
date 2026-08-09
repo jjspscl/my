@@ -13,9 +13,13 @@ import (
 )
 
 var expectedReadTools = []string{
-	"finance_list_transactions", "finance_today_total", "finance_budget_summary",
-	"finance_list_bills", "finance_upcoming_bills", "finance_list_goals",
-	"finance_list_wallets", "finance_list_transfers", "habits_list", "habits_completions",
+	"finance_affordability", "finance_anomalies", "finance_bill_reconciliation",
+	"finance_budget_health", "finance_budget_summary", "finance_cash_flow_summary",
+	"finance_category_trend", "finance_emergency_fund", "finance_goal_health",
+	"finance_list_bills", "finance_list_goals", "finance_list_transactions",
+	"finance_list_transfers", "finance_list_wallets", "finance_monthly_digest",
+	"finance_recurring_charges", "finance_savings_rate", "finance_spending_summary",
+	"finance_today_total", "finance_upcoming_bills", "habits_completions", "habits_list",
 }
 
 var expectedWriteTools = []string{

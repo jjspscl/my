@@ -23,6 +23,7 @@ import (
 	"github.com/jjspscl/my/internal/platform/timeutil"
 	platformversion "github.com/jjspscl/my/internal/platform/version"
 	"github.com/jjspscl/my/internal/shared/middleware"
+	"github.com/jjspscl/my/internal/shared/response"
 	mcpsdk "github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -35,6 +36,9 @@ func main() {
 	}
 
 	log := plogger.New()
+	// Route WriteError through the same JSON logger so error lines stay
+	// structured and correlated with request IDs.
+	response.SetLogger(log)
 
 	cfg, err := config.Load()
 	if err != nil {

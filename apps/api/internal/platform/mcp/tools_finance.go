@@ -77,9 +77,11 @@ type updateBillInput struct {
 }
 
 type payBillInput struct {
-	BillID        string    `json:"bill_id"`
-	DueDate       time.Time `json:"due_date"`
-	TransactionID *string   `json:"transaction_id,omitempty"`
+	BillID            string    `json:"bill_id"`
+	DueDate           time.Time `json:"due_date"`
+	TransactionID     *string   `json:"transaction_id,omitempty"`
+	CreateTransaction bool      `json:"create_transaction,omitempty"`
+	WalletID          string    `json:"wallet_id,omitempty"`
 }
 
 type createGoalInput struct {
@@ -181,8 +183,8 @@ func registerFinanceWriteTools(server *mcpsdk.Server, app *bootstrap.App) {
 	registerTool(server, app.Log, &mcpsdk.Tool{Name: "finance_delete_bill", Description: "Permanently delete a recurring bill. This action is irreversible.", Annotations: destructive()}, func(ctx context.Context, in idInput) (any, error) {
 		return nil, app.Bill.Delete(ctx, in.ID, app.Cfg.UserEmail)
 	})
-	registerTool(server, app.Log, &mcpsdk.Tool{Name: "finance_pay_bill", Description: "Mark a bill occurrence paid. Writes a payment record; rerunning for the same due date is safe.", Annotations: writable}, func(ctx context.Context, in payBillInput) (any, error) {
-		return app.Bill.MarkPaid(ctx, in.BillID, app.Cfg.UserEmail, in.DueDate, in.TransactionID)
+	registerTool(server, app.Log, &mcpsdk.Tool{Name: "finance_pay_bill", Description: "Mark a bill occurrence as paid. Writes a payment record; rerunning for the same due date is safe. Set create_transaction to also book the expense transaction (atomically) and link it; wallet_id selects the wallet, defaulting to the user's default wallet.", Annotations: writable}, func(ctx context.Context, in payBillInput) (any, error) {
+		return app.Bill.MarkPaid(ctx, app.Cfg.UserEmail, financeapp.MarkPaidInput{BillID: in.BillID, DueDate: in.DueDate, TransactionID: in.TransactionID, CreateTransaction: in.CreateTransaction, WalletID: in.WalletID})
 	})
 	registerTool(server, app.Log, &mcpsdk.Tool{Name: "finance_create_goal", Description: "Create a savings goal.", Annotations: writable}, func(ctx context.Context, in createGoalInput) (any, error) {
 		return app.Goal.Create(ctx, app.Cfg.UserEmail, financeapp.CreateGoalInput{Name: in.Name, TargetAmountCents: in.TargetAmountCents, TargetDate: in.TargetDate, TargetWalletID: in.TargetWalletID})

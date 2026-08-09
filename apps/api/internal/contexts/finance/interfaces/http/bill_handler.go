@@ -301,7 +301,7 @@ func (h *BillHandler) MarkPaid(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	payment, err := h.svc.MarkPaid(r.Context(), id, email, dueDate, req.TransactionID)
+	payment, err := h.svc.MarkPaid(r.Context(), email, application.MarkPaidInput{BillID: id, DueDate: dueDate, TransactionID: req.TransactionID})
 	if err != nil {
 		response.WriteError(w, r, http.StatusBadRequest, err.Error(), err)
 		return

@@ -13,9 +13,12 @@ import (
 )
 
 type BillService struct {
-	billRepo domain.BillRepository
-	currency string
-	clock    *timeutil.Clock
+	billRepo    domain.BillRepository
+	txRepo      domain.TransactionRepository
+	walletRepo  domain.WalletRepository
+	coordinator TxCoordinator
+	currency    string
+	clock       *timeutil.Clock
 }
 
 func NewBillService(billRepo domain.BillRepository) *BillService {
@@ -34,6 +37,20 @@ func (s *BillService) WithCurrency(c string) *BillService {
 // WithClock pins the calendar used for due-date computation.
 func (s *BillService) WithClock(c *timeutil.Clock) *BillService {
 	s.clock = c
+	return s
+}
+
+// WithTransactionSupport wires the repositories needed to create an expense
+// transaction when a bill is marked paid with CreateTransaction.
+func (s *BillService) WithTransactionSupport(txRepo domain.TransactionRepository, walletRepo domain.WalletRepository) *BillService {
+	s.txRepo = txRepo
+	s.walletRepo = walletRepo
+	return s
+}
+
+// WithCoordinator makes the payment + created transaction writes atomic.
+func (s *BillService) WithCoordinator(c TxCoordinator) *BillService {
+	s.coordinator = c
 	return s
 }
 
@@ -239,8 +256,23 @@ func (s *BillService) GetUpcoming(ctx context.Context, userEmail string, daysAhe
 	return results, nil
 }
 
-func (s *BillService) MarkPaid(ctx context.Context, billID, userEmail string, dueDate time.Time, transactionID *string) (*domain.BillPayment, error) {
-	bill, err := s.billRepo.FindBillByID(ctx, billID)
+// MarkPaidInput describes a bill occurrence to mark as paid.
+type MarkPaidInput struct {
+	BillID  string
+	DueDate time.Time
+	// TransactionID links the payment to an existing transaction. When nil and
+	// CreateTransaction is true, a new expense transaction is created instead.
+	TransactionID *string
+	// CreateTransaction books an expense transaction for the bill amount and
+	// links the payment to it. Ignored when TransactionID is provided.
+	CreateTransaction bool
+	// WalletID optionally targets the wallet for the created transaction;
+	// empty uses the user's default wallet.
+	WalletID string
+}
+
+func (s *BillService) MarkPaid(ctx context.Context, userEmail string, input MarkPaidInput) (*domain.BillPayment, error) {
+	bill, err := s.billRepo.FindBillByID(ctx, input.BillID)
 	if err != nil {
 		return nil, fmt.Errorf("find bill: %w", err)
 	}
@@ -248,9 +280,17 @@ func (s *BillService) MarkPaid(ctx context.Context, billID, userEmail string, du
 		return nil, fmt.Errorf("bill not found")
 	}
 
+	// An explicit transaction ID wins over creating a new one.
+	if input.CreateTransaction && input.TransactionID == nil {
+		return s.markPaidWithTransaction(ctx, userEmail, bill, input)
+	}
+	return s.markPaid(ctx, userEmail, bill, input.DueDate, input.TransactionID)
+}
+
+func (s *BillService) markPaid(ctx context.Context, userEmail string, bill *domain.RecurringBill, dueDate time.Time, transactionID *string) (*domain.BillPayment, error) {
 	dueStr := dueDate.Format("2006-01-02")
 
-	existing, err := s.billRepo.FindPayment(ctx, billID, dueStr)
+	existing, err := s.billRepo.FindPayment(ctx, bill.ID, dueStr)
 	if err != nil && err.Error() != "payment not found" {
 		return nil, fmt.Errorf("find payment: %w", err)
 	}
@@ -259,7 +299,7 @@ func (s *BillService) MarkPaid(ctx context.Context, billID, userEmail string, du
 
 	payment := existing
 	if payment == nil {
-		payment, err = domain.NewBillPayment(uuid.New().String(), billID, dueDate, bill.AmountCents)
+		payment, err = domain.NewBillPayment(uuid.New().String(), bill.ID, dueDate, bill.AmountCents)
 		if err != nil {
 			return nil, err
 		}
@@ -267,13 +307,90 @@ func (s *BillService) MarkPaid(ctx context.Context, billID, userEmail string, du
 
 	payment.Status = domain.OccurrencePaid
 	payment.PaidDate = &now
-	payment.TransactionID = transactionID
+	// Only overwrite the linked transaction when the caller supplies one;
+	// marking paid without a transaction ID must not null an existing link.
+	if transactionID != nil {
+		payment.TransactionID = transactionID
+	}
 
 	if err := s.billRepo.SavePayment(ctx, payment); err != nil {
 		return nil, fmt.Errorf("save payment: %w", err)
 	}
 
 	return payment, nil
+}
+
+// markPaidWithTransaction books the expense transaction and the payment in one
+// database transaction. When no coordinator is wired (unit tests), the writes
+// still happen but without the transaction wrapper.
+func (s *BillService) markPaidWithTransaction(ctx context.Context, userEmail string, bill *domain.RecurringBill, input MarkPaidInput) (*domain.BillPayment, error) {
+	var payment *domain.BillPayment
+	run := func(txCtx context.Context) error {
+		tx, err := s.createTransaction(txCtx, userEmail, bill, input.DueDate, input.WalletID)
+		if err != nil {
+			return err
+		}
+		p, err := s.markPaid(txCtx, userEmail, bill, input.DueDate, &tx.ID)
+		if err != nil {
+			return err
+		}
+		payment = p
+		return nil
+	}
+
+	var err error
+	if s.coordinator != nil {
+		err = s.coordinator.WithTx(ctx, run)
+	} else {
+		err = run(ctx)
+	}
+	if err != nil {
+		return nil, err
+	}
+	return payment, nil
+}
+
+// createTransaction books an expense transaction for a bill occurrence. The
+// wallet is the currency authority: the transaction is denominated in the
+// wallet's currency, never in a global default.
+func (s *BillService) createTransaction(ctx context.Context, userEmail string, bill *domain.RecurringBill, dueDate time.Time, walletID string) (*domain.Transaction, error) {
+	if s.txRepo == nil || s.walletRepo == nil {
+		return nil, fmt.Errorf("transaction support not wired")
+	}
+
+	var wallet *domain.Wallet
+	var err error
+	if walletID == "" {
+		wallet, err = s.walletRepo.FindDefault(ctx, userEmail)
+		if err != nil {
+			return nil, fmt.Errorf("no wallet specified and no default wallet found: %w", err)
+		}
+	} else {
+		wallet, err = ensureUsableWallet(ctx, s.walletRepo, userEmail, walletID)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	tx, err := domain.NewTransaction(
+		uuid.New().String(),
+		userEmail,
+		wallet.Currency,
+		bill.Category,
+		fmt.Sprintf("Bill payment: %s", bill.Name),
+		bill.AmountCents,
+		domain.TransactionExpense,
+		dueDate,
+	)
+	if err != nil {
+		return nil, err
+	}
+	tx.WalletID = wallet.ID
+
+	if err := s.txRepo.Save(ctx, tx); err != nil {
+		return nil, fmt.Errorf("save transaction: %w", err)
+	}
+	return tx, nil
 }
 
 // TryAutoMatch checks if a transaction matches any bill's auto-match criteria.

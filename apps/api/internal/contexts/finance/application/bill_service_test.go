@@ -190,7 +190,7 @@ func TestMarkPaid(t *testing.T) {
 	})
 
 	dueDate := time.Date(2026, 5, 1, 0, 0, 0, 0, time.UTC)
-	payment, err := svc.MarkPaid(context.Background(), bill.ID, "user@test.com", dueDate, nil)
+	payment, err := svc.MarkPaid(context.Background(), "user@test.com", MarkPaidInput{BillID: bill.ID, DueDate: dueDate})
 	require.NoError(t, err)
 	assert.Equal(t, domain.OccurrencePaid, payment.Status)
 	assert.NotNil(t, payment.PaidDate)
@@ -204,8 +204,114 @@ func TestMarkPaid_WrongUser(t *testing.T) {
 		Name: "Rent", Category: "Housing", AmountCents: 1500000, Frequency: domain.FrequencyMonthly, DayOfMonth: 1, StartDate: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC),
 	})
 
-	_, err := svc.MarkPaid(context.Background(), bill.ID, "other@test.com", time.Date(2026, 5, 1, 0, 0, 0, 0, time.UTC), nil)
+	_, err := svc.MarkPaid(context.Background(), "other@test.com", MarkPaidInput{BillID: bill.ID, DueDate: time.Date(2026, 5, 1, 0, 0, 0, 0, time.UTC)})
 	assert.Error(t, err)
+}
+
+// TestMarkPaid_PreservesTransactionLink guards the regression where marking a
+// bill paid without a transaction ID nulled an existing transaction link.
+func TestMarkPaid_PreservesTransactionLink(t *testing.T) {
+	repo := newMockBillRepo()
+	svc := NewBillService(repo)
+
+	bill, _ := svc.Create(context.Background(), "user@test.com", CreateBillInput{
+		Name: "Rent", Category: "Housing", AmountCents: 1500000, Frequency: domain.FrequencyMonthly, DayOfMonth: 1, StartDate: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC),
+	})
+
+	dueDate := time.Date(2026, 5, 1, 0, 0, 0, 0, time.UTC)
+	txID := "tx-123"
+	first, err := svc.MarkPaid(context.Background(), "user@test.com", MarkPaidInput{BillID: bill.ID, DueDate: dueDate, TransactionID: &txID})
+	require.NoError(t, err)
+	require.NotNil(t, first.TransactionID)
+	assert.Equal(t, txID, *first.TransactionID)
+
+	// Re-marking without a transaction ID must keep the existing link.
+	second, err := svc.MarkPaid(context.Background(), "user@test.com", MarkPaidInput{BillID: bill.ID, DueDate: dueDate})
+	require.NoError(t, err)
+	require.NotNil(t, second.TransactionID)
+	assert.Equal(t, txID, *second.TransactionID)
+}
+
+// TestMarkPaid_CreateTransaction verifies the payment and its backing expense
+// transaction are both written, and the payment links the new transaction.
+func TestMarkPaid_CreateTransaction(t *testing.T) {
+	repo := newMockBillRepo()
+	txRepo := &mockTransactionRepo{}
+	walletRepo := &mockWalletRepo{wallets: []*domain.Wallet{{
+		ID: "wallet-1", UserEmail: "user@test.com", Name: "Cash", Currency: "PHP", IsDefault: true,
+	}}}
+	svc := NewBillService(repo).WithTransactionSupport(txRepo, walletRepo)
+
+	bill, _ := svc.Create(context.Background(), "user@test.com", CreateBillInput{
+		Name: "Rent", Category: "Housing", AmountCents: 1500000, Frequency: domain.FrequencyMonthly, DayOfMonth: 1, StartDate: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC),
+	})
+
+	dueDate := time.Date(2026, 5, 1, 0, 0, 0, 0, time.UTC)
+	payment, err := svc.MarkPaid(context.Background(), "user@test.com", MarkPaidInput{BillID: bill.ID, DueDate: dueDate, CreateTransaction: true})
+	require.NoError(t, err)
+
+	require.Len(t, txRepo.transactions, 1)
+	tx := txRepo.transactions[0]
+	assert.Equal(t, bill.AmountCents, tx.AmountCents)
+	assert.Equal(t, bill.Category, tx.Category)
+	assert.Equal(t, domain.TransactionExpense, tx.Type)
+	assert.Equal(t, "PHP", tx.Currency)
+	assert.Equal(t, "wallet-1", tx.WalletID)
+	assert.Equal(t, dueDate, tx.TransactionDate)
+
+	require.NotNil(t, payment.TransactionID)
+	assert.Equal(t, tx.ID, *payment.TransactionID)
+}
+
+// TestMarkPaid_CreateTransaction_ExplicitLinkWins verifies an explicit
+// transaction ID takes precedence over create_transaction.
+func TestMarkPaid_CreateTransaction_ExplicitLinkWins(t *testing.T) {
+	repo := newMockBillRepo()
+	txRepo := &mockTransactionRepo{}
+	walletRepo := &mockWalletRepo{wallets: []*domain.Wallet{{
+		ID: "wallet-1", UserEmail: "user@test.com", Name: "Cash", Currency: "PHP", IsDefault: true,
+	}}}
+	svc := NewBillService(repo).WithTransactionSupport(txRepo, walletRepo)
+
+	bill, _ := svc.Create(context.Background(), "user@test.com", CreateBillInput{
+		Name: "Rent", Category: "Housing", AmountCents: 1500000, Frequency: domain.FrequencyMonthly, DayOfMonth: 1, StartDate: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC),
+	})
+
+	dueDate := time.Date(2026, 5, 1, 0, 0, 0, 0, time.UTC)
+	txID := "existing-tx"
+	payment, err := svc.MarkPaid(context.Background(), "user@test.com", MarkPaidInput{BillID: bill.ID, DueDate: dueDate, TransactionID: &txID, CreateTransaction: true})
+	require.NoError(t, err)
+	assert.Empty(t, txRepo.transactions, "no transaction should be created when an explicit link is given")
+	require.NotNil(t, payment.TransactionID)
+	assert.Equal(t, txID, *payment.TransactionID)
+}
+
+// TestMarkPaid_CreateTransaction_CoordinatorError verifies a failing
+// coordinator aborts the whole operation and no payment is returned.
+func TestMarkPaid_CreateTransaction_CoordinatorError(t *testing.T) {
+	repo := newMockBillRepo()
+	txRepo := &mockTransactionRepo{}
+	walletRepo := &mockWalletRepo{wallets: []*domain.Wallet{{
+		ID: "wallet-1", UserEmail: "user@test.com", Name: "Cash", Currency: "PHP", IsDefault: true,
+	}}}
+	svc := NewBillService(repo).WithTransactionSupport(txRepo, walletRepo).WithCoordinator(failingCoordinator{})
+
+	bill, _ := svc.Create(context.Background(), "user@test.com", CreateBillInput{
+		Name: "Rent", Category: "Housing", AmountCents: 1500000, Frequency: domain.FrequencyMonthly, DayOfMonth: 1, StartDate: time.Date(2026, 1, 1, 0, 0, 0, 0, time.UTC),
+	})
+
+	dueDate := time.Date(2026, 5, 1, 0, 0, 0, 0, time.UTC)
+	payment, err := svc.MarkPaid(context.Background(), "user@test.com", MarkPaidInput{BillID: bill.ID, DueDate: dueDate, CreateTransaction: true})
+	assert.Error(t, err)
+	assert.Nil(t, payment)
+}
+
+// failingCoordinator simulates a database transaction that aborts before
+// committing: the inner function never runs, so no writes are applied.
+type failingCoordinator struct{}
+
+func (failingCoordinator) WithTx(_ context.Context, _ func(ctx context.Context) error) error {
+	return fmt.Errorf("begin tx: simulated failure")
 }
 
 func TestGetUpcoming(t *testing.T) {

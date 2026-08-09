@@ -97,7 +97,7 @@ Amounts use minor currency units, dates use RFC3339 unless tool says `YYYY-MM-DD
 | `finance_create_bill` | Create recurring bill |
 | `finance_update_bill` | Update recurring bill |
 | `finance_delete_bill` ⚠️ | Permanently delete bill |
-| `finance_pay_bill` ⚠️ | Write paid payment record |
+| `finance_pay_bill` | Write paid payment record; optionally book the expense transaction atomically via `create_transaction` |
 | `finance_create_goal` | Create savings goal |
 | `finance_update_goal` | Update savings goal |
 | `finance_delete_goal` ⚠️ | Permanently delete goal |

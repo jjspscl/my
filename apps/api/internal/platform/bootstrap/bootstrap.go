@@ -89,7 +89,7 @@ func NewWithOptions(cfg *config.Config, log *slog.Logger, opts Options) (*App, e
 	budgetSvc := financeapp.NewBudgetService(budgetRepo).WithCurrency(cfg.DefaultCurrency).WithClock(clock)
 
 	billRepo := financeinfra.NewBillRepoLibSQL(db)
-	billSvc := financeapp.NewBillService(billRepo).WithCurrency(cfg.DefaultCurrency).WithClock(clock)
+	billSvc := financeapp.NewBillService(billRepo).WithCurrency(cfg.DefaultCurrency).WithClock(clock).WithTransactionSupport(txRepo, walletRepo).WithCoordinator(coordinator)
 	txSvc.WithBillAutoMatcher(billSvc)
 
 	goalRepo := financeinfra.NewGoalRepoLibSQL(db)

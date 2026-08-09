@@ -28,10 +28,10 @@ func (h *recoverRecordHandler) WithGroup(string) slog.Handler      { return h }
 
 type discardHandler struct{}
 
-func (discardHandler) Enabled(context.Context, slog.Level) bool { return true }
+func (discardHandler) Enabled(context.Context, slog.Level) bool  { return true }
 func (discardHandler) Handle(context.Context, slog.Record) error { return nil }
-func (discardHandler) WithAttrs([]slog.Attr) slog.Handler       { return discardHandler{} }
-func (discardHandler) WithGroup(string) slog.Handler            { return discardHandler{} }
+func (discardHandler) WithAttrs([]slog.Attr) slog.Handler        { return discardHandler{} }
+func (discardHandler) WithGroup(string) slog.Handler             { return discardHandler{} }
 
 func TestRecover_Panic_Returns500AndLogsStack(t *testing.T) {
 	handler := &recoverRecordHandler{}

@@ -48,7 +48,7 @@ func TestWriteError_WithCause_LogsErrorLevelAndCause(t *testing.T) {
 
 	WriteError(w, req, http.StatusInternalServerError, "internal error", cause)
 
-assert.Equal(t, http.StatusInternalServerError, w.Code)
+	assert.Equal(t, http.StatusInternalServerError, w.Code)
 	assert.Equal(t, "application/json", w.Header().Get("Content-Type"))
 	assert.JSONEq(t, `{"error":"internal error"}`, w.Body.String())
 

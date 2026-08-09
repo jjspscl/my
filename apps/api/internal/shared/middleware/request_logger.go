@@ -33,9 +33,9 @@ func RequestLogger(log *slog.Logger) func(http.Handler) http.Handler {
 				slog.Int("status", sw.status),
 				slog.Duration("duration", time.Since(start)),
 				// chimw.RequestID stores the ID in the request context; the
-			// X-Request-Id header is only the client-supplied input and is
-			// empty on requests that did not send one.
-			slog.String("request_id", chimw.GetReqID(r.Context())),
+				// X-Request-Id header is only the client-supplied input and is
+				// empty on requests that did not send one.
+				slog.String("request_id", chimw.GetReqID(r.Context())),
 			)
 		})
 	}

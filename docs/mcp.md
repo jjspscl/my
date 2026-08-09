@@ -4,6 +4,8 @@
 
 Server surface is single-user. MCP handlers inject `MY_USER_EMAIL`; clients cannot select another user.
 
+End-user agent profile and skills for this server live in `agent/finance/` and `skills/`; see `docs/finance-agent.md`.
+
 ## Install latest `my-mcp`
 
 macOS/Linux, amd64/arm64:

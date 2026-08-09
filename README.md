@@ -84,6 +84,8 @@ my/
   apps/web/                         React/Vite frontend
   docs/                             Current-state architecture and workflow docs
   .opencode/                        Repo-local OpenCode skills
+  skills/                           End-user finance agent skills (runtime)
+  agent/                            Finance agent profile (SOUL + wiring)
   infrastructure/                   Infra placeholders
   deployments/                      Deployment placeholders
   packages/                         Shared package workspace (currently light use)
@@ -144,6 +146,7 @@ Current workflow:
 - `build` executes implementation work
 - `HANDOFF.md` is temporary task state, not durable project documentation
 - repo-local skills live in `.opencode/skills/`
+- end-user finance agent skills live in `skills/`; profile in `agent/finance/`
 
 ### MCP server for coding agents
 

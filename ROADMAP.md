@@ -163,6 +163,14 @@
 - mise seed task for deterministic dev data
 - CI: 3 GitHub Actions workflows (API, Web, Fullstack)
 
+### Phase — Finance Agent (Analytics + MCP + Skills)
+- Derived analytics: anomalies, recurring charges, bill reconciliation,
+  emergency fund, affordability, monthly digest (deterministic, per-currency)
+- MCP surface: 41 tools (22 read + 19 write), semantic prompts, classify tool
+- End-user skills in `skills/` (7 skills, standard Agent Skills conventions)
+- Finance agent profile in `agent/finance/` (SOUL + Hermes wiring)
+- Dashboard analytics overview consuming the same endpoints (no parallel math)
+
 ### Phase 6 (WIP) — Polish + Offline/Sync
 - Mobile bottom navigation bar
 - Route-level loading skeletons + error components

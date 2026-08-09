@@ -15,6 +15,10 @@ Project OpenCode config lives in:
 - `AGENTS.md` — project agent rules
 - `HANDOFF.md` — temporary task handoff state
 
+`skills/` at the repo root holds end-user finance agent skills (deployed
+runtime), not coding-agent skills. Coding skills stay in `.opencode/skills/`;
+the two are separate by design.
+
 ## Rules precedence
 
 Relevant OpenCode behavior:

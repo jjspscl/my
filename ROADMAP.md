@@ -39,8 +39,9 @@
 - [x] SQL migrations
 - [x] Repository pattern (manual SQL)
 - [x] Session cookies + CSRF double-submit
-- [ ] Request middleware (ID, panic recovery, CORS, rate limit)
-- [ ] Structured JSON logging
+- [x] Request middleware (ID, panic recovery, request logging)
+- [ ] Rate limiting (magic-link endpoint)
+- [x] Structured JSON logging (slog, JSON handler)
 - [ ] Domain events infrastructure
 
 ## Frontend Checklist
@@ -56,9 +57,9 @@
 - [x] Zod schema contracts (finance, habits, dashboard, auth)
 - [x] Query key factories per feature
 - [x] Route loaders with ensureQueryData
-- [ ] Zustand ephemeral UI stores
+- [x] Zustand ephemeral UI stores
 - [ ] Offline IndexedDB mutation queue
-- [ ] React Hook Form + zodResolver forms
+- [x] React Hook Form + zodResolver forms
 
 ## Backend Checklist
 
@@ -68,7 +69,7 @@
 - [x] Static frontend embed + SPA handler
 - [x] libSQL connection (embedded mode)
 - [x] Config from environment
-- [ ] Structured logger (slog)
+- [x] Structured logger (slog)
 - [x] Auth context (identity, access)
 - [x] Finance context (domain, application, infra, HTTP)
 - [x] Habits context (domain, application, infra, HTTP)
@@ -97,9 +98,9 @@
 - [x] MSW installed
 - [x] First unit test
 - [ ] First component test
-- [ ] First e2e test
+- [x] First e2e test (3 specs, local-only — no CI webServer yet)
 - [x] Go table-driven tests
-- [ ] Go httptest handler tests
+- [x] Go httptest handler tests
 
 ## Completed Work
 
@@ -182,10 +183,10 @@
 
 ## Remaining Work
 
-- Phase 6: Offline/sync infrastructure (in progress)
-- Phase 7: Additional middleware (structured logging, panic recovery, rate limit)
+- Phase 6: Offline/sync infrastructure (client-side queue done, backend sync absent)
+- Phase 7: Observability correctness (request-ID logging fix, slog error routing, rate limit)
 - Phase 8: Docker production image
-- Phase 9: E2E tests (Playwright)
+- Phase 9: E2E tests in CI (Playwright webServer)
 
 ## Known Issues
 

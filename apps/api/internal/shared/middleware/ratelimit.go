@@ -1,6 +1,7 @@
 package middleware
 
 import (
+	"net"
 	"net/http"
 	"strconv"
 	"sync"
@@ -59,10 +60,13 @@ func (l *slidingWindowLimiter) allow(key string) (ok bool, retryAfter time.Durat
 	return true, 0
 }
 
-// RateLimit limits requests per client IP within a sliding window. The key is
-// r.RemoteAddr; chi's RealIP middleware runs earlier in the chain, so this is
-// the real client IP rather than a proxy address. Responds 429 with
-// Retry-After when the limit is exceeded.
+// RateLimit limits requests per client IP within a sliding window. The key
+// is the IP of r.RemoteAddr, never the port: every TCP connection carries a
+// fresh ephemeral source port, so a host:port key would let each connection
+// bypass the limit entirely. chi's RealIP middleware runs earlier in the
+// chain, so behind a proxy RemoteAddr is already the bare client IP and
+// SplitHostPort falls through unchanged. Responds 429 with Retry-After when
+// the limit is exceeded.
 func RateLimit(max int, window time.Duration) func(http.Handler) http.Handler {
 	return RateLimitWithClock(max, window, time.Now)
 }
@@ -72,7 +76,7 @@ func RateLimitWithClock(max int, window time.Duration, now func() time.Time) fun
 	limiter := newSlidingWindowLimiter(max, window, now)
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			ok, retryAfter := limiter.allow(r.RemoteAddr)
+			ok, retryAfter := limiter.allow(ipKey(r.RemoteAddr))
 			if !ok {
 				w.Header().Set("Retry-After", strconv.Itoa(int(retryAfter.Seconds())))
 				response.WriteError(w, r, http.StatusTooManyRequests, "rate limit exceeded", nil)
@@ -81,4 +85,13 @@ func RateLimitWithClock(max int, window time.Duration, now func() time.Time) fun
 			next.ServeHTTP(w, r)
 		})
 	}
+}
+
+// ipKey strips the port from a host:port address. Bare IPs (as set by
+// chi's RealIP from X-Forwarded-For) pass through untouched.
+func ipKey(remoteAddr string) string {
+	if host, _, err := net.SplitHostPort(remoteAddr); err == nil {
+		return host
+	}
+	return remoteAddr
 }

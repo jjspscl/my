@@ -120,6 +120,41 @@ func TestRateLimit_KeysArePerIP(t *testing.T) {
 	assert.Equal(t, http.StatusTooManyRequests, w.Code)
 }
 
+func TestRateLimit_KeysByIPNotPort(t *testing.T) {
+	silenceResponseLogger(t)
+	now := time.Date(2026, 8, 9, 12, 0, 0, 0, time.UTC)
+	handler := RateLimitWithClock(1, time.Minute, func() time.Time { return now })(
+		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusOK)
+		}),
+	)
+
+	// Every TCP connection carries a fresh ephemeral source port. A host:port
+	// key would treat each connection as a new client and never trip the
+	// limit — the port must be stripped.
+	req1 := httptest.NewRequest(http.MethodPost, "/api/v1/auth/magic-link", nil)
+	req1.RemoteAddr = "203.0.113.10:40000"
+	req2 := httptest.NewRequest(http.MethodPost, "/api/v1/auth/magic-link", nil)
+	req2.RemoteAddr = "203.0.113.10:40001"
+
+	w := httptest.NewRecorder()
+	handler.ServeHTTP(w, req1)
+	assert.Equal(t, http.StatusOK, w.Code)
+
+	w = httptest.NewRecorder()
+	handler.ServeHTTP(w, req2)
+	assert.Equal(t, http.StatusTooManyRequests, w.Code, "second connection from same IP must be limited")
+}
+
+func TestRateLimit_BareIPKeyPassesThrough(t *testing.T) {
+	// chi RealIP rewrites RemoteAddr to a bare IP (no port) from
+	// X-Forwarded-For; the key must accept it unchanged.
+	key := ipKey("203.0.113.10")
+	assert.Equal(t, "203.0.113.10", key)
+	assert.Equal(t, "203.0.113.10", ipKey("203.0.113.10:443"))
+	assert.Equal(t, "2001:db8::1", ipKey("[2001:db8::1]:443"))
+}
+
 func TestRateLimit_RetryAfterReflectsOldestHit(t *testing.T) {
 	silenceResponseLogger(t)
 	now := time.Date(2026, 8, 9, 12, 0, 0, 0, time.UTC)

@@ -7,8 +7,6 @@
     "build": "mise run build",
     "test": "mise run test",
     "lint": "mise run lint",
-    "typecheck": "mise run typecheck",
-    "schema:check": "pnpm --filter @my/web schema:check",
-    "openapi:check": "pnpm --filter @my/web openapi:check"
+    "typecheck": "mise run typecheck"
   }
 }

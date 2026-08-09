@@ -10,9 +10,6 @@
     "lint": "eslint .",
     "typecheck": "tsc --noEmit",
     "test": "vitest",
-    "schema:check": "echo '✓ schema check placeholder'",
-    "openapi:check": "echo '✓ openapi check placeholder'",
-    "pwa:check": "echo '✓ pwa check placeholder'",
     "route:generate": "tsr generate",
     "e2e": "playwright test"
   },

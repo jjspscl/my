@@ -48,7 +48,7 @@ func registerHabitsWriteTools(server *mcpsdk.Server, app *bootstrap.App) {
 		return app.Habit.Create(ctx, app.Cfg.UserEmail, habitapp.CreateHabitInput{Name: in.Name, Color: in.Color, Frequency: in.Frequency, TargetPerWeek: in.TargetPerWeek})
 	})
 	registerTool(server, app.Log, &mcpsdk.Tool{Name: "habits_toggle", Description: "Toggle completion for a habit on a YYYY-MM-DD date; defaults to today.", Annotations: writable}, func(ctx context.Context, in toggleHabitInput) (any, error) {
-		return app.Habit.ToggleCompletion(ctx, in.ID, app.Cfg.UserEmail, in.Date)
+		return app.Habit.ToggleCompletion(ctx, in.ID, app.Cfg.UserEmail, in.Date, nil)
 	})
 	registerTool(server, app.Log, &mcpsdk.Tool{Name: "habits_archive", Description: "Archive a habit. This action is destructive.", Annotations: destructive()}, func(ctx context.Context, in idInput) (any, error) {
 		return nil, app.Habit.Archive(ctx, in.ID, app.Cfg.UserEmail)

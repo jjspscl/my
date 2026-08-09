@@ -178,7 +178,11 @@ func weeklyStreak(completed map[string]bool, asOf time.Time, target int) int {
 	return streak
 }
 
-func (s *HabitService) ToggleCompletion(ctx context.Context, habitID, userEmail, dateStr string) (bool, error) {
+// ToggleCompletion flips a habit's completion for a date, or — when
+// completed is non-nil — sets it explicitly. The explicit form is
+// idempotent, which makes it safe to replay from the offline mutation
+// queue; the flip form is kept for interactive use and MCP tools.
+func (s *HabitService) ToggleCompletion(ctx context.Context, habitID, userEmail, dateStr string, completed *bool) (bool, error) {
 	_, err := s.repo.FindByID(ctx, habitID, userEmail)
 	if err != nil {
 		return false, fmt.Errorf("habit not found")
@@ -193,8 +197,25 @@ func (s *HabitService) ToggleCompletion(ctx context.Context, habitID, userEmail,
 	}
 
 	existing, err := s.repo.GetCompletion(ctx, habitID, date)
-	if err == nil && existing != nil {
-		// Remove (uncomplete)
+	exists := err == nil && existing != nil
+
+	if completed != nil {
+		// Explicit set-state: no-op when the state already matches, so
+		// replays are idempotent.
+		if *completed == exists {
+			return exists, nil
+		}
+		if !*completed {
+			// Explicit OFF (and the entry exists — the equality check above
+			// would have returned otherwise).
+			if err := s.repo.DeleteCompletion(ctx, habitID, date); err != nil {
+				return false, fmt.Errorf("delete completion: %w", err)
+			}
+			return false, nil
+		}
+		// Explicit ON with no existing entry → fall through to create.
+	} else if exists {
+		// Legacy flip OFF.
 		if err := s.repo.DeleteCompletion(ctx, habitID, date); err != nil {
 			return false, fmt.Errorf("delete completion: %w", err)
 		}

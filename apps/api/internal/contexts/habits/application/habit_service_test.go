@@ -234,7 +234,7 @@ func TestToggleCompletion_NotCompleted_CreatesAndReturnsTrue(t *testing.T) {
 	})
 	require.NoError(t, err)
 
-	completed, err := svc.ToggleCompletion(ctx, h.ID, "user@test.com", todayStr)
+	completed, err := svc.ToggleCompletion(ctx, h.ID, "user@test.com", todayStr, nil)
 	assert.NoError(t, err)
 	assert.True(t, completed)
 	assert.Len(t, repo.completions, 1)
@@ -254,13 +254,13 @@ func TestToggleCompletion_AlreadyCompleted_DeletesAndReturnsFalse(t *testing.T) 
 	require.NoError(t, err)
 
 	// Toggle ON
-	completed1, err := svc.ToggleCompletion(ctx, h.ID, "user@test.com", todayStr)
+	completed1, err := svc.ToggleCompletion(ctx, h.ID, "user@test.com", todayStr, nil)
 	assert.NoError(t, err)
 	assert.True(t, completed1)
 	assert.Len(t, repo.completions, 1)
 
 	// Toggle OFF (same day)
-	completed2, err := svc.ToggleCompletion(ctx, h.ID, "user@test.com", todayStr)
+	completed2, err := svc.ToggleCompletion(ctx, h.ID, "user@test.com", todayStr, nil)
 	assert.NoError(t, err)
 	assert.False(t, completed2)
 	assert.Len(t, repo.completions, 0)
@@ -270,7 +270,7 @@ func TestToggleCompletion_NonexistentHabit_ReturnsError(t *testing.T) {
 	svc := newTestHabitService()
 	ctx := context.Background()
 
-	_, err := svc.ToggleCompletion(ctx, "nonexistent", "user@test.com", "")
+	_, err := svc.ToggleCompletion(ctx, "nonexistent", "user@test.com", "", nil)
 	assert.Error(t, err)
 }
 
@@ -318,7 +318,7 @@ func TestListWithStatus_ReturnsHabitsWithTodayFlag(t *testing.T) {
 	require.NoError(t, err)
 
 	// Toggle ON with explicit today date string
-	svc.ToggleCompletion(ctx, h.ID, "user@test.com", todayStr)
+	svc.ToggleCompletion(ctx, h.ID, "user@test.com", todayStr, nil)
 
 	results, err := svc.ListWithStatus(ctx, "user@test.com", now)
 	require.NoError(t, err)
@@ -358,7 +358,7 @@ func TestGetCompletions_ExistingHabit_ReturnsCompletions(t *testing.T) {
 		Frequency: "daily",
 	})
 
-	svc.ToggleCompletion(ctx, h.ID, "user@test.com", "")
+	svc.ToggleCompletion(ctx, h.ID, "user@test.com", "", nil)
 
 	from := now.AddDate(0, 0, -7)
 	to := now.AddDate(0, 0, 1)
@@ -383,8 +383,8 @@ func TestGetAllCompletionsGrouped_ReturnsMap(t *testing.T) {
 	h1, _ := svc.Create(ctx, "user@test.com", CreateHabitInput{Name: "Exercise", Color: "green", Frequency: "daily"})
 	h2, _ := svc.Create(ctx, "user@test.com", CreateHabitInput{Name: "Read", Color: "blue", Frequency: "daily"})
 
-	svc.ToggleCompletion(ctx, h1.ID, "user@test.com", "")
-	svc.ToggleCompletion(ctx, h2.ID, "user@test.com", "")
+	svc.ToggleCompletion(ctx, h1.ID, "user@test.com", "", nil)
+	svc.ToggleCompletion(ctx, h2.ID, "user@test.com", "", nil)
 
 	from := time.Now().AddDate(0, 0, -7)
 	to := time.Now().AddDate(0, 0, 1)
@@ -431,11 +431,42 @@ func TestListWithStatus_StreakCalculation(t *testing.T) {
 	})
 
 	// Complete today and yesterday with explicit date strings
-	svc.ToggleCompletion(ctx, h.ID, "user@test.com", todayStr)
-	svc.ToggleCompletion(ctx, h.ID, "user@test.com", yesterdayStr)
+	svc.ToggleCompletion(ctx, h.ID, "user@test.com", todayStr, nil)
+	svc.ToggleCompletion(ctx, h.ID, "user@test.com", yesterdayStr, nil)
 
 	results, err := svc.ListWithStatus(ctx, "user@test.com", now)
 	require.NoError(t, err)
 	assert.Len(t, results, 1)
 	assert.Equal(t, 2, results[0].CurrentStreak)
+}
+
+func TestToggleCompletion_ExplicitSetIsIdempotent(t *testing.T) {
+	repo := newMockHabitRepo()
+	svc := NewHabitService(repo)
+	ctx := context.Background()
+	todayStr := time.Now().UTC().Format("2006-01-02")
+
+	h, err := svc.Create(ctx, "user@test.com", CreateHabitInput{Name: "Exercise", Color: "green", Frequency: "daily"})
+	require.NoError(t, err)
+
+	on := true
+	off := false
+
+	// Explicit ON twice — second call must no-op (idempotent replay).
+	done1, err := svc.ToggleCompletion(ctx, h.ID, "user@test.com", todayStr, &on)
+	require.NoError(t, err)
+	assert.True(t, done1)
+	done2, err := svc.ToggleCompletion(ctx, h.ID, "user@test.com", todayStr, &on)
+	require.NoError(t, err)
+	assert.True(t, done2)
+	assert.Len(t, repo.completions, 1, "replay must not create a duplicate completion")
+
+	// Explicit OFF twice — second call must no-op.
+	done3, err := svc.ToggleCompletion(ctx, h.ID, "user@test.com", todayStr, &off)
+	require.NoError(t, err)
+	assert.False(t, done3)
+	done4, err := svc.ToggleCompletion(ctx, h.ID, "user@test.com", todayStr, &off)
+	require.NoError(t, err)
+	assert.False(t, done4)
+	assert.Len(t, repo.completions, 0)
 }

@@ -78,6 +78,108 @@ type BillReconciliation struct {
 	Assumptions []string
 }
 
+// Emergency-fund constants. The 3–6 month range is the consensus across CFPB,
+// FINRA, Fidelity, and the St. Louis Fed; reporting a range rather than a
+// single number avoids implying advice.
+const (
+	// EmergencyFundMinMonths is the low end of the default target range.
+	EmergencyFundMinMonths = 3
+	// EmergencyFundMaxMonths is the high end of the default target range.
+	EmergencyFundMaxMonths = 6
+	// EmergencyFundWindowMonths is the history used for the essential-spend
+	// median.
+	EmergencyFundWindowMonths = 12
+)
+
+// EmergencyFundStatus reports liquid balance against a target range of months
+// of essential spending. MonthsOfRunway is liquid / monthly essential spend.
+// ShortfallToMin/Max are the amounts needed to reach each end of the range.
+type EmergencyFundStatus struct {
+	Currency              string
+	LiquidBalanceCents    int64
+	MonthlyEssentialCents int64
+	MonthsOfRunway        float64
+	TargetRangeMonths     [2]int
+	ShortfallToMinCents   int64
+	ShortfallToMaxCents   int64
+	Assumptions           []string
+}
+
+// Affordability is a financial model for a prospective purchase, never a
+// yes/no. It reports runway (liquid balance / monthly obligation) before and
+// after the purchase, with named assumptions.
+type Affordability struct {
+	Currency               string
+	AmountCents            int64
+	LiquidBalanceCents     int64
+	MonthlyEssentialCents  int64
+	UpcomingBillsCents     int64
+	MonthlyObligationCents int64
+	RunwayMonthsBefore     float64
+	RunwayMonthsAfter      float64
+	Assumptions            []string
+}
+
+// DigestCashFlow is the digest's cash-flow section.
+type DigestCashFlow struct {
+	Present    bool
+	Summary    string
+	Currencies []CurrencyCashFlow
+}
+
+// DigestSpending is the digest's classification section. It is omitted when
+// classification is insufficient.
+type DigestSpending struct {
+	Present              bool
+	Summary              string
+	Currencies           []CurrencySpending
+	UnclassifiedSharePct float64
+}
+
+// DigestSavings is the digest's savings-rate section.
+type DigestSavings struct {
+	Present bool
+	Summary string
+	Rates   []SavingsRate
+}
+
+// DigestRecurring is the digest's recurring-charge section.
+type DigestRecurring struct {
+	Present bool
+	Summary string
+	Charges []RecurringCharge
+}
+
+// DigestAnomalies is the digest's anomaly section.
+type DigestAnomalies struct {
+	Present   bool
+	Summary   string
+	Anomalies []Anomaly
+}
+
+// DigestEmergency is the digest's emergency-fund section.
+type DigestEmergency struct {
+	Present bool
+	Summary string
+	Status  *EmergencyFundStatus
+}
+
+// MonthlyDigest is the composed monthly summary. Sections that cannot be
+// computed (e.g. classification above the unclassified threshold) are omitted
+// and named in Omitted with the reason; the digest never fails wholesale over
+// one unavailable section.
+type MonthlyDigest struct {
+	Month       string
+	CashFlow    DigestCashFlow
+	Spending    DigestSpending
+	SavingsRate DigestSavings
+	Recurring   DigestRecurring
+	Anomalies   DigestAnomalies
+	Emergency   DigestEmergency
+	Omitted     []string
+	Assumptions []string
+}
+
 // Anomaly is one flagged month of spending in a category. The explanation is
 // the primary output: it states the amount, the local median it was compared
 // against, and the filter parameters. No opaque score is exposed.

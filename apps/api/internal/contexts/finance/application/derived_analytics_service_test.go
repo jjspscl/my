@@ -2,6 +2,7 @@ package application
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"testing"
 	"time"
@@ -266,5 +267,235 @@ func TestGetBillReconciliationWeeklyOccurrences(t *testing.T) {
 	// and 29th = 5 × 500 = 2500 expected.
 	if recon.Items[0].ExpectedCents != 2500 || recon.Items[0].VarianceCents != -500 {
 		t.Errorf("item = %+v, want expected 2500 variance -500", recon.Items[0])
+	}
+}
+
+// essentialSeries builds 12 months of essential spend for one currency.
+func essentialSeries(amount int64) []domain.MonthlyEssentialSpend {
+	rows := make([]domain.MonthlyEssentialSpend, 0, 12)
+	for i := 0; i < 12; i++ {
+		rows = append(rows, domain.MonthlyEssentialSpend{
+			Currency:    "PHP",
+			Month:       currentMonthOffset(i - 11),
+			AmountCents: amount,
+		})
+	}
+	return rows
+}
+
+func TestGetEmergencyFund(t *testing.T) {
+	repo := &mockAnalyticsRepo{essentialMonthly: essentialSeries(30000)}
+	wallet := &mockWalletRepo{balances: []*domain.WalletBalance{
+		{Wallet: domain.Wallet{Currency: "PHP"}, BalanceCents: 60000},
+	}}
+	svc := newDerivedAnalyticsService(repo, wallet, newMockBillRepo())
+
+	status, err := svc.GetEmergencyFund(context.Background(), analyticsTestUser, "PHP", 0)
+	if err != nil {
+		t.Fatalf("GetEmergencyFund: %v", err)
+	}
+	if status.MonthlyEssentialCents != 30000 {
+		t.Errorf("monthly essential = %d, want 30000", status.MonthlyEssentialCents)
+	}
+	if status.LiquidBalanceCents != 60000 {
+		t.Errorf("liquid = %d, want 60000", status.LiquidBalanceCents)
+	}
+	if status.MonthsOfRunway != 2.0 {
+		t.Errorf("runway = %v, want 2.0", status.MonthsOfRunway)
+	}
+	if status.TargetRangeMonths != [2]int{3, 6} {
+		t.Errorf("target = %v, want [3 6]", status.TargetRangeMonths)
+	}
+	if status.ShortfallToMinCents != 30000 || status.ShortfallToMaxCents != 120000 {
+		t.Errorf("shortfall = %d/%d, want 30000/120000", status.ShortfallToMinCents, status.ShortfallToMaxCents)
+	}
+	if len(status.Assumptions) == 0 {
+		t.Error("expected named assumptions")
+	}
+}
+
+func TestGetEmergencyFundTargetOverride(t *testing.T) {
+	repo := &mockAnalyticsRepo{essentialMonthly: essentialSeries(30000)}
+	wallet := &mockWalletRepo{balances: []*domain.WalletBalance{
+		{Wallet: domain.Wallet{Currency: "PHP"}, BalanceCents: 60000},
+	}}
+	svc := newDerivedAnalyticsService(repo, wallet, newMockBillRepo())
+
+	status, err := svc.GetEmergencyFund(context.Background(), analyticsTestUser, "PHP", 12)
+	if err != nil {
+		t.Fatalf("GetEmergencyFund: %v", err)
+	}
+	if status.TargetRangeMonths != [2]int{12, 12} {
+		t.Errorf("target = %v, want [12 12]", status.TargetRangeMonths)
+	}
+	if status.ShortfallToMinCents != 300000 {
+		t.Errorf("shortfall = %d, want 300000", status.ShortfallToMinCents)
+	}
+}
+
+func TestGetEmergencyFundInsufficientClassification(t *testing.T) {
+	repo := &mockAnalyticsRepo{
+		essentialMonthly: essentialSeries(30000),
+		unclassified: []domain.UnclassifiedSpending{
+			{Currency: "PHP", TotalCents: 100000, UnclassifiedCents: 50000}, // 50% unclassified
+		},
+		topUnclassified: []domain.CategorySpend{{Category: "Misc", AmountCents: 50000}},
+	}
+	svc := newDerivedAnalyticsService(repo, &mockWalletRepo{}, newMockBillRepo())
+
+	_, err := svc.GetEmergencyFund(context.Background(), analyticsTestUser, "PHP", 0)
+	var insufficient *domain.ErrInsufficientClassification
+	if !errors.As(err, &insufficient) {
+		t.Fatalf("expected ErrInsufficientClassification, got %v", err)
+	}
+	if len(insufficient.TopUnclassified) != 1 || insufficient.TopUnclassified[0] != "Misc" {
+		t.Errorf("top unclassified = %v, want [Misc]", insufficient.TopUnclassified)
+	}
+}
+
+func TestGetEmergencyFundRejectsBadInput(t *testing.T) {
+	svc := newDerivedAnalyticsService(&mockAnalyticsRepo{}, &mockWalletRepo{}, newMockBillRepo())
+
+	if _, err := svc.GetEmergencyFund(context.Background(), analyticsTestUser, "", 0); err == nil {
+		t.Error("expected error for empty currency")
+	}
+	if _, err := svc.GetEmergencyFund(context.Background(), analyticsTestUser, "PHP", 13); err == nil {
+		t.Error("expected error for targetMonths > 12")
+	}
+}
+
+func TestGetAffordability(t *testing.T) {
+	repo := &mockAnalyticsRepo{essentialMonthly: essentialSeries(30000)}
+	wallet := &mockWalletRepo{balances: []*domain.WalletBalance{
+		{Wallet: domain.Wallet{Currency: "PHP"}, BalanceCents: 60000},
+	}}
+	bills := newMockBillRepo()
+	start, _ := time.Parse("2006-01-02", "2026-01-01")
+	bills.bills["b1"] = &domain.RecurringBill{
+		ID: "b1", UserEmail: analyticsTestUser, Name: "Rent", Category: "Housing",
+		AmountCents: 30000, Currency: "PHP", Frequency: domain.FrequencyMonthly, DayOfMonth: 1, StartDate: start,
+	}
+	svc := newDerivedAnalyticsService(repo, wallet, bills)
+
+	model, err := svc.GetAffordability(context.Background(), analyticsTestUser, "PHP", 20000)
+	if err != nil {
+		t.Fatalf("GetAffordability: %v", err)
+	}
+	if model.MonthlyEssentialCents != 30000 {
+		t.Errorf("monthly essential = %d, want 30000", model.MonthlyEssentialCents)
+	}
+	if model.UpcomingBillsCents != 30000 {
+		t.Errorf("upcoming bills = %d, want 30000", model.UpcomingBillsCents)
+	}
+	if model.MonthlyObligationCents != 60000 {
+		t.Errorf("obligation = %d, want 60000", model.MonthlyObligationCents)
+	}
+	if model.RunwayMonthsBefore != 1.0 {
+		t.Errorf("runway before = %v, want 1.0", model.RunwayMonthsBefore)
+	}
+	if model.RunwayMonthsAfter != 40000.0/60000.0 {
+		t.Errorf("runway after = %v, want %v", model.RunwayMonthsAfter, 40000.0/60000.0)
+	}
+}
+
+func TestGetAffordabilityRejectsBadInput(t *testing.T) {
+	svc := newDerivedAnalyticsService(&mockAnalyticsRepo{}, &mockWalletRepo{}, newMockBillRepo())
+
+	if _, err := svc.GetAffordability(context.Background(), analyticsTestUser, "", 1000); err == nil {
+		t.Error("expected error for empty currency")
+	}
+	if _, err := svc.GetAffordability(context.Background(), analyticsTestUser, "PHP", 0); err == nil {
+		t.Error("expected error for non-positive amount")
+	}
+}
+
+func TestGetMonthlyDigest(t *testing.T) {
+	repo := &mockAnalyticsRepo{
+		cashFlow: []domain.CurrencyTotal{
+			{Currency: "PHP", IncomeCents: 100000, ExpenseCents: 40000, TotalCents: 60000},
+		},
+		monthlyFlow: []domain.MonthlyCashFlow{
+			{Month: currentMonthOffset(0), Currency: "PHP", IncomeCents: 100000, ExpenseCents: 40000, NetCents: 60000},
+		},
+		classification: []domain.ClassificationSpend{
+			{Currency: "PHP", Classification: domain.ClassificationNeeds, AmountCents: 30000},
+			{Currency: "PHP", Classification: domain.ClassificationWants, AmountCents: 10000},
+		},
+		unclassified: []domain.UnclassifiedSpending{
+			{Currency: "PHP", TotalCents: 40000, UnclassifiedCents: 0},
+		},
+		essentialMonthly:   essentialSeries(30000),
+		expenseAmounts:     recurringAmounts("Netflix", []int64{1000, 1000, 1000}),
+		categoryMonthlyAll: anomalySeries(-1),
+	}
+	wallet := &mockWalletRepo{balances: []*domain.WalletBalance{
+		{Wallet: domain.Wallet{Currency: "PHP"}, BalanceCents: 60000},
+	}}
+	svc := newDerivedAnalyticsService(repo, wallet, newMockBillRepo())
+
+	digest, err := svc.GetMonthlyDigest(context.Background(), analyticsTestUser, currentMonthOffset(0))
+	if err != nil {
+		t.Fatalf("GetMonthlyDigest: %v", err)
+	}
+	if !digest.CashFlow.Present || !strings.Contains(digest.CashFlow.Summary, "income ₱1,000.00") {
+		t.Errorf("cash flow section = %+v", digest.CashFlow)
+	}
+	if !digest.Spending.Present || !strings.Contains(digest.Spending.Summary, "needs") {
+		t.Errorf("spending section = %+v", digest.Spending)
+	}
+	if !digest.SavingsRate.Present || !strings.Contains(digest.SavingsRate.Summary, "60.0%") {
+		t.Errorf("savings section = %+v", digest.SavingsRate)
+	}
+	if !digest.Recurring.Present || len(digest.Recurring.Charges) != 1 {
+		t.Errorf("recurring section = %+v", digest.Recurring)
+	}
+	if !digest.Anomalies.Present {
+		t.Errorf("anomalies section = %+v", digest.Anomalies)
+	}
+	if !digest.Emergency.Present || digest.Emergency.Status.MonthsOfRunway != 2.0 {
+		t.Errorf("emergency section = %+v", digest.Emergency)
+	}
+	if len(digest.Omitted) != 0 {
+		t.Errorf("omitted = %v, want none", digest.Omitted)
+	}
+}
+
+func TestGetMonthlyDigestOmitsSpendingOnInsufficientClassification(t *testing.T) {
+	repo := &mockAnalyticsRepo{
+		cashFlow: []domain.CurrencyTotal{
+			{Currency: "PHP", IncomeCents: 100000, ExpenseCents: 40000, TotalCents: 60000},
+		},
+		monthlyFlow: []domain.MonthlyCashFlow{
+			{Month: currentMonthOffset(0), Currency: "PHP", IncomeCents: 100000, ExpenseCents: 40000, NetCents: 60000},
+		},
+		classification: []domain.ClassificationSpend{
+			{Currency: "PHP", Classification: domain.ClassificationNeeds, AmountCents: 20000},
+		},
+		unclassified: []domain.UnclassifiedSpending{
+			{Currency: "PHP", TotalCents: 40000, UnclassifiedCents: 20000}, // 50% unclassified
+		},
+		topUnclassified: []domain.CategorySpend{{Category: "Misc", AmountCents: 20000}},
+		essentialMonthly: essentialSeries(30000),
+	}
+	wallet := &mockWalletRepo{balances: []*domain.WalletBalance{
+		{Wallet: domain.Wallet{Currency: "PHP"}, BalanceCents: 60000},
+	}}
+	svc := newDerivedAnalyticsService(repo, wallet, newMockBillRepo())
+
+	digest, err := svc.GetMonthlyDigest(context.Background(), analyticsTestUser, currentMonthOffset(0))
+	if err != nil {
+		t.Fatalf("GetMonthlyDigest: %v", err)
+	}
+	if digest.Spending.Present {
+		t.Error("spending section must be omitted when classification is insufficient")
+	}
+	found := false
+	for _, o := range digest.Omitted {
+		if strings.Contains(o, "spending breakdown") {
+			found = true
+		}
+	}
+	if !found {
+		t.Errorf("omitted = %v, want spending breakdown reason", digest.Omitted)
 	}
 }

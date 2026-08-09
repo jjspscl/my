@@ -318,3 +318,34 @@ func (r *AnalyticsRepoLibSQL) GetBillReconciliation(ctx context.Context, userEma
 	}
 	return items, rows.Err()
 }
+
+// GetEssentialMonthlySpend returns monthly expense in essential categories per
+// currency over [from, to), ordered by currency, month. Essential comes from
+// the finance_categories.essential flag; categories without a row are not
+// essential.
+func (r *AnalyticsRepoLibSQL) GetEssentialMonthlySpend(ctx context.Context, userEmail string, from, to time.Time) ([]domain.MonthlyEssentialSpend, error) {
+	rows, err := executor(ctx, r.db).QueryContext(ctx, `
+		SELECT t.currency, strftime('%Y-%m', t.transaction_date) as month, COALESCE(SUM(t.amount_cents), 0) as amount_cents
+		FROM transactions t
+		JOIN finance_categories c ON c.name = t.category
+		WHERE t.user_email = ? AND t.type = 'expense' AND c.essential = 1
+		  AND t.transaction_date >= ? AND t.transaction_date < ?
+		GROUP BY t.currency, month
+		ORDER BY t.currency, month`,
+		userEmail, from.Format("2006-01-02"), to.Format("2006-01-02"),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("get essential monthly spend: %w", err)
+	}
+	defer rows.Close()
+
+	var spends []domain.MonthlyEssentialSpend
+	for rows.Next() {
+		var s domain.MonthlyEssentialSpend
+		if err := rows.Scan(&s.Currency, &s.Month, &s.AmountCents); err != nil {
+			return nil, fmt.Errorf("scan essential monthly spend: %w", err)
+		}
+		spends = append(spends, s)
+	}
+	return spends, rows.Err()
+}

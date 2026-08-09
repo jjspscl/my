@@ -348,3 +348,45 @@ func TestAnalyticsGetUnbudgetedSpend(t *testing.T) {
 		t.Errorf("unbudgeted = %d, want 1500 (Shopping only; Food is budgeted)", unbudgeted)
 	}
 }
+
+func TestAnalyticsGetEssentialMonthlySpend(t *testing.T) {
+	db := newTestDB(t)
+	ctx := context.Background()
+	walletRepo := NewWalletRepoLibSQL(db)
+	txRepo := NewTransactionRepoLibSQL(db)
+	catRepo := NewCategoryRepoLibSQL(db)
+	analytics := NewAnalyticsRepoLibSQL(db)
+
+	mustWallet(t, walletRepo, "w-php", "PHP", 0)
+	clock := manilaClock(t)
+	jan, _ := clock.ParseDate("2026-01-05")
+	feb, _ := clock.ParseDate("2026-02-05")
+
+	// Food is essential; Shopping has no category row (not essential).
+	mustCategory(t, catRepo, "Food", domain.ClassificationNeeds, true)
+	mustCategory(t, catRepo, "Transport", domain.ClassificationNeeds, false)
+
+	mustTransaction(t, txRepo, "t1", "PHP", "Food", 1000, domain.TransactionExpense, jan, "w-php")
+	mustTransaction(t, txRepo, "t2", "PHP", "Food", 2500, domain.TransactionExpense, feb, "w-php")
+	mustTransaction(t, txRepo, "t3", "PHP", "Transport", 900, domain.TransactionExpense, jan, "w-php")
+	mustTransaction(t, txRepo, "t4", "PHP", "Salary", 50000, domain.TransactionIncome, jan, "w-php")
+
+	from, _ := clock.ParseDate("2026-01-01")
+	to, _ := clock.ParseDate("2026-03-01")
+
+	rows, err := analytics.GetEssentialMonthlySpend(ctx, testUser, from, to)
+	if err != nil {
+		t.Fatalf("GetEssentialMonthlySpend: %v", err)
+	}
+	// Only Food (essential) qualifies; income and non-essential Transport excluded.
+	if len(rows) != 2 {
+		t.Fatalf("expected 2 rows, got %d", len(rows))
+	}
+	got := map[string]int64{}
+	for _, r := range rows {
+		got[r.Month] = r.AmountCents
+	}
+	if got["2026-01"] != 1000 || got["2026-02"] != 2500 {
+		t.Errorf("rows = %+v, want 2026-01=1000, 2026-02=2500", rows)
+	}
+}

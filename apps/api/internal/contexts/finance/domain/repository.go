@@ -112,6 +112,10 @@ type AnalyticsRepository interface {
 	// GetBillReconciliation returns per-bill paid aggregates over [from, to)
 	// with the bill fields needed to compute expected occurrences.
 	GetBillReconciliation(ctx context.Context, userEmail string, from, to time.Time) ([]BillReconciliationRow, error)
+	// GetEssentialMonthlySpend returns monthly expense in essential categories
+	// per currency over [from, to), ordered by currency, month. It feeds the
+	// emergency-fund and affordability monthly essential-spend median.
+	GetEssentialMonthlySpend(ctx context.Context, userEmail string, from, to time.Time) ([]MonthlyEssentialSpend, error)
 }
 
 // CategoryMonthlySpend is one category × currency × month expense row.
@@ -144,4 +148,11 @@ type BillReconciliationRow struct {
 	PaidCents                   int64
 	PaidCount                   int
 	PaidWithoutTransactionCount int
+}
+
+// MonthlyEssentialSpend is one currency × month essential expense row.
+type MonthlyEssentialSpend struct {
+	Currency    string
+	Month       string // YYYY-MM
+	AmountCents int64
 }

@@ -15,7 +15,8 @@ import (
 // ---- mocks ----
 
 type mockWalletRepo struct {
-	wallets []*domain.Wallet
+	wallets  []*domain.Wallet
+	balances []*domain.WalletBalance
 }
 
 func (m *mockWalletRepo) Save(ctx context.Context, wallet *domain.Wallet) error {
@@ -56,7 +57,7 @@ func (m *mockWalletRepo) FindDefault(ctx context.Context, userEmail string) (*do
 }
 
 func (m *mockWalletRepo) GetBalancesByUser(ctx context.Context, userEmail string) ([]*domain.WalletBalance, error) {
-	return nil, nil
+	return m.balances, nil
 }
 
 type mockTransactionRepo struct {

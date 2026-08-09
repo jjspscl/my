@@ -2,8 +2,10 @@ package application
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"sort"
+	"strings"
 	"time"
 
 	"github.com/jjspscl/my/internal/contexts/finance/domain"
@@ -382,4 +384,369 @@ func occurrencesInMonth(row domain.BillReconciliationRow, from, to time.Time) in
 	default: // monthly
 		return 1
 	}
+}
+
+// checkClassification refuses analytics whose essential-spend consumers depend
+// on classification when more than MaxUnclassifiedShare of spending in the
+// currency is unclassified over [from, to).
+func (s *DerivedAnalyticsService) checkClassification(ctx context.Context, userEmail, currency string, from, to time.Time) error {
+	splits, err := s.analyticsRepo.GetUnclassifiedSpending(ctx, userEmail, from, to)
+	if err != nil {
+		return fmt.Errorf("unclassified spending: %w", err)
+	}
+	for _, u := range splits {
+		if u.Currency != currency || u.TotalCents <= 0 {
+			continue
+		}
+		share := (float64(u.UnclassifiedCents) / float64(u.TotalCents)) * 100
+		if share > domain.MaxUnclassifiedShare*100 {
+			top, err := s.analyticsRepo.GetTopUnclassifiedCategories(ctx, userEmail, from, to, 5)
+			if err != nil {
+				return fmt.Errorf("top unclassified categories: %w", err)
+			}
+			names := make([]string, 0, len(top))
+			for _, c := range top {
+				names = append(names, c.Category)
+			}
+			return &domain.ErrInsufficientClassification{
+				UnclassifiedSharePct: share,
+				TopUnclassified:      names,
+			}
+		}
+	}
+	return nil
+}
+
+// essentialWindow returns the half-open range covering the last
+// EmergencyFundWindowMonths months (including the current month) plus the
+// window's first month string for series indexing.
+func (s *DerivedAnalyticsService) essentialWindow() (time.Time, time.Time, string, error) {
+	now := s.clock.Now()
+	currentMonth := now.Format("2006-01")
+	fromMonth := addMonths(currentMonth, -(domain.EmergencyFundWindowMonths - 1))
+	from, err := s.clock.ParseDate(fromMonth + "-01")
+	if err != nil {
+		return time.Time{}, time.Time{}, "", fmt.Errorf("essential window from: %w", err)
+	}
+	_, to, err := s.clock.MonthRange(addMonths(currentMonth, 1))
+	if err != nil {
+		return time.Time{}, time.Time{}, "", fmt.Errorf("essential window to: %w", err)
+	}
+	return from, to, fromMonth, nil
+}
+
+// medianEssentialSpend returns the median monthly essential spend for one
+// currency over the window, zero-filled so months without essential spending
+// count as low spend.
+func (s *DerivedAnalyticsService) medianEssentialSpend(ctx context.Context, userEmail, currency string, from, to time.Time, fromMonth string) (int64, error) {
+	rows, err := s.analyticsRepo.GetEssentialMonthlySpend(ctx, userEmail, from, to)
+	if err != nil {
+		return 0, fmt.Errorf("essential monthly spend: %w", err)
+	}
+	series := make([]int64, domain.EmergencyFundWindowMonths)
+	for _, row := range rows {
+		if row.Currency != currency {
+			continue
+		}
+		if idx := monthIndex(fromMonth, row.Month, domain.EmergencyFundWindowMonths); idx >= 0 {
+			series[idx] = row.AmountCents
+		}
+	}
+	return int64(domain.Median(series)), nil
+}
+
+// liquidBalance returns the sum of wallet balances for one currency.
+func (s *DerivedAnalyticsService) liquidBalance(ctx context.Context, userEmail, currency string) (int64, error) {
+	balances, err := s.walletRepo.GetBalancesByUser(ctx, userEmail)
+	if err != nil {
+		return 0, fmt.Errorf("wallet balances: %w", err)
+	}
+	var total int64
+	for _, b := range balances {
+		if b.Wallet.Currency == currency {
+			total += b.BalanceCents
+		}
+	}
+	return total, nil
+}
+
+// GetEmergencyFund reports liquid balance against a target range of months of
+// essential spending. The default target is 3–6 months (the CFPB/FINRA/Fidelity
+// consensus); targetMonths overrides both ends when non-zero. Refuses with
+// ErrInsufficientClassification when classification is untrustworthy.
+func (s *DerivedAnalyticsService) GetEmergencyFund(ctx context.Context, userEmail, currency string, targetMonths int) (*domain.EmergencyFundStatus, error) {
+	if currency == "" {
+		return nil, fmt.Errorf("currency is required")
+	}
+	if targetMonths < 0 || targetMonths > 12 {
+		return nil, fmt.Errorf("targetMonths must be between 1 and 12")
+	}
+
+	from, to, fromMonth, err := s.essentialWindow()
+	if err != nil {
+		return nil, err
+	}
+	if err := s.checkClassification(ctx, userEmail, currency, from, to); err != nil {
+		return nil, err
+	}
+
+	monthly, err := s.medianEssentialSpend(ctx, userEmail, currency, from, to, fromMonth)
+	if err != nil {
+		return nil, err
+	}
+	liquid, err := s.liquidBalance(ctx, userEmail, currency)
+	if err != nil {
+		return nil, err
+	}
+
+	target := [2]int{domain.EmergencyFundMinMonths, domain.EmergencyFundMaxMonths}
+	if targetMonths > 0 {
+		target = [2]int{targetMonths, targetMonths}
+	}
+
+	runway := 0.0
+	if monthly > 0 {
+		runway = float64(liquid) / float64(monthly)
+	}
+	shortfallMin := int64(target[0])*monthly - liquid
+	if shortfallMin < 0 {
+		shortfallMin = 0
+	}
+	shortfallMax := int64(target[1])*monthly - liquid
+	if shortfallMax < 0 {
+		shortfallMax = 0
+	}
+
+	return &domain.EmergencyFundStatus{
+		Currency:              currency,
+		LiquidBalanceCents:    liquid,
+		MonthlyEssentialCents: monthly,
+		MonthsOfRunway:        runway,
+		TargetRangeMonths:     target,
+		ShortfallToMinCents:   shortfallMin,
+		ShortfallToMaxCents:   shortfallMax,
+		Assumptions: []string{
+			fmt.Sprintf("emergency fund target is %d–%d months of essential spending (CFPB/FINRA/Fidelity consensus)", target[0], target[1]),
+			fmt.Sprintf("monthly essential spend is the median over the last %d months in essential categories", domain.EmergencyFundWindowMonths),
+			"liquid balance is the sum of wallet balances per currency; it is not net worth",
+		},
+	}, nil
+}
+
+// GetAffordability models a prospective purchase: runway (liquid balance /
+// monthly obligation) before and after the purchase. It never returns a
+// yes/no; the caller decides from the model and its named assumptions.
+func (s *DerivedAnalyticsService) GetAffordability(ctx context.Context, userEmail, currency string, amountCents int64) (*domain.Affordability, error) {
+	if currency == "" {
+		return nil, fmt.Errorf("currency is required")
+	}
+	if amountCents <= 0 {
+		return nil, fmt.Errorf("amountCents must be positive")
+	}
+
+	from, to, fromMonth, err := s.essentialWindow()
+	if err != nil {
+		return nil, err
+	}
+	if err := s.checkClassification(ctx, userEmail, currency, from, to); err != nil {
+		return nil, err
+	}
+
+	monthly, err := s.medianEssentialSpend(ctx, userEmail, currency, from, to, fromMonth)
+	if err != nil {
+		return nil, err
+	}
+	liquid, err := s.liquidBalance(ctx, userEmail, currency)
+	if err != nil {
+		return nil, err
+	}
+
+	// Bills due in the next 30 days that are not yet paid.
+	upcoming, err := s.billSvc.GetUpcoming(ctx, userEmail, 30)
+	if err != nil {
+		return nil, fmt.Errorf("upcoming bills: %w", err)
+	}
+	now := s.clock.TodayStart()
+	cutoff := now.AddDate(0, 0, 30)
+	var upcomingBills int64
+	for _, u := range upcoming {
+		if u.Bill.Currency != currency || u.Status == domain.OccurrencePaid {
+			continue
+		}
+		if !u.DueDate.Before(now) && !u.DueDate.After(cutoff) {
+			upcomingBills += u.Bill.AmountCents
+		}
+	}
+
+	obligation := monthly + upcomingBills
+	runwayBefore := 0.0
+	runwayAfter := 0.0
+	if obligation > 0 {
+		runwayBefore = float64(liquid) / float64(obligation)
+		runwayAfter = float64(liquid-amountCents) / float64(obligation)
+	}
+
+	return &domain.Affordability{
+		Currency:               currency,
+		AmountCents:            amountCents,
+		LiquidBalanceCents:     liquid,
+		MonthlyEssentialCents:  monthly,
+		UpcomingBillsCents:     upcomingBills,
+		MonthlyObligationCents: obligation,
+		RunwayMonthsBefore:     runwayBefore,
+		RunwayMonthsAfter:      runwayAfter,
+		Assumptions: []string{
+			"affordability is a financial model, not a recommendation; no yes/no is given",
+			fmt.Sprintf("monthly obligation = median essential spend (%s) + bills due in the next 30 days (%s)", domain.FormatMinor(monthly, currency), domain.FormatMinor(upcomingBills, currency)),
+			"runway = liquid balance / monthly obligation, before and after the purchase",
+		},
+	}, nil
+}
+
+// GetMonthlyDigest composes the monthly summary. Sections that cannot be
+// computed (e.g. classification above the unclassified threshold) are omitted
+// and named in Omitted; the digest never fails wholesale over one section.
+func (s *DerivedAnalyticsService) GetMonthlyDigest(ctx context.Context, userEmail, month string) (*domain.MonthlyDigest, error) {
+	if month == "" {
+		return nil, fmt.Errorf("month is required")
+	}
+	from, to, err := s.clock.MonthRange(month)
+	if err != nil {
+		return nil, fmt.Errorf("month range: %w", err)
+	}
+
+	digest := &domain.MonthlyDigest{
+		Month:       month,
+		Omitted:     []string{},
+		Assumptions: []string{"sections that cannot be computed are omitted with the reason, never fabricated"},
+	}
+
+	// Cash flow.
+	cf, err := s.analyticsSvc.GetCashFlowSummary(ctx, userEmail, from, to)
+	if err != nil {
+		return nil, fmt.Errorf("cash flow: %w", err)
+	}
+	digest.CashFlow = domain.DigestCashFlow{Present: true, Currencies: cf.Currencies}
+	digest.CashFlow.Summary = digestCashFlowSummary(cf.Currencies)
+
+	// Spending breakdown (graceful degradation on insufficient classification).
+	sp, err := s.analyticsSvc.GetSpendingSummary(ctx, userEmail, from, to)
+	if err != nil {
+		var insufficient *domain.ErrInsufficientClassification
+		if errors.As(err, &insufficient) {
+			digest.Omitted = append(digest.Omitted, "spending breakdown: "+insufficient.Error())
+		} else {
+			return nil, fmt.Errorf("spending summary: %w", err)
+		}
+	} else {
+		digest.Spending = domain.DigestSpending{
+			Present:              true,
+			Currencies:           sp.Currencies,
+			UnclassifiedSharePct: sp.UnclassifiedSharePct,
+		}
+		digest.Spending.Summary = digestSpendingSummary(sp.Currencies)
+	}
+
+	// Savings rate.
+	rates, err := s.analyticsSvc.GetSavingsRate(ctx, userEmail, from, to)
+	if err != nil {
+		return nil, fmt.Errorf("savings rate: %w", err)
+	}
+	digest.SavingsRate = domain.DigestSavings{Present: true, Rates: rates}
+	digest.SavingsRate.Summary = digestSavingsSummary(rates)
+
+	// Windowed sections run on the primary currency (first in the cash flow).
+	primary := ""
+	if len(cf.Currencies) > 0 {
+		primary = cf.Currencies[0].Currency
+	}
+	if primary != "" {
+		recurring, err := s.GetRecurringCharges(ctx, userEmail, primary, 6)
+		if err != nil {
+			return nil, fmt.Errorf("recurring charges: %w", err)
+		}
+		digest.Recurring = domain.DigestRecurring{Present: true, Charges: recurring.Charges}
+		digest.Recurring.Summary = digestRecurringSummary(recurring.Charges)
+
+		anomalies, err := s.GetMonthlyAnomalies(ctx, userEmail, primary, 6)
+		if err != nil {
+			return nil, fmt.Errorf("anomalies: %w", err)
+		}
+		digest.Anomalies = domain.DigestAnomalies{Present: true, Anomalies: anomalies.Anomalies}
+		digest.Anomalies.Summary = fmt.Sprintf("%d spending anomaly(ies) flagged in %s over the last 6 months", len(anomalies.Anomalies), primary)
+
+		emergency, err := s.GetEmergencyFund(ctx, userEmail, primary, 0)
+		if err != nil {
+			var insufficient *domain.ErrInsufficientClassification
+			if errors.As(err, &insufficient) {
+				digest.Omitted = append(digest.Omitted, "emergency fund: "+insufficient.Error())
+			} else {
+				return nil, fmt.Errorf("emergency fund: %w", err)
+			}
+		} else {
+			digest.Emergency = domain.DigestEmergency{Present: true, Status: emergency}
+			digest.Emergency.Summary = fmt.Sprintf(
+				"liquid %s covers %.1f months of essential spending (target %d–%d months)",
+				domain.FormatMinor(emergency.LiquidBalanceCents, primary), emergency.MonthsOfRunway,
+				emergency.TargetRangeMonths[0], emergency.TargetRangeMonths[1],
+			)
+		}
+	} else {
+		digest.Omitted = append(digest.Omitted, "recurring charges, anomalies, and emergency fund: no activity in the month")
+	}
+
+	return digest, nil
+}
+
+func digestCashFlowSummary(currencies []domain.CurrencyCashFlow) string {
+	parts := make([]string, 0, len(currencies))
+	for _, c := range currencies {
+		parts = append(parts, fmt.Sprintf(
+			"%s: income %s, expenses %s, net %s",
+			c.Currency, domain.FormatMinor(c.IncomeCents, c.Currency),
+			domain.FormatMinor(c.ExpenseCents, c.Currency), domain.FormatMinor(c.NetCents, c.Currency),
+		))
+	}
+	return strings.Join(parts, "; ")
+}
+
+func digestSpendingSummary(currencies []domain.CurrencySpending) string {
+	parts := make([]string, 0, len(currencies))
+	for _, c := range currencies {
+		parts = append(parts, fmt.Sprintf(
+			"%s: needs %s, wants %s, unclassified %s",
+			c.Currency,
+			domain.FormatMinor(c.ByClassification[domain.ClassificationNeeds], c.Currency),
+			domain.FormatMinor(c.ByClassification[domain.ClassificationWants], c.Currency),
+			domain.FormatMinor(c.UnclassifiedCents, c.Currency),
+		))
+	}
+	return strings.Join(parts, "; ")
+}
+
+func digestSavingsSummary(rates []domain.SavingsRate) string {
+	parts := make([]string, 0, len(rates))
+	for _, r := range rates {
+		if r.ZeroIncome {
+			parts = append(parts, r.Currency+": no income in the month")
+			continue
+		}
+		parts = append(parts, fmt.Sprintf("%s: %.1f%%", r.Currency, r.RatePercent))
+	}
+	return strings.Join(parts, "; ")
+}
+
+func digestRecurringSummary(charges []domain.RecurringCharge) string {
+	var tracked, changed, untracked int
+	for _, c := range charges {
+		switch c.Status {
+		case domain.RecurringChargeTracked:
+			tracked++
+		case domain.RecurringChargeAmountChanged:
+			changed++
+		default:
+			untracked++
+		}
+	}
+	return fmt.Sprintf("%d recurring charge(s): %d tracked, %d amount_changed, %d untracked", len(charges), tracked, changed, untracked)
 }

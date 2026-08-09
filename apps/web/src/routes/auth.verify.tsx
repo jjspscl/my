@@ -14,10 +14,14 @@ export const Route = createFileRoute('/auth/verify')({
   component: VerifyPage,
 })
 
-function VerifyPage() {
+export function VerifyPage() {
   const { token } = Route.useSearch()
   const verifyToken = useVerifyToken()
   const navigate = useNavigate()
+// Single-flight guard: StrictMode double-invokes effects, and the mutation
+// object identity changes every render. calledRef keeps exactly one POST per
+// token. The mutation itself is idempotent server-side (tokens are
+// single-use), so this is belt-and-braces.
   const calledRef = useRef(false)
 
   useEffect(() => {
@@ -27,7 +31,7 @@ function VerifyPage() {
     }
   }, [token, verifyToken])
 
-  if (verifyToken.isPending) {
+  if (verifyToken.isIdle || verifyToken.isPending) {
     return (
       <div className="flex min-h-screen items-center justify-center p-4">
         <Card className="w-full max-w-sm">

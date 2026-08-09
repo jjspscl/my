@@ -1,13 +1,24 @@
 package middleware
 
 import (
+	"log/slog"
 	"net/http"
 	"net/http/httptest"
 	"testing"
 	"time"
 
+	"github.com/jjspscl/my/internal/shared/response"
 	"github.com/stretchr/testify/assert"
 )
+
+// silenceResponseLogger redirects the response package logger (used by
+// WriteError on 429) so denied-request tests do not spam stderr; restored on
+// test end.
+func silenceResponseLogger(t *testing.T) {
+	t.Helper()
+	response.SetLogger(slog.New(discardHandler{}))
+	t.Cleanup(func() { response.SetLogger(nil) })
+}
 
 func TestRateLimit_AllowsUpToMax(t *testing.T) {
 	now := time.Date(2026, 8, 9, 12, 0, 0, 0, time.UTC)
@@ -27,6 +38,7 @@ func TestRateLimit_AllowsUpToMax(t *testing.T) {
 }
 
 func TestRateLimit_ExceedsMax_Returns429WithRetryAfter(t *testing.T) {
+	silenceResponseLogger(t)
 	now := time.Date(2026, 8, 9, 12, 0, 0, 0, time.UTC)
 	handler := RateLimitWithClock(2, time.Minute, func() time.Time { return now })(
 		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -53,6 +65,7 @@ func TestRateLimit_ExceedsMax_Returns429WithRetryAfter(t *testing.T) {
 }
 
 func TestRateLimit_WindowExpiry_AllowsAgain(t *testing.T) {
+	silenceResponseLogger(t)
 	now := time.Date(2026, 8, 9, 12, 0, 0, 0, time.UTC)
 	handler := RateLimitWithClock(1, time.Minute, func() time.Time { return now })(
 		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -79,6 +92,7 @@ func TestRateLimit_WindowExpiry_AllowsAgain(t *testing.T) {
 }
 
 func TestRateLimit_KeysArePerIP(t *testing.T) {
+	silenceResponseLogger(t)
 	now := time.Date(2026, 8, 9, 12, 0, 0, 0, time.UTC)
 	handler := RateLimitWithClock(1, time.Minute, func() time.Time { return now })(
 		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
@@ -107,6 +121,7 @@ func TestRateLimit_KeysArePerIP(t *testing.T) {
 }
 
 func TestRateLimit_RetryAfterReflectsOldestHit(t *testing.T) {
+	silenceResponseLogger(t)
 	now := time.Date(2026, 8, 9, 12, 0, 0, 0, time.UTC)
 	handler := RateLimitWithClock(2, time.Minute, func() time.Time { return now })(
 		http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

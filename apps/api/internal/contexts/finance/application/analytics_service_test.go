@@ -21,6 +21,8 @@ type mockAnalyticsRepo struct {
 	categoryMonthly    []domain.MonthlyAmount
 	unbudgeted         int64
 	categoryMonthlyAll []domain.CategoryMonthlySpend
+	expenseAmounts     []domain.ExpenseAmount
+	billReconciliation []domain.BillReconciliationRow
 }
 
 func (m *mockAnalyticsRepo) GetCashFlow(_ context.Context, _ string, _, _ time.Time) ([]domain.CurrencyTotal, error) {
@@ -46,6 +48,12 @@ func (m *mockAnalyticsRepo) GetUnbudgetedSpend(_ context.Context, _, _, _ string
 }
 func (m *mockAnalyticsRepo) GetCategoryMonthlySpendAll(_ context.Context, _ string, _, _ time.Time) ([]domain.CategoryMonthlySpend, error) {
 	return m.categoryMonthlyAll, nil
+}
+func (m *mockAnalyticsRepo) GetExpenseAmounts(_ context.Context, _ string, _, _ time.Time) ([]domain.ExpenseAmount, error) {
+	return m.expenseAmounts, nil
+}
+func (m *mockAnalyticsRepo) GetBillReconciliation(_ context.Context, _ string, _, _ time.Time) ([]domain.BillReconciliationRow, error) {
+	return m.billReconciliation, nil
 }
 
 func newAnalyticsService(repo *mockAnalyticsRepo, budget *mockBudgetRepo, goal *mockGoalRepo) *AnalyticsService {

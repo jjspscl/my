@@ -227,6 +227,86 @@ func TestAnalyticsGetCategoryMonthlySpendAll(t *testing.T) {
 	}
 }
 
+func TestAnalyticsGetExpenseAmounts(t *testing.T) {
+	db := newTestDB(t)
+	ctx := context.Background()
+	walletRepo := NewWalletRepoLibSQL(db)
+	txRepo := NewTransactionRepoLibSQL(db)
+	analytics := NewAnalyticsRepoLibSQL(db)
+
+	mustWallet(t, walletRepo, "w-php", "PHP", 0)
+	clock := manilaClock(t)
+	jan, _ := clock.ParseDate("2026-01-05")
+	feb, _ := clock.ParseDate("2026-02-05")
+
+	mustTransaction(t, txRepo, "t1", "PHP", "Food", 1000, domain.TransactionExpense, jan, "w-php")
+	mustTransaction(t, txRepo, "t2", "PHP", "Food", 2500, domain.TransactionExpense, feb, "w-php")
+	mustTransaction(t, txRepo, "t3", "PHP", "Salary", 50000, domain.TransactionIncome, jan, "w-php")
+
+	from, _ := clock.ParseDate("2026-01-01")
+	to, _ := clock.ParseDate("2026-03-01")
+
+	amounts, err := analytics.GetExpenseAmounts(ctx, testUser, from, to)
+	if err != nil {
+		t.Fatalf("GetExpenseAmounts: %v", err)
+	}
+	// Income must be excluded; only the two Food expenses qualify.
+	if len(amounts) != 2 {
+		t.Fatalf("expected 2 expense rows, got %d", len(amounts))
+	}
+	if amounts[0].Category != "Food" || amounts[0].AmountCents != 1000 {
+		t.Errorf("first = %+v, want Food 1000", amounts[0])
+	}
+	if amounts[1].Month != "2026-02" || amounts[1].AmountCents != 2500 {
+		t.Errorf("second = %+v, want 2026-02 2500", amounts[1])
+	}
+}
+
+func TestAnalyticsGetBillReconciliation(t *testing.T) {
+	db := newTestDB(t)
+	ctx := context.Background()
+	billRepo := NewBillRepoLibSQL(db)
+	analytics := NewAnalyticsRepoLibSQL(db)
+
+	clock := manilaClock(t)
+	start, _ := clock.ParseDate("2026-01-01")
+	bill, err := domain.NewRecurringBill("b1", testUser, "Rent", "Housing", 10000, "PHP", domain.FrequencyMonthly, 1, start, nil, false, nil)
+	if err != nil {
+		t.Fatalf("new bill: %v", err)
+	}
+	if err := billRepo.SaveBill(ctx, bill); err != nil {
+		t.Fatalf("save bill: %v", err)
+	}
+
+	due, _ := clock.ParseDate("2026-07-01")
+	payment, err := domain.NewBillPayment("p1", "b1", due, 10000)
+	if err != nil {
+		t.Fatalf("new payment: %v", err)
+	}
+	payment.Status = domain.OccurrencePaid
+	if err := billRepo.SavePayment(ctx, payment); err != nil {
+		t.Fatalf("save payment: %v", err)
+	}
+
+	from, _ := clock.ParseDate("2026-07-01")
+	to, _ := clock.ParseDate("2026-08-01")
+
+	rows, err := analytics.GetBillReconciliation(ctx, testUser, from, to)
+	if err != nil {
+		t.Fatalf("GetBillReconciliation: %v", err)
+	}
+	if len(rows) != 1 {
+		t.Fatalf("expected 1 row, got %d", len(rows))
+	}
+	row := rows[0]
+	if row.Name != "Rent" || row.PaidCents != 10000 || row.PaidCount != 1 {
+		t.Errorf("row = %+v, want Rent paid 10000 count 1", row)
+	}
+	if row.PaidWithoutTransactionCount != 1 {
+		t.Errorf("paid without transaction = %d, want 1 (payment has no transaction_id)", row.PaidWithoutTransactionCount)
+	}
+}
+
 func TestAnalyticsGetUnbudgetedSpend(t *testing.T) {
 	db := newTestDB(t)
 	ctx := context.Background()

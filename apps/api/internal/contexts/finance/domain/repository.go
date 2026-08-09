@@ -104,6 +104,14 @@ type AnalyticsRepository interface {
 	// currency over [from, to), ordered by category, currency, month. It feeds
 	// the anomaly scan across every category in one query (no N+1).
 	GetCategoryMonthlySpendAll(ctx context.Context, userEmail string, from, to time.Time) ([]CategoryMonthlySpend, error)
+	// GetExpenseAmounts returns every expense amount with its category,
+	// currency, and month over [from, to), ordered by category, currency,
+	// amount. It feeds the recurring-charge summary, which groups in memory to
+	// compute occurrence counts and medians.
+	GetExpenseAmounts(ctx context.Context, userEmail string, from, to time.Time) ([]ExpenseAmount, error)
+	// GetBillReconciliation returns per-bill paid aggregates over [from, to)
+	// with the bill fields needed to compute expected occurrences.
+	GetBillReconciliation(ctx context.Context, userEmail string, from, to time.Time) ([]BillReconciliationRow, error)
 }
 
 // CategoryMonthlySpend is one category × currency × month expense row.
@@ -112,4 +120,28 @@ type CategoryMonthlySpend struct {
 	Currency    string
 	Month       string // YYYY-MM
 	AmountCents int64
+}
+
+// ExpenseAmount is one expense transaction's category, currency, month, and
+// amount.
+type ExpenseAmount struct {
+	Category    string
+	Currency    string
+	Month       string // YYYY-MM
+	AmountCents int64
+}
+
+// BillReconciliationRow is one bill with its paid aggregates over a range.
+type BillReconciliationRow struct {
+	BillID                      string
+	Name                        string
+	Category                    string
+	Currency                    string
+	AmountCents                 int64
+	Frequency                   Frequency
+	DayOfMonth                  int
+	StartDate                   time.Time
+	PaidCents                   int64
+	PaidCount                   int
+	PaidWithoutTransactionCount int
 }

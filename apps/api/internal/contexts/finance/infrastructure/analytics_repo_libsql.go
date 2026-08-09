@@ -254,3 +254,67 @@ func (r *AnalyticsRepoLibSQL) GetCategoryMonthlySpendAll(ctx context.Context, us
 	}
 	return spends, rows.Err()
 }
+
+// GetExpenseAmounts returns every expense amount with its category, currency,
+// and month over [from, to), ordered by category, currency, amount.
+func (r *AnalyticsRepoLibSQL) GetExpenseAmounts(ctx context.Context, userEmail string, from, to time.Time) ([]domain.ExpenseAmount, error) {
+	rows, err := executor(ctx, r.db).QueryContext(ctx, `
+		SELECT category, currency, strftime('%Y-%m', transaction_date) as month, amount_cents
+		FROM transactions
+		WHERE user_email = ? AND type = 'expense' AND transaction_date >= ? AND transaction_date < ?
+		ORDER BY category, currency, amount_cents`,
+		userEmail, from.Format("2006-01-02"), to.Format("2006-01-02"),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("get expense amounts: %w", err)
+	}
+	defer rows.Close()
+
+	var amounts []domain.ExpenseAmount
+	for rows.Next() {
+		var a domain.ExpenseAmount
+		if err := rows.Scan(&a.Category, &a.Currency, &a.Month, &a.AmountCents); err != nil {
+			return nil, fmt.Errorf("scan expense amount: %w", err)
+		}
+		amounts = append(amounts, a)
+	}
+	return amounts, rows.Err()
+}
+
+// GetBillReconciliation returns per-bill paid aggregates over [from, to) with
+// the bill fields needed to compute expected occurrences.
+func (r *AnalyticsRepoLibSQL) GetBillReconciliation(ctx context.Context, userEmail string, from, to time.Time) ([]domain.BillReconciliationRow, error) {
+	rows, err := executor(ctx, r.db).QueryContext(ctx, `
+		SELECT
+			b.id, b.name, b.category, b.currency, b.amount_cents, b.frequency, b.day_of_month, b.start_date,
+			COALESCE(SUM(CASE WHEN p.status = 'paid' THEN p.amount_cents ELSE 0 END), 0) as paid_cents,
+			COALESCE(SUM(CASE WHEN p.status = 'paid' THEN 1 ELSE 0 END), 0) as paid_count,
+			COALESCE(SUM(CASE WHEN p.status = 'paid' AND p.transaction_id IS NULL THEN 1 ELSE 0 END), 0) as paid_without_tx
+		FROM recurring_bills b
+		LEFT JOIN bill_payments p ON p.bill_id = b.id AND p.due_date >= ? AND p.due_date < ?
+		WHERE b.user_email = ?
+		GROUP BY b.id
+		ORDER BY b.name`,
+		from.Format("2006-01-02"), to.Format("2006-01-02"), userEmail,
+	)
+	if err != nil {
+		return nil, fmt.Errorf("get bill reconciliation: %w", err)
+	}
+	defer rows.Close()
+
+	var items []domain.BillReconciliationRow
+	for rows.Next() {
+		var it domain.BillReconciliationRow
+		var startDate string
+		if err := rows.Scan(
+			&it.BillID, &it.Name, &it.Category, &it.Currency, &it.AmountCents,
+			&it.Frequency, &it.DayOfMonth, &startDate,
+			&it.PaidCents, &it.PaidCount, &it.PaidWithoutTransactionCount,
+		); err != nil {
+			return nil, fmt.Errorf("scan bill reconciliation: %w", err)
+		}
+		it.StartDate, _ = time.Parse("2006-01-02", startDate)
+		items = append(items, it)
+	}
+	return items, rows.Err()
+}

@@ -1,6 +1,41 @@
 services:
+  api:
+    build:
+      context: .
+      dockerfile: infrastructure/docker/Dockerfile
+    image: my:local
+    environment:
+      # Required; no default. Refuses to boot otherwise.
+      MY_USER_EMAIL: ${MY_USER_EMAIL:?set MY_USER_EMAIL, e.g. you@example.com}
+      MY_DATABASE_URL: file:/data/my.db
+      MY_REDIS_URL: redis://redis:6379
+      MY_WEB_URL: http://localhost:8080
+      # MCP stays off in the container; loopback binding would make its
+      # dedicated port unreachable from outside anyway.
+      MY_MCP_ENABLED: "false"
+    ports:
+      - "8080:8080"
+    volumes:
+      # Named volume inherits the image's 65532 ownership (see Dockerfile),
+      # so the nonroot runtime can create SQLite files here.
+      - my-data:/data
+    depends_on:
+      # Ordering only, not readiness: the Redis client is lazy and never
+      # pings at boot, so unreachable Redis surfaces as per-request errors.
+      - redis
+    # Covers the binary's 15s graceful shutdown drain (SIGTERM -> shutdown).
+    stop_grace_period: 20s
+    restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    volumes:
+      - redis-data:/data
+    restart: unless-stopped
+
   # Optional: self-hosted libSQL server (sqld)
-  # Uncomment to use instead of embedded mode
+  # Uncomment to use instead of embedded mode, then point
+  # MY_DATABASE_URL at it.
   # sqld:
   #   image: ghcr.io/tursodatabase/libsql-server:latest
   #   ports:
@@ -11,4 +46,6 @@ services:
   #     - SQLD_NODE=primary
 
 volumes:
+  my-data:
+  redis-data:
   # sqld-data:

@@ -1,0 +1,36 @@
+# Secrets and local state — never into a build context
+.env
+.env.*
+*.db
+*.db-wal
+*.db-shm
+
+# VCS
+.git
+.gitignore
+.github
+
+# Dependencies and build output
+node_modules
+**/node_modules
+bin
+dist
+apps/web/dist
+apps/api/internal/platform/web/static
+test-results
+playwright-report
+
+# Tooling config and docs not needed in the image
+.opencode
+.opencode.jsonc
+.vscode
+.playwright-mcp
+.engram
+docs
+skills
+agent
+deployments
+infrastructure/terraform
+infrastructure/kubernetes
+HANDOFF.md
+ROADMAP.md

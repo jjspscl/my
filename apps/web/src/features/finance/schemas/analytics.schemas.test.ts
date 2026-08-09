@@ -286,7 +286,7 @@ describe('MonthlyDigestSchema', () => {
   })
 
   it('rejects a digest missing a section (sections are never absent)', () => {
-    const withoutCashFlow = { ...baseDigest }
+    const withoutCashFlow = { ...baseDigest } as Record<string, unknown>
     delete withoutCashFlow.cashFlow
     const result = MonthlyDigestSchema.safeParse(withoutCashFlow)
     expect(result.success).toBe(false)

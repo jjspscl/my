@@ -28,16 +28,17 @@ type App struct {
 	Redis    *redis.Client
 	Sessions session.Store
 
-	Auth      *accessapp.AuthService
-	Tx        *financeapp.TransactionService
-	Budget    *financeapp.BudgetService
-	Bill      *financeapp.BillService
-	Goal      *financeapp.GoalService
-	Wallet    *financeapp.WalletService
-	Transfer  *financeapp.TransferService
-	Category  *financeapp.CategoryService
-	Analytics *financeapp.AnalyticsService
-	Habit     *habitapp.HabitService
+	Auth             *accessapp.AuthService
+	Tx               *financeapp.TransactionService
+	Budget           *financeapp.BudgetService
+	Bill             *financeapp.BillService
+	Goal             *financeapp.GoalService
+	Wallet           *financeapp.WalletService
+	Transfer         *financeapp.TransferService
+	Category         *financeapp.CategoryService
+	Analytics        *financeapp.AnalyticsService
+	DerivedAnalytics *financeapp.DerivedAnalyticsService
+	Habit            *habitapp.HabitService
 
 	closeOnce sync.Once
 	closeErr  error
@@ -102,26 +103,28 @@ func NewWithOptions(cfg *config.Config, log *slog.Logger, opts Options) (*App, e
 
 	analyticsRepo := financeinfra.NewAnalyticsRepoLibSQL(db)
 	analyticsSvc := financeapp.NewAnalyticsService(analyticsRepo, budgetRepo, goalRepo).WithClock(clock)
+	derivedAnalyticsSvc := financeapp.NewDerivedAnalyticsService(analyticsRepo, walletRepo, billRepo, analyticsSvc, billSvc).WithClock(clock)
 
 	habitRepo := habitinfra.NewHabitRepoLibSQL(db)
 	habitSvc := habitapp.NewHabitService(habitRepo)
 
 	return &App{
-		Cfg:       cfg,
-		Log:       log,
-		DB:        db,
-		Redis:     rdb,
-		Sessions:  sessions,
-		Auth:      authSvc,
-		Tx:        txSvc,
-		Budget:    budgetSvc,
-		Bill:      billSvc,
-		Goal:      goalSvc,
-		Wallet:    walletSvc,
-		Transfer:  transferSvc,
-		Category:  categorySvc,
-		Analytics: analyticsSvc,
-		Habit:     habitSvc,
+		Cfg:              cfg,
+		Log:              log,
+		DB:               db,
+		Redis:            rdb,
+		Sessions:         sessions,
+		Auth:             authSvc,
+		Tx:               txSvc,
+		Budget:           budgetSvc,
+		Bill:             billSvc,
+		Goal:             goalSvc,
+		Wallet:           walletSvc,
+		Transfer:         transferSvc,
+		Category:         categorySvc,
+		Analytics:        analyticsSvc,
+		DerivedAnalytics: derivedAnalyticsSvc,
+		Habit:            habitSvc,
 	}, nil
 }
 

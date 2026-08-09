@@ -18,18 +18,19 @@ import (
 )
 
 type routerDeps struct {
-	log              *slog.Logger
-	sessions         session.Store
-	authHandler      *accesshttp.AuthHandler
-	financeHandler   *financehttp.FinanceHandler
-	budgetHandler    *financehttp.BudgetHandler
-	billHandler      *financehttp.BillHandler
-	goalHandler      *financehttp.GoalHandler
-	walletHandler    *financehttp.WalletHandler
-	transferHandler  *financehttp.TransferHandler
-	categoryHandler  *financehttp.CategoryHandler
-	analyticsHandler *financehttp.AnalyticsHandler
-	habitHandler     *habithttp.HabitHandler
+	log                     *slog.Logger
+	sessions                session.Store
+	authHandler             *accesshttp.AuthHandler
+	financeHandler          *financehttp.FinanceHandler
+	budgetHandler           *financehttp.BudgetHandler
+	billHandler             *financehttp.BillHandler
+	goalHandler             *financehttp.GoalHandler
+	walletHandler           *financehttp.WalletHandler
+	transferHandler         *financehttp.TransferHandler
+	categoryHandler         *financehttp.CategoryHandler
+	analyticsHandler        *financehttp.AnalyticsHandler
+	derivedAnalyticsHandler *financehttp.DerivedAnalyticsHandler
+	habitHandler            *habithttp.HabitHandler
 }
 
 func newRouter(deps routerDeps) chi.Router {
@@ -70,7 +71,10 @@ func newRouter(deps routerDeps) chi.Router {
 				r.Route("/wallets", deps.walletHandler.Routes)
 				r.Route("/transfers", deps.transferHandler.Routes)
 				r.Route("/categories", deps.categoryHandler.Routes)
-				r.Route("/analytics", deps.analyticsHandler.Routes)
+				r.Route("/analytics", func(r chi.Router) {
+					deps.analyticsHandler.Routes(r)
+					deps.derivedAnalyticsHandler.Routes(r)
+				})
 			})
 
 			r.Route("/habits", deps.habitHandler.Routes)

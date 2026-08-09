@@ -13,13 +13,14 @@ import (
 const analyticsTestUser = "user@example.com"
 
 type mockAnalyticsRepo struct {
-	cashFlow      []domain.CurrencyTotal
-	monthlyFlow   []domain.MonthlyCashFlow
-	classification []domain.ClassificationSpend
-	unclassified  []domain.UnclassifiedSpending
-	topUnclassified []domain.CategorySpend
-	categoryMonthly []domain.MonthlyAmount
-	unbudgeted    int64
+	cashFlow           []domain.CurrencyTotal
+	monthlyFlow        []domain.MonthlyCashFlow
+	classification     []domain.ClassificationSpend
+	unclassified       []domain.UnclassifiedSpending
+	topUnclassified    []domain.CategorySpend
+	categoryMonthly    []domain.MonthlyAmount
+	unbudgeted         int64
+	categoryMonthlyAll []domain.CategoryMonthlySpend
 }
 
 func (m *mockAnalyticsRepo) GetCashFlow(_ context.Context, _ string, _, _ time.Time) ([]domain.CurrencyTotal, error) {
@@ -42,6 +43,9 @@ func (m *mockAnalyticsRepo) GetCategoryMonthlySpend(_ context.Context, _, _, _ s
 }
 func (m *mockAnalyticsRepo) GetUnbudgetedSpend(_ context.Context, _, _, _ string, _, _ time.Time) (int64, error) {
 	return m.unbudgeted, nil
+}
+func (m *mockAnalyticsRepo) GetCategoryMonthlySpendAll(_ context.Context, _ string, _, _ time.Time) ([]domain.CategoryMonthlySpend, error) {
+	return m.categoryMonthlyAll, nil
 }
 
 func newAnalyticsService(repo *mockAnalyticsRepo, budget *mockBudgetRepo, goal *mockGoalRepo) *AnalyticsService {

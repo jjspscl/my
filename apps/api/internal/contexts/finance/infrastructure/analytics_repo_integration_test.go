@@ -192,6 +192,41 @@ func TestAnalyticsGetCategoryMonthlySpend(t *testing.T) {
 	}
 }
 
+func TestAnalyticsGetCategoryMonthlySpendAll(t *testing.T) {
+	db := newTestDB(t)
+	ctx := context.Background()
+	walletRepo := NewWalletRepoLibSQL(db)
+	txRepo := NewTransactionRepoLibSQL(db)
+	analytics := NewAnalyticsRepoLibSQL(db)
+
+	mustWallet(t, walletRepo, "w-php", "PHP", 0)
+	clock := manilaClock(t)
+	jan, _ := clock.ParseDate("2026-01-05")
+	feb, _ := clock.ParseDate("2026-02-05")
+
+	mustTransaction(t, txRepo, "t1", "PHP", "Food", 1000, domain.TransactionExpense, jan, "w-php")
+	mustTransaction(t, txRepo, "t2", "PHP", "Food", 2500, domain.TransactionExpense, feb, "w-php")
+	mustTransaction(t, txRepo, "t3", "PHP", "Transport", 900, domain.TransactionExpense, jan, "w-php")
+
+	from, _ := clock.ParseDate("2026-01-01")
+	to, _ := clock.ParseDate("2026-03-01")
+
+	rows, err := analytics.GetCategoryMonthlySpendAll(ctx, testUser, from, to)
+	if err != nil {
+		t.Fatalf("GetCategoryMonthlySpendAll: %v", err)
+	}
+	if len(rows) != 3 {
+		t.Fatalf("expected 3 rows, got %d", len(rows))
+	}
+	got := map[string]int64{}
+	for _, r := range rows {
+		got[r.Category+"|"+r.Month] = r.AmountCents
+	}
+	if got["Food|2026-01"] != 1000 || got["Food|2026-02"] != 2500 || got["Transport|2026-01"] != 900 {
+		t.Errorf("rows = %+v, want Food 2026-01=1000, Food 2026-02=2500, Transport 2026-01=900", rows)
+	}
+}
+
 func TestAnalyticsGetUnbudgetedSpend(t *testing.T) {
 	db := newTestDB(t)
 	ctx := context.Background()

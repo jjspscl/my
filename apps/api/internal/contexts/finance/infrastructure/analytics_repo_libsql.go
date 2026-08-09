@@ -227,3 +227,30 @@ func (r *AnalyticsRepoLibSQL) GetUnbudgetedSpend(ctx context.Context, userEmail,
 	}
 	return total, nil
 }
+
+// GetCategoryMonthlySpendAll returns monthly expense per category and currency
+// over [from, to), ordered by category, currency, month.
+func (r *AnalyticsRepoLibSQL) GetCategoryMonthlySpendAll(ctx context.Context, userEmail string, from, to time.Time) ([]domain.CategoryMonthlySpend, error) {
+	rows, err := executor(ctx, r.db).QueryContext(ctx, `
+		SELECT category, currency, strftime('%Y-%m', transaction_date) as month, COALESCE(SUM(amount_cents), 0) as amount_cents
+		FROM transactions
+		WHERE user_email = ? AND type = 'expense' AND transaction_date >= ? AND transaction_date < ?
+		GROUP BY category, currency, month
+		ORDER BY category, currency, month`,
+		userEmail, from.Format("2006-01-02"), to.Format("2006-01-02"),
+	)
+	if err != nil {
+		return nil, fmt.Errorf("get category monthly spend all: %w", err)
+	}
+	defer rows.Close()
+
+	var spends []domain.CategoryMonthlySpend
+	for rows.Next() {
+		var s domain.CategoryMonthlySpend
+		if err := rows.Scan(&s.Category, &s.Currency, &s.Month, &s.AmountCents); err != nil {
+			return nil, fmt.Errorf("scan category monthly spend all: %w", err)
+		}
+		spends = append(spends, s)
+	}
+	return spends, rows.Err()
+}

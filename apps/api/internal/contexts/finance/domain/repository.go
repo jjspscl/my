@@ -100,4 +100,16 @@ type AnalyticsRepository interface {
 	// GetUnbudgetedSpend returns expense in categories that have no budget
 	// allocation for the given month, restricted to one currency.
 	GetUnbudgetedSpend(ctx context.Context, userEmail, currency, month string, from, to time.Time) (int64, error)
+	// GetCategoryMonthlySpendAll returns monthly expense per category and
+	// currency over [from, to), ordered by category, currency, month. It feeds
+	// the anomaly scan across every category in one query (no N+1).
+	GetCategoryMonthlySpendAll(ctx context.Context, userEmail string, from, to time.Time) ([]CategoryMonthlySpend, error)
+}
+
+// CategoryMonthlySpend is one category × currency × month expense row.
+type CategoryMonthlySpend struct {
+	Category    string
+	Currency    string
+	Month       string // YYYY-MM
+	AmountCents int64
 }

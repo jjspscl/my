@@ -64,23 +64,25 @@ func main() {
 	transferHandler := financehttp.NewTransferHandler(app.Transfer)
 	categoryHandler := financehttp.NewCategoryHandler(app.Category)
 	analyticsHandler := financehttp.NewAnalyticsHandler(app.Analytics, timeutil.New(app.Cfg.Location))
+	derivedAnalyticsHandler := financehttp.NewDerivedAnalyticsHandler(app.DerivedAnalytics, timeutil.New(app.Cfg.Location))
 
 	// Habits
 	habitHandler := habithttp.NewHabitHandler(app.Habit)
 
 	r := newRouter(routerDeps{
-		log:              log,
-		sessions:         app.Sessions,
-		authHandler:      authHandler,
-		financeHandler:   financeHandler,
-		budgetHandler:    budgetHandler,
-		billHandler:      billHandler,
-		goalHandler:      goalHandler,
-		walletHandler:    walletHandler,
-		transferHandler:  transferHandler,
-		categoryHandler:  categoryHandler,
-		analyticsHandler: analyticsHandler,
-		habitHandler:     habitHandler,
+		log:                     log,
+		sessions:                app.Sessions,
+		authHandler:             authHandler,
+		financeHandler:          financeHandler,
+		budgetHandler:           budgetHandler,
+		billHandler:             billHandler,
+		goalHandler:             goalHandler,
+		walletHandler:           walletHandler,
+		transferHandler:         transferHandler,
+		categoryHandler:         categoryHandler,
+		analyticsHandler:        analyticsHandler,
+		derivedAnalyticsHandler: derivedAnalyticsHandler,
+		habitHandler:            habitHandler,
 	})
 
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)

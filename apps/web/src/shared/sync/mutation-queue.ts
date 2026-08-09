@@ -5,7 +5,12 @@ const mutationQueueStore = createStore('my-sync', 'mutations')
 // Raw entries that no longer parse (corruption, foreign writes). Kept instead
 // of deleted: the queue holds unsent user data, and silent deletion is data
 // loss. The UI surfaces these with a discard action.
-const corruptStore = createStore('my-sync', 'corrupt')
+//
+// Separate database on purpose: idb-keyval creates its object store only
+// when the database is first created, so a second store on the already-
+// existing 'my-sync' database would never exist ("No objectStore named
+// corrupt" on every access, breaking the drain).
+const corruptStore = createStore('my-sync-corrupt', 'corrupt')
 
 const SCHEMA_VERSION = 1
 
@@ -33,7 +38,12 @@ export type FailedMutation = QueuedMutation & {
   failedAt: string
 }
 
-export async function enqueue(mutation: Omit<QueuedMutation, 'id' | 'schemaVersion' | 'createdAt' | 'retries' | 'maxRetries' | 'state' | 'failedReason' | 'failedAt'>): Promise<string> {
+type EnqueueInput = Omit<
+  QueuedMutation,
+  'id' | 'schemaVersion' | 'createdAt' | 'retries' | 'maxRetries' | 'state' | 'failedReason' | 'failedAt'
+> & { maxRetries?: number }
+
+export async function enqueue(mutation: EnqueueInput): Promise<string> {
   const id = crypto.randomUUID()
   const entry: QueuedMutation = {
     ...mutation,
@@ -41,7 +51,7 @@ export async function enqueue(mutation: Omit<QueuedMutation, 'id' | 'schemaVersi
     schemaVersion: SCHEMA_VERSION,
     createdAt: new Date().toISOString(),
     retries: 0,
-    maxRetries: 5,
+    maxRetries: mutation.maxRetries ?? 5,
     state: 'pending',
     failedReason: null,
     failedAt: null,

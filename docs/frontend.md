@@ -81,3 +81,16 @@ Inside `apps/web/`:
 | `pnpm test` | Vitest |
 | `pnpm route:generate` | TanStack Router code generation |
 | `pnpm e2e` | Playwright tests |
+
+### E2E runtime requirements
+
+The Playwright specs drive the real magic-link flow (Mailpit at
+`localhost:8025`). Each `beforeEach` requests a link and `retries: 1`
+doubles the count, so run the API with a raised limit:
+
+```bash
+MY_MAGIC_LINK_RATE=100 mise run dev:api
+```
+
+Without this, the default limit (6 per 15 min per IP) trips a 429
+mid-suite and flakes the run.

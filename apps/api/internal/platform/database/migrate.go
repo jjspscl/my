@@ -3,26 +3,27 @@ package database
 import (
 	"database/sql"
 	"fmt"
-	"log"
-	"os"
-	"path/filepath"
+	"io/fs"
+	"log/slog"
 	"sort"
 	"time"
 )
 
-func Migrate(db *sql.DB, migrationsDir string) error {
+// Migrate applies every *.sql file in fsys that has not already been applied,
+// in filename order. A missing or empty migration set is an error — silently
+// booting with no schema produces a "healthy" app whose every query fails.
+func Migrate(db *sql.DB, fsys fs.FS, log *slog.Logger) error {
 	if err := ensureMigrationsTable(db); err != nil {
 		return fmt.Errorf("ensure migrations table: %w", err)
 	}
 
-	files, err := filepath.Glob(filepath.Join(migrationsDir, "*.sql"))
+	files, err := fs.Glob(fsys, "*.sql")
 	if err != nil {
 		return fmt.Errorf("list migration files: %w", err)
 	}
 
 	if len(files) == 0 {
-		log.Println("no migration files found")
-		return nil
+		return fmt.Errorf("no migration files found in embedded filesystem")
 	}
 
 	sort.Strings(files)
@@ -32,14 +33,13 @@ func Migrate(db *sql.DB, migrationsDir string) error {
 		return fmt.Errorf("get applied migrations: %w", err)
 	}
 
-	for _, f := range files {
-		name := filepath.Base(f)
+	for _, name := range files {
 		if applied[name] {
-			log.Printf("migration %s already applied, skipping", name)
+			log.Info("migration already applied, skipping", slog.String("file", name))
 			continue
 		}
 
-		content, err := os.ReadFile(f)
+		content, err := fs.ReadFile(fsys, name)
 		if err != nil {
 			return fmt.Errorf("read migration %s: %w", name, err)
 		}
@@ -66,7 +66,7 @@ func Migrate(db *sql.DB, migrationsDir string) error {
 			return fmt.Errorf("commit migration %s: %w", name, err)
 		}
 
-		log.Printf("migration %s applied", name)
+		log.Info("migration applied", slog.String("file", name))
 	}
 
 	return nil

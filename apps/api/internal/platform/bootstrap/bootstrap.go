@@ -18,6 +18,7 @@ import (
 	predis "github.com/jjspscl/my/internal/platform/redis"
 	"github.com/jjspscl/my/internal/platform/session"
 	"github.com/jjspscl/my/internal/platform/timeutil"
+	"github.com/jjspscl/my/migrations"
 	redis "github.com/redis/go-redis/v9"
 )
 
@@ -59,7 +60,7 @@ func NewWithOptions(cfg *config.Config, log *slog.Logger, opts Options) (*App, e
 	}
 
 	if !opts.SkipMigrations {
-		if err := database.Migrate(db, "migrations"); err != nil {
+		if err := database.Migrate(db, migrations.FS, log); err != nil {
 			_ = db.Close()
 			return nil, err
 		}

@@ -1,6 +1,5 @@
 import { expect } from '@playwright/test'
-
-const MAILPIT_API = 'http://localhost:8025/api/v1'
+import { MAILPIT_API_URL } from './env'
 
 interface MailpitMessage {
   ID: string
@@ -23,7 +22,7 @@ export async function getMagicLinkUrl(email: string): Promise<string> {
   const pollIntervalMs = 1000
 
   for (let i = 0; i < maxAttempts; i++) {
-    const resp = await fetch(`${MAILPIT_API}/messages`)
+    const resp = await fetch(`${MAILPIT_API_URL}/messages`)
     const data = (await resp.json()) as { messages: MailpitMessage[] }
 
     const msg = data.messages.find((m) =>
@@ -31,7 +30,7 @@ export async function getMagicLinkUrl(email: string): Promise<string> {
     )
 
     if (msg) {
-      const detailResp = await fetch(`${MAILPIT_API}/message/${msg.ID}`)
+      const detailResp = await fetch(`${MAILPIT_API_URL}/message/${msg.ID}`)
       const detail = (await detailResp.json()) as MailpitMessageDetail
       const body = detail.Text || detail.HTML || ''
 
@@ -54,6 +53,6 @@ export async function getMagicLinkUrl(email: string): Promise<string> {
  * Delete all messages in Mailpit to get a clean state.
  */
 export async function clearMailpitMessages(): Promise<void> {
-  const resp = await fetch(`${MAILPIT_API}/messages`, { method: 'DELETE' })
+  const resp = await fetch(`${MAILPIT_API_URL}/messages`, { method: 'DELETE' })
   expect(resp.ok).toBe(true)
 }

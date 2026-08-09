@@ -1,7 +1,6 @@
 import { type Page } from '@playwright/test'
 import { clearMailpitMessages, getMagicLinkUrl } from './mailpit'
-
-const TEST_EMAIL = 'jjspscl@gmail.com'
+import { TEST_EMAIL } from './env'
 
 /**
  * Perform magic link login flow: clear mail, submit email, poll link, verify.

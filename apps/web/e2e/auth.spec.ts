@@ -1,5 +1,6 @@
 import { test, expect } from '@playwright/test'
 import { clearMailpitMessages, getMagicLinkUrl } from './helpers/mailpit'
+import { TEST_EMAIL } from './helpers/env'
 
 test.describe('Auth flow', () => {
   test.beforeEach(async () => {
@@ -15,14 +16,14 @@ test.describe('Auth flow', () => {
     await expect(page.getByText('Sign in to my')).toBeVisible()
 
     // Submit email
-    await page.getByPlaceholder('you@example.com').fill('jjspscl@gmail.com')
+    await page.getByPlaceholder('you@example.com').fill(TEST_EMAIL)
     await page.getByRole('button', { name: 'Send magic link' }).click()
 
     // Wait for "Check your email" screen
     await expect(page.getByText('Check your email')).toBeVisible()
 
     // Poll Mailpit for the magic link URL
-    const verifyUrl = await getMagicLinkUrl('jjspscl@gmail.com')
+    const verifyUrl = await getMagicLinkUrl(TEST_EMAIL)
     expect(verifyUrl).toContain('/auth/verify?token=')
 
     // Navigate to verify URL
@@ -40,24 +41,16 @@ test.describe('Auth flow', () => {
   })
 
   test('invalid token shows error', async ({ page }) => {
-    // Navigate — React Query v5 mutation without mutationKey + React 19 StrictMode
-    // double-mount can cause the mutation to hang. We assert the UI reaches error state.
     await page.goto('/auth/verify?token=invalid-token-12345')
 
-    // Give React time to settle. The page should eventually show error state.
-    await page.waitForTimeout(3000)
+    // The route must settle into the error card (regression: it used to
+    // blank-frame on the idle mutation state, and this assertion used to
+    // accept "Verifying..." as a pass — a tautology).
+    await expect(page.getByText('Link expired or invalid')).toBeVisible({
+      timeout: 15000,
+    })
 
-    // Check that the verify page rendered at all
-    const bodyText = await page.locator('body').innerText()
-    // Either still "Verifying..." (if mutation hangs) or "Link expired or invalid"
-    const hasError =
-      bodyText.includes('Link expired') ||
-      bodyText.includes('invalid') ||
-      bodyText.includes('Could not verify')
-    const hasVerifying = bodyText.includes('Verifying')
-    expect(hasError || hasVerifying).toBe(true)
-
-    // Verify the API itself returns 401 for invalid tokens
+    // The API itself returns 401 for invalid tokens.
     const resp = await page.request.post('/api/v1/auth/verify', {
       data: { token: 'invalid-token-12345' },
     })

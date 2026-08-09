@@ -40,7 +40,7 @@
 - [x] Repository pattern (manual SQL)
 - [x] Session cookies + CSRF double-submit
 - [x] Request middleware (ID, panic recovery, request logging)
-- [ ] Rate limiting (magic-link endpoint)
+- [x] Rate limiting (magic-link endpoint)
 - [x] Structured JSON logging (slog, JSON handler)
 - [ ] Domain events infrastructure
 
@@ -181,11 +181,17 @@
 - Sync status UI component
 - PWA workbox runtime caching for API routes
 
+### Phase 8 — Production Docker Image
+- Multi-stage Dockerfile: node (Vite) → Go (embed + build) → distroless/static:nonroot
+- Binary self-contained: frontend assets, SQL migrations, and tzdata embedded
+- docker-compose.yml: api + redis stack, named volumes, 20s stop grace
+- GHCR publishing on v* tags (buildx, amd64+arm64, provenance) with a smoke test
+- Runtime fixes it unlocked: embedded migrations (no silent empty schema),
+  tzdata import (boots on minimal images), POSIX copy-web-assets.sh
+
 ## Remaining Work
 
-- Phase 6: Offline/sync infrastructure (client-side queue done, backend sync absent)
-- Phase 7: Observability correctness (request-ID logging fix, slog error routing, rate limit)
-- Phase 8: Docker production image
+- Phase 6: Offline/sync backend (client-side queue done, backend absent)
 - Phase 9: E2E tests in CI (Playwright webServer)
 
 ## Known Issues

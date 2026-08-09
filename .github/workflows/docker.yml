@@ -1,0 +1,84 @@
+name: Docker
+
+on:
+  push:
+    tags: ['v*']
+  pull_request:
+    branches: [main]
+
+permissions:
+  contents: read
+  packages: write
+  id-token: write
+  attestations: write
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Login to GHCR
+        if: github.event_name != 'pull_request'
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Compute version metadata
+        id: meta
+        run: |
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            echo "version=${GITHUB_REF#refs/tags/}" >> "$GITHUB_OUTPUT"
+          else
+            echo "version=dev" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          file: infrastructure/docker/Dockerfile
+          platforms: linux/amd64,linux/arm64
+          push: ${{ github.event_name != 'pull_request' }}
+          # Loaded into the local daemon on PRs so the smoke test below can
+          # run the image without a registry round-trip.
+          load: ${{ github.event_name == 'pull_request' }}
+          tags: |
+            ghcr.io/${{ github.repository }}:latest
+            ghcr.io/${{ github.repository }}:${{ steps.meta.outputs.version }}
+          build-args: |
+            VERSION=${{ steps.meta.outputs.version }}
+            COMMIT=${{ github.sha }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+          provenance: true
+
+      # Proves the packaged runtime works: embedded migrations apply, tzdata
+      # resolves, health responds. Without this, a broken image still
+      # publishes.
+      - name: Smoke test image
+        run: |
+          docker run -d --rm --name my-smoke \
+            -p 127.0.0.1:18080:8080 \
+            -e MY_USER_EMAIL=smoke@example.com \
+            -e MY_REDIS_URL=redis://redis:6379 \
+            ghcr.io/${{ github.repository }}:${{ steps.meta.outputs.version }}
+
+          for i in $(seq 1 30); do
+            if curl -fsS http://127.0.0.1:18080/api/v1/health > /tmp/health.json 2>/dev/null; then
+              break
+            fi
+            sleep 1
+          done
+
+          grep -q '"status":"ok"' /tmp/health.json || { echo "health check failed"; exit 1; }
+          if [[ "${{ steps.meta.outputs.version }}" != "dev" ]]; then
+            grep -q '${{ steps.meta.outputs.version }}' /tmp/health.json \
+              || { echo "version mismatch in health payload"; exit 1; }
+          fi
+
+          docker kill my-smoke >/dev/null

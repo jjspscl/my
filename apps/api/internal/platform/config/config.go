@@ -7,6 +7,12 @@ import (
 	"strconv"
 	"strings"
 	"time"
+
+	// Embed the tzdata database so time.LoadLocation works on minimal runtime
+	// images (scratch, distroless) that ship no /usr/share/zoneinfo. Every
+	// binary that loads config — cmd/api, cmd/mcp, cmd/migrate — depends on
+	// MY_TIMEZONE resolving or boot fails.
+	_ "time/tzdata"
 )
 
 type Config struct {

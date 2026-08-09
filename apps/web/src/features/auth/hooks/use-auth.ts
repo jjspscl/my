@@ -1,19 +1,13 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useNavigate } from '@tanstack/react-router'
 import { authKeys } from '../api/auth.keys'
+import { clearApiCache } from '@/shared/sync/api-cache'
 import {
   getCurrentUser,
   logout as logoutApi,
   requestMagicLink as requestMagicLinkApi,
   verifyToken as verifyTokenApi,
 } from '../api/auth.api'
-
-const API_CACHE_NAME = 'api-cache'
-
-export async function clearApiCache() {
-  if (typeof caches === 'undefined') return
-  await caches.delete(API_CACHE_NAME)
-}
 
 export function useCurrentUser() {
   return useQuery({

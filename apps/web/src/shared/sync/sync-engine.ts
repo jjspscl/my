@@ -11,6 +11,8 @@ import {
   type QueuedMutation,
 } from './mutation-queue'
 import { useNetworkStatus } from './network-status'
+import { clearApiCache } from './api-cache'
+import { queryClient } from '@/shared/api/query-client'
 import { create } from 'zustand'
 
 type SyncStatus = 'idle' | 'syncing' | 'error'
@@ -124,6 +126,11 @@ export async function drainQueue(): Promise<void> {
   setStatus(remaining.length > 0 || failedAfter.length > 0 || corruptAfter > 0 ? 'error' : 'idle')
   if (remaining.length === 0 && failedAfter.length === 0 && corruptAfter === 0) {
     setLastSyncAt(new Date().toISOString())
+    // Everything replayed: refetch from the server and purge the SW's cached
+    // API responses, or stale GETs (NetworkFirst, 10 min TTL) would keep
+    // showing pre-mutation data and invite duplicate entries.
+    queryClient.invalidateQueries()
+    void clearApiCache().catch(() => undefined)
   }
 }
 

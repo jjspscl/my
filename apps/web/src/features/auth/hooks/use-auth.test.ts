@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest'
-import { clearApiCache } from './use-auth'
+import { clearApiCache } from '@/shared/sync/api-cache'
 
 describe('clearApiCache', () => {
   afterEach(() => {

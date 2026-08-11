@@ -213,11 +213,29 @@
   runtime bug
 - ROADMAP corrections: queue, sync indicator, feedback components
 
+### Phase 11 — MVP Hardening (operational readiness)
+- Backup + export: `VACUUM INTO` snapshots (`mise run backup`, `-backup`
+  flag, authenticated `GET /api/v1/backup`), JSON export of all 12
+  user-data tables (magic_tokens excluded); live restore drill passed
+- SQLite pragmas: WAL, 5s busy timeout, foreign keys ON, single-writer
+  pool — contention-safe API+MCP, cascades now live
+- Explicit child deletes for goals/bills + `foreign_key_check` orphan
+  diagnostics at boot
+- Errors surfaced: Toaster mounted, login-form failure branch, mutation
+  onError toasts, "saved offline" notice for queued changes
+- PWA installability: 192/512/maskable icons + apple-touch-icon
+- Deploy sanity: MY_WEB_URL required (no more localhost magic links),
+  `/api/v1/ready` readiness probe, insecure-cookie boot warning,
+  sliding session expiry, `-login-link` SMTP-down escape hatch
+- Deployment docs: backup/restore runbook, probes, WAL caveats
+
 ## Remaining Work
 
 - Phase 6: Offline/sync backend — server sync context (push/pull/status),
   revision columns/tombstones, batch drain, conflict policy (client queue,
   dead-letter, invalidation, idempotent habit check-in now exist)
+- Known gaps: `rediss://` TLS Redis, down-migrations, SQLite session
+  fallback, transaction date bounds, toasts beyond the main dialogs
 
 ## Known Issues
 

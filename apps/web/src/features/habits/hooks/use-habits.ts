@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { toast } from 'sonner'
 import { habitKeys } from '../api/habits.keys'
 import { useNetworkStatus } from '@/shared/sync/network-status'
 import { offlineMutate } from '@/shared/sync/offline-mutate'
@@ -25,6 +26,9 @@ export function useCreateHabit() {
 
   return useMutation({
     mutationFn: (data: CreateHabit) => createHabitApi(data),
+    onError: (err) => {
+      toast.error(err instanceof Error ? err.message : 'Could not create the habit.')
+    },
     onSettled: () => {
       queryClient.invalidateQueries({ queryKey: habitKeys.all })
     },
@@ -86,9 +90,17 @@ export function useToggleHabit() {
 
       return { prev }
     },
-    onError: (_err, _vars, ctx) => {
+    onError: (err, _vars, ctx) => {
       if (ctx?.prev) {
         queryClient.setQueryData(habitKeys.list(), ctx.prev)
+      }
+      toast.error(err instanceof Error ? err.message : 'Could not update the habit.')
+    },
+    onSuccess: (data) => {
+      // 'queued' = offlineMutate parked the change in the queue — make the
+      // state visible instead of looking like a silent success.
+      if (data === 'queued') {
+        toast.info('Saved offline — will sync when you reconnect')
       }
     },
     onSettled: () => {

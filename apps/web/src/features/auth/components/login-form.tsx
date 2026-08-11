@@ -2,6 +2,7 @@ import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { Mail } from 'lucide-react'
 import { useState } from 'react'
+import { toast } from 'sonner'
 
 import { Button } from '@/components/ui/button'
 import {
@@ -38,6 +39,11 @@ export function LoginForm() {
   function onSubmit(data: MagicLinkRequest) {
     requestMagicLink.mutate(data, {
       onSuccess: () => setSent(true),
+      // A failed request (SMTP down, rate limit, server error) must not look
+      // like "nothing happened".
+      onError: (err) => {
+        toast.error(err.message || 'Could not send the magic link. Try again.')
+      },
     })
   }
 

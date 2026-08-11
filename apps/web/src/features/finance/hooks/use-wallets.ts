@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { toast } from 'sonner'
 import { financeKeys } from '../api/finance.keys'
 import { listWallets, createWallet, updateWallet, archiveWallet } from '../api/wallet.api'
 import type { CreateWallet } from '../schemas/wallet.schemas'
@@ -18,6 +19,9 @@ export function useCreateWallet() {
     mutationFn: (data: CreateWallet) => createWallet(data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: financeKeys.walletList() })
+    },
+    onError: (err) => {
+      toast.error(err instanceof Error ? err.message : 'Could not create the wallet.')
     },
   })
 }

@@ -63,13 +63,28 @@ func (r *BillRepoLibSQL) UpdateBill(ctx context.Context, bill *domain.RecurringB
 }
 
 func (r *BillRepoLibSQL) DeleteBill(ctx context.Context, id, userEmail string) error {
-	result, err := executor(ctx, r.db).ExecContext(ctx, "DELETE FROM recurring_bills WHERE id = ? AND user_email = ?", id, userEmail)
+	// Delete children first (explicit, in case foreign_keys is ever off).
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin tx: %w", err)
+	}
+	defer tx.Rollback()
+
+	if _, err := tx.ExecContext(ctx, "DELETE FROM bill_payments WHERE bill_id = ?", id); err != nil {
+		return fmt.Errorf("delete bill payments: %w", err)
+	}
+
+	result, err := tx.ExecContext(ctx, "DELETE FROM recurring_bills WHERE id = ? AND user_email = ?", id, userEmail)
 	if err != nil {
 		return fmt.Errorf("delete bill: %w", err)
 	}
 	n, _ := result.RowsAffected()
 	if n == 0 {
 		return fmt.Errorf("bill not found")
+	}
+
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit delete bill: %w", err)
 	}
 	return nil
 }

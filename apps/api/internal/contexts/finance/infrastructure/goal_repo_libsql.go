@@ -41,13 +41,30 @@ func (r *GoalRepoLibSQL) UpdateGoal(ctx context.Context, goal *domain.SavingsGoa
 }
 
 func (r *GoalRepoLibSQL) DeleteGoal(ctx context.Context, id, userEmail string) error {
-	result, err := executor(ctx, r.db).ExecContext(ctx, "DELETE FROM savings_goals WHERE id = ? AND user_email = ?", id, userEmail)
+	// Delete children first (explicit, in case foreign_keys is ever off) —
+	// then the parent. The goal may own transfers via goal_contributions;
+	// those transfers remain valid records of money movement.
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin tx: %w", err)
+	}
+	defer tx.Rollback()
+
+	if _, err := tx.ExecContext(ctx, "DELETE FROM goal_contributions WHERE goal_id = ?", id); err != nil {
+		return fmt.Errorf("delete goal contributions: %w", err)
+	}
+
+	result, err := tx.ExecContext(ctx, "DELETE FROM savings_goals WHERE id = ? AND user_email = ?", id, userEmail)
 	if err != nil {
 		return fmt.Errorf("delete goal: %w", err)
 	}
 	n, _ := result.RowsAffected()
 	if n == 0 {
 		return fmt.Errorf("goal not found")
+	}
+
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit delete goal: %w", err)
 	}
 	return nil
 }

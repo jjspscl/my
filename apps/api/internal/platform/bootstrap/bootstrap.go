@@ -69,6 +69,8 @@ func NewWithOptions(cfg *config.Config, log *slog.Logger, opts Options) (*App, e
 		return nil, err
 	}
 
+	reportOrphans(db, log)
+
 	rdb, err := predis.NewClient(cfg.RedisURL)
 	if err != nil {
 		_ = db.Close()
@@ -145,4 +147,27 @@ func (a *App) Close() error {
 		a.closeErr = errors.Join(errs...)
 	})
 	return a.closeErr
+}
+
+// reportOrphans surfaces pre-existing orphaned child rows (created while
+// foreign_keys was OFF) without failing boot. New orphans cannot form: the
+// goal and bill repos delete children explicitly, and FKs are ON.
+func reportOrphans(db *sql.DB, log *slog.Logger) {
+	rows, err := db.Query("PRAGMA foreign_key_check")
+	if err != nil {
+		log.Warn("foreign_key_check failed", slog.Any("error", err))
+		return
+	}
+	defer rows.Close()
+
+	count := 0
+	for rows.Next() {
+		count++
+	}
+	if count > 0 {
+		log.Warn("foreign_key_check found orphaned rows (pre-existing from the foreign_keys=OFF era); review before relying on cascades",
+			slog.Int("count", count))
+	} else {
+		log.Debug("foreign_key_check clean")
+	}
 }

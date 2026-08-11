@@ -453,3 +453,81 @@ func TestCategoryRepoSeedAndUpdate(t *testing.T) {
 		t.Fatal("expected error updating unknown category")
 	}
 }
+
+func TestDeleteGoal_RemovesContributions(t *testing.T) {
+	db := newTestDB(t)
+	ctx := context.Background()
+	goalRepo := NewGoalRepoLibSQL(db)
+
+	mustWallet(t, NewWalletRepoLibSQL(db), "w-del", "PHP", 0)
+
+	target := time.Date(2026, 12, 31, 0, 0, 0, 0, time.UTC)
+	now := time.Now().UTC()
+	if err := goalRepo.SaveGoal(ctx, &domain.SavingsGoal{
+		ID: "goal-del", UserEmail: testUser, Name: "Bike", TargetAmountCents: 500000,
+		TargetDate: &target, TargetWalletID: "w-del", Currency: "PHP",
+		CreatedAt: now, UpdatedAt: now,
+	}); err != nil {
+		t.Fatalf("save goal: %v", err)
+	}
+	if err := goalRepo.SaveContribution(ctx, &domain.GoalContribution{
+		ID: "gc-del", GoalID: "goal-del", AmountCents: 1000,
+		ContributedAt: now,
+	}); err != nil {
+		t.Fatalf("save contribution: %v", err)
+	}
+
+	if err := goalRepo.DeleteGoal(ctx, "goal-del", testUser); err != nil {
+		t.Fatalf("delete goal: %v", err)
+	}
+
+	var n int
+	if err := db.QueryRow("SELECT COUNT(*) FROM goal_contributions WHERE goal_id = 'goal-del'").Scan(&n); err != nil {
+		t.Fatalf("count contributions: %v", err)
+	}
+	if n != 0 {
+		t.Fatalf("goal contributions orphaned after goal delete: %d", n)
+	}
+
+	// Deleting a missing goal still errors.
+	if err := goalRepo.DeleteGoal(ctx, "goal-del", testUser); err == nil {
+		t.Fatal("expected error deleting missing goal")
+	}
+}
+
+func TestDeleteBill_RemovesPayments(t *testing.T) {
+	db := newTestDB(t)
+	ctx := context.Background()
+	billRepo := NewBillRepoLibSQL(db)
+
+	now := time.Now().UTC()
+	if err := billRepo.SaveBill(ctx, &domain.RecurringBill{
+		ID: "bill-del", UserEmail: testUser, Name: "Netflix", Category: "Subscriptions",
+		AmountCents: 49900, Currency: "PHP", Frequency: domain.FrequencyMonthly, DayOfMonth: 15,
+		StartDate: now, CreatedAt: now, UpdatedAt: now,
+	}); err != nil {
+		t.Fatalf("save bill: %v", err)
+	}
+	if err := billRepo.SavePayment(ctx, &domain.BillPayment{
+		ID: "bp-del", BillID: "bill-del", AmountCents: 49900,
+		DueDate: now, Status: domain.OccurrencePending,
+	}); err != nil {
+		t.Fatalf("save payment: %v", err)
+	}
+
+	if err := billRepo.DeleteBill(ctx, "bill-del", testUser); err != nil {
+		t.Fatalf("delete bill: %v", err)
+	}
+
+	var n int
+	if err := db.QueryRow("SELECT COUNT(*) FROM bill_payments WHERE bill_id = 'bill-del'").Scan(&n); err != nil {
+		t.Fatalf("count payments: %v", err)
+	}
+	if n != 0 {
+		t.Fatalf("bill payments orphaned after bill delete: %d", n)
+	}
+
+	if err := billRepo.DeleteBill(ctx, "bill-del", testUser); err == nil {
+		t.Fatal("expected error deleting missing bill")
+	}
+}

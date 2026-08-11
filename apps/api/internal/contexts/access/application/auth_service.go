@@ -38,16 +38,11 @@ func (s *AuthService) RequestMagicLink(ctx context.Context, email string) error 
 		return nil
 	}
 
-	token, err := domain.NewMagicToken(email, 15*time.Minute)
+	link, err := s.CreateMagicLink(ctx, email)
 	if err != nil {
-		return fmt.Errorf("create token: %w", err)
+		return err
 	}
 
-	if err := s.tokenRepo.Save(ctx, token); err != nil {
-		return fmt.Errorf("save token: %w", err)
-	}
-
-	link := fmt.Sprintf("%s/auth/verify?token=%s", s.config.WebURL, token.Token)
 	body := fmt.Sprintf("Sign in to my\n\nClick this link to sign in:\n%s\n\nThis link expires in 15 minutes.\n\nIf you didn't request this, ignore this email.", link)
 
 	if err := s.mailer.Send(email, "Sign in to my", body); err != nil {
@@ -55,6 +50,28 @@ func (s *AuthService) RequestMagicLink(ctx context.Context, email string) error 
 	}
 
 	return nil
+}
+
+// CreateMagicLink mints a magic-link token and returns the verify URL without
+// sending email. This is the SMTP-down escape hatch: an operator with shell
+// access can log in without the mail relay. Unlike RequestMagicLink, a
+// mismatched email is a loud error — this is operator-facing, not a public
+// endpoint.
+func (s *AuthService) CreateMagicLink(ctx context.Context, email string) (string, error) {
+	if email != s.config.UserEmail {
+		return "", fmt.Errorf("email %q does not match MY_USER_EMAIL", email)
+	}
+
+	token, err := domain.NewMagicToken(email, 15*time.Minute)
+	if err != nil {
+		return "", fmt.Errorf("create token: %w", err)
+	}
+
+	if err := s.tokenRepo.Save(ctx, token); err != nil {
+		return "", fmt.Errorf("save token: %w", err)
+	}
+
+	return fmt.Sprintf("%s/auth/verify?token=%s", s.config.WebURL, token.Token), nil
 }
 
 func (s *AuthService) VerifyToken(ctx context.Context, tokenStr string) (string, error) {

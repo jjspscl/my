@@ -1,12 +1,14 @@
 package main
 
 import (
+	"database/sql"
 	"encoding/json"
 	"log/slog"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
 	chimw "github.com/go-chi/chi/v5/middleware"
+	redis "github.com/redis/go-redis/v9"
 
 	accesshttp "github.com/jjspscl/my/internal/contexts/access/interfaces/http"
 	financehttp "github.com/jjspscl/my/internal/contexts/finance/interfaces/http"
@@ -21,6 +23,8 @@ import (
 type routerDeps struct {
 	log                     *slog.Logger
 	sessions                session.Store
+	db                      *sql.DB
+	redis                   *redis.Client
 	authHandler             *accesshttp.AuthHandler
 	backupHandler           *backup.Handler
 	magicLinkRate           int
@@ -50,6 +54,25 @@ func newRouter(deps routerDeps) chi.Router {
 				"status":  "ok",
 				"version": platformversion.String(),
 			})
+		})
+
+		// Readiness: dependency liveness for orchestrators. /health stays a
+		// pure process probe (the Playwright webServer waits on it), while
+		// /ready tells a scheduler whether the app can actually serve.
+		r.Get("/ready", func(w http.ResponseWriter, r *http.Request) {
+			status := map[string]string{"db": "ok", "redis": "ok"}
+			code := http.StatusOK
+			if err := deps.db.PingContext(r.Context()); err != nil {
+				status["db"] = "error"
+				code = http.StatusServiceUnavailable
+			}
+			if err := deps.redis.Ping(r.Context()).Err(); err != nil {
+				status["redis"] = "error"
+				code = http.StatusServiceUnavailable
+			}
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(code)
+			_ = json.NewEncoder(w).Encode(status)
 		})
 
 		// Mount auth once. Public routes and protected logout share this subrouter.

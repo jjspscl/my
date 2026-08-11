@@ -8,8 +8,10 @@ import (
 	"log/slog"
 	"net"
 	"net/http"
+	"net/url"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -32,6 +34,7 @@ import (
 func main() {
 	showVersion := flag.Bool("version", false, "print version and exit")
 	backupPath := flag.String("backup", "", "snapshot the database to this path and exit (VACUUM INTO; safe on a live database)")
+	loginLink := flag.Bool("login-link", false, "print a magic link for MY_USER_EMAIL to stdout and exit (SMTP-down escape hatch)")
 	flag.Parse()
 	if *showVersion {
 		fmt.Println(platformversion.String())
@@ -47,6 +50,11 @@ func main() {
 	if err != nil {
 		log.Error("config load failed", slog.Any("error", err))
 		os.Exit(1)
+	}
+
+	if !cfg.SecureCookies && !isLocalWebURL(cfg.WebURL) {
+		log.Warn("cookies are NOT Secure: MY_WEB_URL is not localhost and not https, so the session and CSRF tokens travel in cleartext over the network",
+			slog.String("web_url", cfg.WebURL))
 	}
 
 	if *backupPath != "" {
@@ -77,6 +85,16 @@ func main() {
 		}
 	}()
 
+	if *loginLink {
+		link, err := app.Auth.CreateMagicLink(context.Background(), cfg.UserEmail)
+		if err != nil {
+			log.Error("create magic link failed", slog.Any("error", err))
+			os.Exit(1)
+		}
+		fmt.Println(link)
+		return
+	}
+
 	authHandler := accesshttp.NewAuthHandler(app.Auth, cfg.SecureCookies, cfg.SessionTTL)
 	backupHandler := backup.NewHandler(app.DB)
 
@@ -97,9 +115,11 @@ func main() {
 	r := newRouter(routerDeps{
 		log:                     log,
 		sessions:                app.Sessions,
+		db:                      app.DB,
+		redis:                   app.Redis,
 		authHandler:             authHandler,
-		magicLinkRate:           cfg.MagicLinkRate,
 		backupHandler:           backupHandler,
+		magicLinkRate:           cfg.MagicLinkRate,
 		financeHandler:          financeHandler,
 		budgetHandler:           budgetHandler,
 		billHandler:             billHandler,
@@ -189,6 +209,25 @@ func mcpHandler(app *bootstrap.App, cfg *config.Config, log *slog.Logger) http.H
 }
 
 func isLoopbackHost(host string) bool {
+	if host == "localhost" {
+		return true
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
+}
+
+// isLocalWebURL reports whether the origin is localhost or a loopback
+// address. An https origin is never "local" (it is the secure case, and
+// SecureCookies is derived from the scheme anyway).
+func isLocalWebURL(raw string) bool {
+	u, err := url.Parse(raw)
+	if err != nil {
+		return false
+	}
+	if u.Scheme == "https" {
+		return false
+	}
+	host := strings.ToLower(u.Hostname())
 	if host == "localhost" {
 		return true
 	}

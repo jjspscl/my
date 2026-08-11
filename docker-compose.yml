@@ -9,7 +9,9 @@ services:
       MY_USER_EMAIL: ${MY_USER_EMAIL:?set MY_USER_EMAIL, e.g. you@example.com}
       MY_DATABASE_URL: file:/data/my.db
       MY_REDIS_URL: redis://redis:6379
-      MY_WEB_URL: http://localhost:8080
+      # The magic-link email uses this origin — localhost is dead on any real
+      # device. Must be the public origin, ideally https.
+      MY_WEB_URL: ${MY_WEB_URL:?set MY_WEB_URL to the public origin (e.g. https://my.example.com) — the magic-link email uses it}
       # MCP stays off in the container; loopback binding would make its
       # dedicated port unreachable from outside anyway.
       MY_MCP_ENABLED: "false"

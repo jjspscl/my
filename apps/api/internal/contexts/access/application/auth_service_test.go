@@ -9,6 +9,7 @@ import (
 	"github.com/jjspscl/my/internal/contexts/access/domain"
 	"github.com/jjspscl/my/internal/platform/config"
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/require"
 )
 
 // ---- mocks ----
@@ -303,4 +304,29 @@ func TestVerifyToken_UsedToken_ReturnsError(t *testing.T) {
 	_, err = svc.VerifyToken(ctx, token.Token)
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "used")
+}
+
+func TestCreateMagicLink_MintsTokenWithoutEmail(t *testing.T) {
+	tokenRepo := newMockTokenRepo()
+	mailer := &mockMailer{}
+	sessions := newMockSessionStore()
+	cfg := newTestConfig()
+	svc := NewAuthService(tokenRepo, sessions, mailer, cfg)
+
+	link, err := svc.CreateMagicLink(context.Background(), "user@test.com")
+	require.NoError(t, err)
+	assert.Contains(t, link, "http://localhost:5173/auth/verify?token=")
+	assert.Len(t, tokenRepo.tokens, 1, "token persisted for verification")
+	assert.Empty(t, mailer.sentTo, "no email sent")
+}
+
+func TestCreateMagicLink_MismatchedEmailErrors(t *testing.T) {
+	tokenRepo := newMockTokenRepo()
+	mailer := &mockMailer{}
+	cfg := newTestConfig()
+	svc := NewAuthService(tokenRepo, &mockSessionStore{}, mailer, cfg)
+
+	_, err := svc.CreateMagicLink(context.Background(), "other@test.com")
+	assert.ErrorContains(t, err, "does not match")
+	assert.Len(t, tokenRepo.tokens, 0)
 }

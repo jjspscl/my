@@ -11,6 +11,7 @@ import (
 	accesshttp "github.com/jjspscl/my/internal/contexts/access/interfaces/http"
 	financehttp "github.com/jjspscl/my/internal/contexts/finance/interfaces/http"
 	habithttp "github.com/jjspscl/my/internal/contexts/habits/interfaces/http"
+	"github.com/jjspscl/my/internal/platform/backup"
 	"github.com/jjspscl/my/internal/platform/session"
 	platformversion "github.com/jjspscl/my/internal/platform/version"
 	"github.com/jjspscl/my/internal/platform/web"
@@ -21,6 +22,7 @@ type routerDeps struct {
 	log                     *slog.Logger
 	sessions                session.Store
 	authHandler             *accesshttp.AuthHandler
+	backupHandler           *backup.Handler
 	magicLinkRate           int
 	financeHandler          *financehttp.FinanceHandler
 	budgetHandler           *financehttp.BudgetHandler
@@ -63,6 +65,11 @@ func newRouter(deps routerDeps) chi.Router {
 		r.Group(func(r chi.Router) {
 			r.Use(middleware.RequireAuth(deps.sessions))
 			r.Use(middleware.CSRFProtect())
+
+			// Database snapshot and JSON export — full data dump, so they sit
+			// behind session auth and are deliberately NOT exposed via MCP.
+			r.Get("/backup", deps.backupHandler.Snapshot)
+			r.Get("/export", deps.backupHandler.Export)
 
 			r.Route("/finance", func(r chi.Router) {
 				deps.financeHandler.Routes(r)

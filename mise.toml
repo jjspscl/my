@@ -57,6 +57,14 @@ run = [
 	"mise run build:mcp",
 ]
 
+[tasks.backup]
+description = "Snapshot the database with VACUUM INTO (safe on a live DB) into ~/.local/share/my/backups/"
+run = [
+	{ task = "build:api" },
+	"mkdir -p \"$HOME/.local/share/my/backups\"",
+	"bash -c './bin/my -backup \"$HOME/.local/share/my/backups/my-$(date +%Y%m%d-%H%M%S).db\"'",
+]
+
 [tasks."build:client"]
 description = "Build React/Vite client"
 run = "pnpm build"

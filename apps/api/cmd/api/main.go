@@ -16,8 +16,10 @@ import (
 	accesshttp "github.com/jjspscl/my/internal/contexts/access/interfaces/http"
 	financehttp "github.com/jjspscl/my/internal/contexts/finance/interfaces/http"
 	habithttp "github.com/jjspscl/my/internal/contexts/habits/interfaces/http"
+	"github.com/jjspscl/my/internal/platform/backup"
 	"github.com/jjspscl/my/internal/platform/bootstrap"
 	"github.com/jjspscl/my/internal/platform/config"
+	"github.com/jjspscl/my/internal/platform/database"
 	plogger "github.com/jjspscl/my/internal/platform/logger"
 	platformmcp "github.com/jjspscl/my/internal/platform/mcp"
 	"github.com/jjspscl/my/internal/platform/timeutil"
@@ -29,6 +31,7 @@ import (
 
 func main() {
 	showVersion := flag.Bool("version", false, "print version and exit")
+	backupPath := flag.String("backup", "", "snapshot the database to this path and exit (VACUUM INTO; safe on a live database)")
 	flag.Parse()
 	if *showVersion {
 		fmt.Println(platformversion.String())
@@ -46,6 +49,23 @@ func main() {
 		os.Exit(1)
 	}
 
+	if *backupPath != "" {
+		// Backup is intentionally lightweight: open the DB, snapshot, exit.
+		// No migrations, no servers — a snapshot of whatever is on disk.
+		db, err := database.Open(cfg.DatabaseURL)
+		if err != nil {
+			log.Error("database open failed", slog.Any("error", err))
+			os.Exit(1)
+		}
+		defer db.Close()
+		if err := backup.SnapshotTo(db, *backupPath); err != nil {
+			log.Error("backup failed", slog.String("path", *backupPath), slog.Any("error", err))
+			os.Exit(1)
+		}
+		log.Info("backup written", slog.String("path", *backupPath))
+		return
+	}
+
 	app, err := bootstrap.New(cfg, log)
 	if err != nil {
 		log.Error("application bootstrap failed", slog.Any("error", err))
@@ -58,6 +78,7 @@ func main() {
 	}()
 
 	authHandler := accesshttp.NewAuthHandler(app.Auth, cfg.SecureCookies, cfg.SessionTTL)
+	backupHandler := backup.NewHandler(app.DB)
 
 	// Finance
 	financeHandler := financehttp.NewFinanceHandler(app.Tx, cfg.DefaultCurrency)
@@ -78,6 +99,7 @@ func main() {
 		sessions:                app.Sessions,
 		authHandler:             authHandler,
 		magicLinkRate:           cfg.MagicLinkRate,
+		backupHandler:           backupHandler,
 		financeHandler:          financeHandler,
 		budgetHandler:           budgetHandler,
 		billHandler:             billHandler,

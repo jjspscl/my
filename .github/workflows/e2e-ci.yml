@@ -52,7 +52,7 @@ jobs:
         working-directory: apps/api
       - name: Fresh e2e database
         run: rm -f apps/web/e2e.db*
-      - run: pnpm exec playwright install --with-deps chromium
+      - run: pnpm --filter @my/web exec playwright install --with-deps chromium
       - name: Run e2e suite
         # The webServer binary applies the embedded migrations at boot, so no
         # separate migrate step is needed.

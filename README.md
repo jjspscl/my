@@ -44,6 +44,7 @@ mise run dev
 | `mise run migrate` | Run database migrations |
 | `mise run seed` | Seed local dev data |
 | `mise run clean` | Clean build outputs |
+| `mise run release:guard` | Pre-flight release checks (pass version, optional `--fix`) |
 | `mise run release:check` | Snapshot GoReleaser build without publishing |
 | `MY_RELEASE_VERSION=v1.0.0 mise run release:tag` | Validate and create annotated release tag; push manually |
 

@@ -13,7 +13,6 @@ Project OpenCode config lives in:
 - `opencode.jsonc` — project config
 - `.opencode/skills/*/SKILL.md` — repo-local skills
 - `AGENTS.md` — project agent rules
-- `HANDOFF.md` — temporary task handoff state
 
 `skills/` at the repo root holds end-user finance agent skills (deployed
 runtime), not coding-agent skills. Coding skills stay in `.opencode/skills/`;
@@ -36,9 +35,8 @@ Current default agent.
 Role:
 
 - scope work
-- prepare/review `HANDOFF.md`
 - run validation and review output
-- avoid direct product code edits unless task coordination requires updating docs or `HANDOFF.md`
+- avoid direct product code edits unless task coordination requires updating docs
 
 ### `build`
 
@@ -55,12 +53,12 @@ Role:
 Typical project workflow:
 
 1. `plan` analyzes request
-2. `plan` decides whether `HANDOFF.md` needs task-specific instructions
+2. `plan` scopes the task; handoffs live in Engram session summaries and temp files
 3. `build` executes implementation work
 4. `plan` reviews files and validation output
 5. durable docs get updated when runtime/architecture truth changes
 
-`HANDOFF.md` is not durable project documentation. Do not treat it as long-term truth.
+Session handoffs (Engram summaries + temp files) are not durable project documentation. Do not treat them as long-term truth.
 
 ## Skills
 
@@ -106,7 +104,7 @@ Reason: MCP servers add context cost. Browser automation and broad code search s
 - use `playwright` only for browser-state or PWA verification tasks
 - use `gh_grep` when example code from public repos is more useful than prose docs
 - call `mem_context` at session start/after compaction, search before subsystem work, save significant changes immediately, and write `mem_session_summary` before completion
-- use `session-handoff` only for explicit fresh-session continuation; it writes temporary Markdown plus durable Engram summary and never overwrites root `HANDOFF.md`
+- use `session-handoff` only for explicit fresh-session continuation; it writes temporary Markdown plus durable Engram summary and never writes into the repository
 
 If Playwright MCP needs an extension token, provide it locally through `PLAYWRIGHT_MCP_EXTENSION_TOKEN`. Never commit the real value.
 

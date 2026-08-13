@@ -145,7 +145,6 @@ Current workflow:
 
 - `plan` is the default OpenCode agent
 - `build` executes implementation work
-- `HANDOFF.md` is temporary task state, not durable project documentation
 - repo-local skills live in `.opencode/skills/`
 - end-user finance agent skills live in `skills/`; profile in `agent/finance/`
 

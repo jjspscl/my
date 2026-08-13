@@ -21,7 +21,7 @@ Never store secrets, tokens, personal finance records, or other sensitive values
 3. Relevant code and tests: implementation truth.
 4. Lazy-read docs: `docs/architecture.md`, `docs/backend-ddd.md`, `docs/frontend.md`, `docs/offline-sync.md`, `docs/opencode.md`, `docs/finance-agent.md`.
 5. `ROADMAP.md`: future work only.
-6. `HANDOFF.md`: temporary plan→build task state; never durable architecture.
+6. Session handoffs (Engram summaries + temp files): temporary continuity state; never durable architecture. There is no repo-root HANDOFF.md.
 
 Do not preload deeper docs. Read only files relevant to current task.
 

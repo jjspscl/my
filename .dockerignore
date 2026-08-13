@@ -32,5 +32,4 @@ agent
 deployments
 infrastructure/terraform
 infrastructure/kubernetes
-HANDOFF.md
 ROADMAP.md

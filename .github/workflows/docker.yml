@@ -42,7 +42,10 @@ jobs:
         with:
           context: .
           file: infrastructure/docker/Dockerfile
-          platforms: linux/amd64,linux/arm64
+          # PRs load the image into the local daemon for the smoke test; the
+          # docker exporter cannot load manifest lists, so PR builds are
+          # single-platform. Tag builds push both architectures.
+          platforms: ${{ github.event_name == 'pull_request' && 'linux/amd64' || 'linux/amd64,linux/arm64' }}
           push: ${{ github.event_name != 'pull_request' }}
           # Loaded into the local daemon on PRs so the smoke test below can
           # run the image without a registry round-trip.

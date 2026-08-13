@@ -1,5 +1,8 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { toast } from 'sonner'
 import { habitKeys } from '../api/habits.keys'
+import { useNetworkStatus } from '@/shared/sync/network-status'
+import { offlineMutate } from '@/shared/sync/offline-mutate'
 import {
   archiveHabit as archiveHabitApi,
   createHabit as createHabitApi,
@@ -23,6 +26,9 @@ export function useCreateHabit() {
 
   return useMutation({
     mutationFn: (data: CreateHabit) => createHabitApi(data),
+    onError: (err) => {
+      toast.error(err instanceof Error ? err.message : 'Could not create the habit.')
+    },
     onSettled: () => {
       queryClient.invalidateQueries({ queryKey: habitKeys.all })
     },
@@ -32,10 +38,36 @@ export function useCreateHabit() {
 export function useToggleHabit() {
   const queryClient = useQueryClient()
 
-  return useMutation({
-    mutationFn: ({ habitId, date }: { habitId: string; date?: string }) =>
-      toggleHabitApi(habitId, date),
-    onMutate: async ({ habitId }) => {
+  return useMutation<
+    { completed: boolean } | Response | 'queued',
+    Error,
+    { habitId: string; date?: string; completed?: boolean },
+    { prev: Habit[] | undefined }
+  >({
+    mutationFn: ({
+      habitId,
+      date,
+      completed,
+    }: {
+      habitId: string
+      date?: string
+      completed?: boolean
+    }) => {
+      const body: Record<string, string | boolean> = {}
+      if (date) body.date = date
+      if (completed !== undefined) body.completed = completed
+      if (useNetworkStatus.getState().isOnline) {
+        return toggleHabitApi(habitId, date, completed)
+      }
+      // Offline: queue an explicit set-state. The date is frozen by the
+      // caller so a later replay completes the right day, and the explicit
+      // completed flag makes the replay idempotent (a flip would un-check).
+      return offlineMutate(`/api/v1/habits/${habitId}/toggle`, {
+        method: 'POST',
+        body,
+      })
+    },
+    onMutate: async ({ habitId }): Promise<{ prev: Habit[] | undefined }> => {
       await queryClient.cancelQueries({ queryKey: habitKeys.list() })
       const prev = queryClient.getQueryData<Habit[]>(habitKeys.list())
 
@@ -58,9 +90,17 @@ export function useToggleHabit() {
 
       return { prev }
     },
-    onError: (_err, _vars, ctx) => {
+    onError: (err, _vars, ctx) => {
       if (ctx?.prev) {
         queryClient.setQueryData(habitKeys.list(), ctx.prev)
+      }
+      toast.error(err instanceof Error ? err.message : 'Could not update the habit.')
+    },
+    onSuccess: (data) => {
+      // 'queued' = offlineMutate parked the change in the queue — make the
+      // state visible instead of looking like a silent success.
+      if (data === 'queued') {
+        toast.info('Saved offline — will sync when you reconnect')
       }
     },
     onSettled: () => {

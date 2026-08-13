@@ -32,44 +32,46 @@ func (h *GoalHandler) Routes(r chi.Router) {
 // --- Request types ---
 
 type goalRequest struct {
-	Name              string `json:"name"`
-	TargetAmountCents int64  `json:"targetAmountCents"`
+	Name              string  `json:"name"`
+	TargetAmountCents int64   `json:"targetAmountCents"`
 	TargetDate        *string `json:"targetDate,omitempty"`
-	TargetWalletID    string `json:"targetWalletId"`
+	TargetWalletID    string  `json:"targetWalletId"`
 }
 
 type contributionRequest struct {
-	AmountCents    int64  `json:"amountCents"`
-	ContributedAt  string `json:"contributedAt"`
-	Note           string `json:"note,omitempty"`
-	SourceWalletID string `json:"sourceWalletId,omitempty"`
+	AmountCents     int64  `json:"amountCents"`
+	ContributedAt   string `json:"contributedAt"`
+	Note            string `json:"note,omitempty"`
+	SourceWalletID  string `json:"sourceWalletId,omitempty"`
+	FromAmountCents *int64 `json:"fromAmountCents,omitempty"`
+	IdempotencyKey  string `json:"idempotencyKey,omitempty"`
 }
 
 // --- Response types ---
 
 type goalResponse struct {
-	ID                string `json:"id"`
-	Name              string `json:"name"`
-	TargetAmountCents int64  `json:"targetAmountCents"`
+	ID                string  `json:"id"`
+	Name              string  `json:"name"`
+	TargetAmountCents int64   `json:"targetAmountCents"`
 	TargetDate        *string `json:"targetDate,omitempty"`
-	TargetWalletID    string `json:"targetWalletId"`
-	CreatedAt         string `json:"createdAt"`
-	UpdatedAt         string `json:"updatedAt"`
+	TargetWalletID    string  `json:"targetWalletId"`
+	CreatedAt         string  `json:"createdAt"`
+	UpdatedAt         string  `json:"updatedAt"`
 }
 
 type goalSummaryResponse struct {
-	ID                   string `json:"id"`
-	Name                 string `json:"name"`
-	TargetAmountCents    int64  `json:"targetAmountCents"`
+	ID                   string  `json:"id"`
+	Name                 string  `json:"name"`
+	TargetAmountCents    int64   `json:"targetAmountCents"`
 	TargetDate           *string `json:"targetDate,omitempty"`
-	TargetWalletID       string `json:"targetWalletId"`
-	CurrentAmountCents   int64  `json:"currentAmountCents"`
-	RemainingAmountCents int64  `json:"remainingAmountCents"`
-	ProgressPercent      int    `json:"progressPercent"`
-	RequiredMonthlyCents *int64 `json:"requiredMonthlyCents,omitempty"`
-	Status               string `json:"status"`
-	CreatedAt            string `json:"createdAt"`
-	UpdatedAt            string `json:"updatedAt"`
+	TargetWalletID       string  `json:"targetWalletId"`
+	CurrentAmountCents   int64   `json:"currentAmountCents"`
+	RemainingAmountCents int64   `json:"remainingAmountCents"`
+	ProgressPercent      int     `json:"progressPercent"`
+	RequiredMonthlyCents *int64  `json:"requiredMonthlyCents,omitempty"`
+	Status               string  `json:"status"`
+	CreatedAt            string  `json:"createdAt"`
+	UpdatedAt            string  `json:"updatedAt"`
 }
 
 // --- Helpers ---
@@ -249,11 +251,13 @@ func (h *GoalHandler) AddContribution(w http.ResponseWriter, r *http.Request) {
 	}
 
 	contribution, err := h.svc.AddContribution(r.Context(), email, application.AddContributionInput{
-		GoalID:         id,
-		AmountCents:    req.AmountCents,
-		ContributedAt:  contributedAt,
-		Note:           note,
-		SourceWalletID: sourceWalletID,
+		GoalID:          id,
+		AmountCents:     req.AmountCents,
+		ContributedAt:   contributedAt,
+		Note:            note,
+		SourceWalletID:  sourceWalletID,
+		FromAmountCents: req.FromAmountCents,
+		IdempotencyKey:  req.IdempotencyKey,
 	})
 	if err != nil {
 		response.WriteError(w, r, http.StatusBadRequest, err.Error(), err)

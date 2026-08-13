@@ -1,13 +1,14 @@
 import { Loader2, BarChart3 } from 'lucide-react'
 import { useCompletionsMap } from '@/features/habits/hooks/use-habits'
 import { HabitContributionGraph } from '@/features/habits/components/contribution-graph'
+import { toLocalDateStr } from '@/shared/lib/utils'
 
 export function HabitActivityWidget() {
   const today = new Date()
   const from = new Date(today)
   from.setDate(from.getDate() - 84) // 12 weeks
-  const fromStr = from.toISOString().split('T')[0]
-  const toStr = today.toISOString().split('T')[0]
+  const fromStr = toLocalDateStr(from)
+  const toStr = toLocalDateStr(today)
 
   const { data, isLoading, isError } = useCompletionsMap(fromStr, toStr)
 

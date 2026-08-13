@@ -18,11 +18,12 @@ func NewTransactionRepoLibSQL(db *sql.DB) *TransactionRepoLibSQL {
 }
 
 func (r *TransactionRepoLibSQL) Save(ctx context.Context, tx *domain.Transaction) error {
-	_, err := r.db.ExecContext(ctx,
-		`INSERT INTO transactions (id, user_email, amount_cents, currency, category, description, type, wallet_id, transaction_date, created_at)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+	_, err := executor(ctx, r.db).ExecContext(ctx,
+		`INSERT INTO transactions (id, user_email, amount_cents, currency, category, description, type, wallet_id, transaction_date, created_at, idempotency_key)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		tx.ID, tx.UserEmail, tx.AmountCents, tx.Currency, tx.Category,
 		tx.Description, tx.Type, tx.WalletID, tx.TransactionDate.Format("2006-01-02"), tx.CreatedAt,
+		nullableString(optionalString(tx.IdempotencyKey)),
 	)
 	if err != nil {
 		return fmt.Errorf("save transaction: %w", err)
@@ -31,7 +32,7 @@ func (r *TransactionRepoLibSQL) Save(ctx context.Context, tx *domain.Transaction
 }
 
 func (r *TransactionRepoLibSQL) FindByID(ctx context.Context, id string) (*domain.Transaction, error) {
-	row := r.db.QueryRowContext(ctx,
+	row := executor(ctx, r.db).QueryRowContext(ctx,
 		`SELECT t.id, t.user_email, t.amount_cents, t.currency, t.category, t.description, t.type, t.wallet_id, COALESCE(w.name, '') as wallet_name, t.transaction_date, t.created_at
 		 FROM transactions t
 		 LEFT JOIN wallets w ON t.wallet_id = w.id
@@ -41,8 +42,23 @@ func (r *TransactionRepoLibSQL) FindByID(ctx context.Context, id string) (*domai
 	return scanTransaction(row)
 }
 
+func (r *TransactionRepoLibSQL) FindByIdempotencyKey(ctx context.Context, userEmail, key string) (*domain.Transaction, error) {
+	row := r.db.QueryRowContext(ctx,
+		`SELECT t.id, t.user_email, t.amount_cents, t.currency, t.category, t.description, t.type, t.wallet_id, COALESCE(w.name, '') as wallet_name, t.transaction_date, t.created_at
+		 FROM transactions t
+		 LEFT JOIN wallets w ON t.wallet_id = w.id
+		 WHERE t.user_email = ? AND t.idempotency_key = ?`, userEmail, key,
+	)
+
+	tx, err := scanTransaction(row)
+	if err != nil && err.Error() == "transaction not found" {
+		return nil, nil
+	}
+	return tx, err
+}
+
 func (r *TransactionRepoLibSQL) ListByUserAndDateRange(ctx context.Context, userEmail string, from, to time.Time, limit, offset int) ([]*domain.Transaction, error) {
-	rows, err := r.db.QueryContext(ctx,
+	rows, err := executor(ctx, r.db).QueryContext(ctx,
 		`SELECT t.id, t.user_email, t.amount_cents, t.currency, t.category, t.description, t.type, t.wallet_id, COALESCE(w.name, '') as wallet_name, t.transaction_date, t.created_at
 		 FROM transactions t
 		 LEFT JOIN wallets w ON t.wallet_id = w.id
@@ -69,7 +85,7 @@ func (r *TransactionRepoLibSQL) ListByUserAndDateRange(ctx context.Context, user
 }
 
 func (r *TransactionRepoLibSQL) Delete(ctx context.Context, id, userEmail string) error {
-	result, err := r.db.ExecContext(ctx,
+	result, err := executor(ctx, r.db).ExecContext(ctx,
 		"DELETE FROM transactions WHERE id = ? AND user_email = ?", id, userEmail,
 	)
 	if err != nil {
@@ -84,35 +100,37 @@ func (r *TransactionRepoLibSQL) Delete(ctx context.Context, id, userEmail string
 	return nil
 }
 
-func (r *TransactionRepoLibSQL) GetTodayTotal(ctx context.Context, userEmail string, date time.Time) (*domain.DailyTotal, error) {
+// GetTodayTotals returns per-currency income/expense/net totals for a single
+// date. Aggregates are grouped by currency so mixed-currency days are never
+// silently summed; the service decides how to present the result.
+func (r *TransactionRepoLibSQL) GetTodayTotals(ctx context.Context, userEmail string, date time.Time) ([]domain.CurrencyTotal, error) {
 	dateStr := date.Format("2006-01-02")
-	row := r.db.QueryRowContext(ctx,
+	rows, err := executor(ctx, r.db).QueryContext(ctx,
 		`SELECT
-			? as date,
+			currency,
 			COALESCE(SUM(CASE WHEN type = 'expense' THEN amount_cents ELSE 0 END), 0) as expense_cents,
 			COALESCE(SUM(CASE WHEN type = 'income' THEN amount_cents ELSE 0 END), 0) as income_cents,
 			COALESCE(SUM(CASE WHEN type = 'income' THEN amount_cents ELSE -amount_cents END), 0) as total_cents
 		 FROM transactions
-		 WHERE user_email = ? AND transaction_date = ?`,
-		dateStr, userEmail, dateStr,
-	)
-
-	var total domain.DailyTotal
-	if err := row.Scan(&total.Date, &total.ExpenseCents, &total.IncomeCents, &total.TotalCents); err != nil {
-		return nil, fmt.Errorf("get today total: %w", err)
-	}
-
-	// default currency from a recent transaction
-	currencyRow := r.db.QueryRowContext(ctx,
-		"SELECT currency FROM transactions WHERE user_email = ? AND transaction_date = ? LIMIT 1",
+		 WHERE user_email = ? AND transaction_date = ?
+		 GROUP BY currency
+		 ORDER BY currency`,
 		userEmail, dateStr,
 	)
-	var currency string
-	if err := currencyRow.Scan(&currency); err == nil {
-		total.Currency = currency
+	if err != nil {
+		return nil, fmt.Errorf("get today totals: %w", err)
 	}
+	defer rows.Close()
 
-	return &total, nil
+	var totals []domain.CurrencyTotal
+	for rows.Next() {
+		var t domain.CurrencyTotal
+		if err := rows.Scan(&t.Currency, &t.ExpenseCents, &t.IncomeCents, &t.TotalCents); err != nil {
+			return nil, fmt.Errorf("scan today total: %w", err)
+		}
+		totals = append(totals, t)
+	}
+	return totals, rows.Err()
 }
 
 type scannable interface {

@@ -18,7 +18,7 @@ test.describe('Finance', () => {
     await page.goto('/finance')
 
     // Go to Wallets tab
-    await page.getByRole('tab', { name: 'Wallets' }).click()
+    await page.getByRole('link', { name: 'Wallets' }).click()
 
     // Click Add Wallet
     await page.getByRole('button', { name: 'Add Wallet' }).click()
@@ -74,7 +74,7 @@ test.describe('Finance', () => {
     await page.goto('/finance')
 
     // Create a wallet first so we have one to assign the goal to
-    await page.getByRole('tab', { name: 'Wallets' }).click()
+    await page.getByRole('link', { name: 'Wallets' }).click()
     await page.getByRole('button', { name: 'Add Wallet' }).click()
     await page.getByLabel('Name').fill(walletName)
     await page.getByLabel('Type').click()
@@ -82,11 +82,11 @@ test.describe('Finance', () => {
     await page.getByLabel('Opening Balance').fill('50000')
     await page.getByRole('button', { name: 'Create Wallet' }).click()
     await expect(page.getByText(walletName)).toBeVisible()
-    // Ensure dialog is fully closed before interacting with tabs
-    await page.waitForTimeout(500)
+    // Wait for the dialog to fully detach before interacting with the tabs.
+    await expect(page.getByRole('dialog')).toHaveCount(0)
 
     // Switch to Goals tab
-    await page.getByRole('tab', { name: 'Goals' }).click()
+    await page.getByRole('link', { name: 'Goals' }).click()
 
     // Click Add Goal
     await page.getByRole('button', { name: 'Add Goal' }).click()

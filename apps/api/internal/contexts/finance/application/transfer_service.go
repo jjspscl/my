@@ -20,14 +20,29 @@ func NewTransferService(transferRepo domain.TransferRepository, walletRepo domai
 }
 
 type CreateTransferInput struct {
-	FromWalletID string
-	ToWalletID   string
-	AmountCents  int64
-	Description  string
-	TransferDate time.Time
+	FromWalletID    string
+	ToWalletID      string
+	FromAmountCents int64
+	ToAmountCents   int64
+	Description     string
+	TransferDate    time.Time
+	IdempotencyKey  string
 }
 
 func (s *TransferService) Create(ctx context.Context, userEmail string, input CreateTransferInput) (*domain.WalletTransfer, error) {
+	if input.IdempotencyKey != "" {
+		if len(input.IdempotencyKey) > domain.MaxIdempotencyLen {
+			return nil, fmt.Errorf("idempotency key too long (max %d)", domain.MaxIdempotencyLen)
+		}
+		existing, err := s.transferRepo.FindByIdempotencyKey(ctx, userEmail, input.IdempotencyKey)
+		if err != nil {
+			return nil, fmt.Errorf("check idempotency: %w", err)
+		}
+		if existing != nil {
+			return existing, nil
+		}
+	}
+
 	if _, err := ensureUsableWallet(ctx, s.walletRepo, userEmail, input.FromWalletID); err != nil {
 		return nil, err
 	}
@@ -41,14 +56,21 @@ func (s *TransferService) Create(ctx context.Context, userEmail string, input Cr
 		input.FromWalletID,
 		input.ToWalletID,
 		input.Description,
-		input.AmountCents,
+		input.FromAmountCents,
+		input.ToAmountCents,
 		input.TransferDate,
 	)
 	if err != nil {
 		return nil, err
 	}
+	transfer.IdempotencyKey = input.IdempotencyKey
 
 	if err := s.transferRepo.Save(ctx, transfer); err != nil {
+		if input.IdempotencyKey != "" && isUniqueViolation(err) {
+			if existing, ferr := s.transferRepo.FindByIdempotencyKey(ctx, userEmail, input.IdempotencyKey); ferr == nil && existing != nil {
+				return existing, nil
+			}
+		}
 		return nil, fmt.Errorf("save transfer: %w", err)
 	}
 

@@ -20,7 +20,7 @@
   },
   "command": {
     "build": {
-      "template": "Read HANDOFF.md in the project root and execute ALL instructions precisely. Do not skip steps. Do not deviate from architecture. Report files created, validation results, and issues when done. After completing all steps, prepend '# ✅ COMPLETED\n\n' to the top of HANDOFF.md and reply DONE.",
+      "template": "Execute the plan approved in the current conversation precisely. Do not skip steps. Do not deviate from architecture. Report files created, validation results, and issues when done. Reply DONE when complete.",
       "description": "Execute current handoff instructions from Plan agent",
       "agent": "build"
     }

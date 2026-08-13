@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { toast } from 'sonner'
 import { financeKeys } from '../api/finance.keys'
 import {
   createTransaction as createTransactionApi,
@@ -34,10 +35,11 @@ export function useCreateTransaction() {
       const prevTotal = queryClient.getQueryData(financeKeys.todayTotal())
       return { prevTotal }
     },
-    onError: (_err, _vars, ctx) => {
+    onError: (err, _vars, ctx) => {
       if (ctx?.prevTotal) {
         queryClient.setQueryData(financeKeys.todayTotal(), ctx.prevTotal)
       }
+      toast.error(err instanceof Error ? err.message : 'Could not save the transaction.')
     },
     onSettled: () => {
       queryClient.invalidateQueries({ queryKey: financeKeys.transactions() })
@@ -67,13 +69,14 @@ export function useDeleteTransaction() {
 
       return { snapshots }
     },
-    onError: (_err, _vars, ctx) => {
+    onError: (err, _vars, ctx) => {
       // Rollback all lists
       if (ctx?.snapshots) {
         for (const { key, data } of ctx.snapshots) {
           queryClient.setQueryData(key, data)
         }
       }
+      toast.error(err instanceof Error ? err.message : 'Could not delete the transaction.')
     },
     onSettled: () => {
       queryClient.invalidateQueries({ queryKey: financeKeys.transactions() })

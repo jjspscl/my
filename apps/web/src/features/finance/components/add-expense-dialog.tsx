@@ -32,6 +32,7 @@ import { useCreateTransaction } from '../hooks/use-transactions'
 import { useWallets } from '../hooks/use-wallets'
 import { type CreateTransaction } from '../schemas/transaction.schemas'
 import type { Wallet } from '../schemas/wallet.schemas'
+import { todayLocalStr } from '@/shared/lib/utils'
 import { z } from 'zod'
 
 // Form schema extends CreateTransactionSchema but uses string for amount (input field)
@@ -57,6 +58,9 @@ export function AddExpenseDialog({ trigger, defaultType = 'expense' }: AddExpens
   const [open, setOpen] = useState(false)
   const createTx = useCreateTransaction()
   const { data: wallets } = useWallets()
+  // One key per form session: a double-submit or a queued replay reuses it, so
+  // the server dedupes instead of recording the expense twice.
+  const [idempotencyKey, setIdempotencyKey] = useState(() => crypto.randomUUID())
 
   const form = useForm<FormValues>({
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -67,7 +71,7 @@ export function AddExpenseDialog({ trigger, defaultType = 'expense' }: AddExpens
       description: '',
       type: defaultType,
       walletId: '',
-      transactionDate: new Date().toISOString().split('T')[0],
+      transactionDate: todayLocalStr(),
     },
   })
 
@@ -81,10 +85,12 @@ export function AddExpenseDialog({ trigger, defaultType = 'expense' }: AddExpens
       type: values.type,
       walletId: values.walletId,
       transactionDate: values.transactionDate,
+      idempotencyKey,
     }
 
     createTx.mutate(data, {
       onSuccess: () => {
+        setIdempotencyKey(crypto.randomUUID())
         setOpen(false)
         form.reset()
       },

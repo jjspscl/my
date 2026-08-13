@@ -10,8 +10,12 @@ import (
 	"github.com/go-chi/chi/v5"
 
 	"github.com/jjspscl/my/internal/contexts/access/application"
+	"github.com/jjspscl/my/internal/shared/middleware"
 	"github.com/jjspscl/my/internal/shared/response"
 )
+
+// magicLinkWindow is the sliding window for magic-link request rate limiting.
+const magicLinkWindow = 15 * time.Minute
 
 type AuthHandler struct {
 	svc           *application.AuthService
@@ -27,8 +31,11 @@ func NewAuthHandler(svc *application.AuthService, secureCookies bool, sessionTTL
 	}
 }
 
-func (h *AuthHandler) PublicRoutes(r chi.Router) {
-	r.Post("/magic-link", h.RequestMagicLink)
+// PublicRoutes registers the unauthenticated auth endpoints. The magic-link
+// endpoint is rate limited per IP to slow down email-bombing and guessing
+// attempts; magicLinkRate is max requests per magicLinkWindow.
+func (h *AuthHandler) PublicRoutes(r chi.Router, magicLinkRate int) {
+	r.With(middleware.RateLimit(magicLinkRate, magicLinkWindow)).Post("/magic-link", h.RequestMagicLink)
 	r.Post("/verify", h.VerifyToken)
 	r.Get("/me", h.Me)
 }

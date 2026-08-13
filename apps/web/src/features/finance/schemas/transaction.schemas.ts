@@ -6,18 +6,6 @@ export type TransactionType = z.infer<typeof TransactionTypeSchema>
 export const CategorySchema = z.string().min(1, 'Category is required')
 export type Category = z.infer<typeof CategorySchema>
 
-export const PRESET_CATEGORIES = [
-  'Food',
-  'Transport',
-  'Groceries',
-  'Bills',
-  'Entertainment',
-  'Health',
-  'Shopping',
-  'Education',
-  'Other',
-] as const
-
 export const CreateTransactionSchema = z.object({
   amountCents: z.number().int().positive('Amount must be positive'),
   category: CategorySchema,
@@ -25,6 +13,8 @@ export const CreateTransactionSchema = z.object({
   type: TransactionTypeSchema,
   walletId: z.string(),
   transactionDate: z.string().optional(),
+  // Client-generated per logical mutation; the server dedupes replays on it.
+  idempotencyKey: z.string().optional(),
 })
 export type CreateTransaction = z.infer<typeof CreateTransactionSchema>
 

@@ -82,10 +82,17 @@ Implemented areas:
 
 Current middleware/runtime behavior includes:
 
-- request IDs
+- request IDs — generated and stored in the context; request and error
+  log lines both carry them (never trusted from the client header)
 - real IP middleware
-- panic recovery
-- structured request logging
+- panic recovery — logs the stack trace, responds 500
+- structured request logging — JSON via slog (method, path, status,
+  duration, request_id)
+- structured error logging — `response.WriteError` emits JSON records
+  via slog (status, method, path, request_id, client_msg, cause);
+  Error level when a cause exists, Warn for client-caused 4xx
+- magic-link rate limiting — in-memory sliding window per IP
+  (`MY_MAGIC_LINK_RATE` requests per 15 min), 429 + Retry-After;
+  applied only to `POST /auth/magic-link`
 
 Redis is used for session storage.
-Rate limiting is not yet a current production feature.

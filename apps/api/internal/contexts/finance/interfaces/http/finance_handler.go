@@ -14,11 +14,12 @@ import (
 )
 
 type FinanceHandler struct {
-	svc *application.TransactionService
+	svc             *application.TransactionService
+	defaultCurrency string
 }
 
-func NewFinanceHandler(svc *application.TransactionService) *FinanceHandler {
-	return &FinanceHandler{svc: svc}
+func NewFinanceHandler(svc *application.TransactionService, defaultCurrency string) *FinanceHandler {
+	return &FinanceHandler{svc: svc, defaultCurrency: defaultCurrency}
 }
 
 func (h *FinanceHandler) Routes(r chi.Router) {
@@ -35,6 +36,7 @@ type createTransactionRequest struct {
 	Type            string `json:"type"`
 	WalletID        string `json:"walletId"`
 	TransactionDate string `json:"transactionDate"`
+	IdempotencyKey  string `json:"idempotencyKey,omitempty"`
 }
 
 type transactionResponse struct {
@@ -97,6 +99,7 @@ func (h *FinanceHandler) Create(w http.ResponseWriter, r *http.Request) {
 		Type:            domain.TransactionType(req.Type),
 		WalletID:        req.WalletID,
 		TransactionDate: txDate,
+		IdempotencyKey:  req.IdempotencyKey,
 	})
 	if err != nil {
 		response.WriteError(w, r, http.StatusBadRequest, err.Error(), err)
@@ -148,7 +151,7 @@ func (h *FinanceHandler) List(w http.ResponseWriter, r *http.Request) {
 func (h *FinanceHandler) TodayTotal(w http.ResponseWriter, r *http.Request) {
 	email := middleware.GetEmailFromContext(r.Context())
 
-	total, err := h.svc.GetTodayTotal(r.Context(), email)
+	total, err := h.svc.GetTodayTotal(r.Context(), email, h.defaultCurrency)
 	if err != nil {
 		response.WriteError(w, r, http.StatusInternalServerError, "internal error", err)
 		return

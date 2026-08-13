@@ -12,7 +12,7 @@ import {
 } from '@/components/ui/command'
 import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
 import { cn } from '@/shared/lib/utils'
-import { PRESET_CATEGORIES } from '../schemas/transaction.schemas'
+import { useCategories } from '../hooks/use-categories'
 
 interface CategoryComboboxProps {
   value: string
@@ -25,6 +25,11 @@ interface CategoryComboboxProps {
 export const CategoryCombobox = forwardRef<HTMLButtonElement, CategoryComboboxProps>(
   function CategoryCombobox({ value, onChange, placeholder, id, className }, ref) {
   const [open, setOpen] = useState(false)
+  // Categories come from the server (seeded from the presets plus every
+  // distinct category already used); the hardcoded preset list is no longer
+  // the source of truth.
+  const { data: categories } = useCategories()
+  const categoryNames = (categories ?? []).filter((c) => c.active).map((c) => c.name)
 
   return (
     <Popover open={open} onOpenChange={setOpen}>
@@ -59,7 +64,7 @@ export const CategoryCombobox = forwardRef<HTMLButtonElement, CategoryComboboxPr
               Add &ldquo;<span data-cmdk-input-value></span>&rdquo;
             </CommandEmpty>
             <CommandGroup>
-              {(PRESET_CATEGORIES as readonly string[]).map((cat) => (
+              {categoryNames.map((cat) => (
                 <CommandItem
                   key={cat}
                   value={cat}

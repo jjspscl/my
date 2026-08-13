@@ -15,6 +15,13 @@ import { Route as AuthenticatedIndexRouteImport } from './routes/_authenticated/
 import { Route as AuthVerifyRouteImport } from './routes/auth.verify'
 import { Route as AuthenticatedHabitsRouteImport } from './routes/_authenticated/habits'
 import { Route as AuthenticatedFinanceRouteImport } from './routes/_authenticated/finance'
+import { Route as AuthenticatedFinanceIndexRouteImport } from './routes/_authenticated/finance/index'
+import { Route as AuthenticatedFinanceWalletsRouteImport } from './routes/_authenticated/finance/wallets'
+import { Route as AuthenticatedFinanceGoalsRouteImport } from './routes/_authenticated/finance/goals'
+import { Route as AuthenticatedFinanceCategoriesRouteImport } from './routes/_authenticated/finance/categories'
+import { Route as AuthenticatedFinanceBudgetRouteImport } from './routes/_authenticated/finance/budget'
+import { Route as AuthenticatedFinanceBillsRouteImport } from './routes/_authenticated/finance/bills'
+import { Route as AuthenticatedFinanceAnalyticsRouteImport } from './routes/_authenticated/finance/analytics'
 
 const LoginRoute = LoginRouteImport.update({
   id: '/login',
@@ -45,35 +52,120 @@ const AuthenticatedFinanceRoute = AuthenticatedFinanceRouteImport.update({
   path: '/finance',
   getParentRoute: () => AuthenticatedRoute,
 } as any)
+const AuthenticatedFinanceIndexRoute =
+  AuthenticatedFinanceIndexRouteImport.update({
+    id: '/',
+    path: '/',
+    getParentRoute: () => AuthenticatedFinanceRoute,
+  } as any)
+const AuthenticatedFinanceWalletsRoute =
+  AuthenticatedFinanceWalletsRouteImport.update({
+    id: '/wallets',
+    path: '/wallets',
+    getParentRoute: () => AuthenticatedFinanceRoute,
+  } as any)
+const AuthenticatedFinanceGoalsRoute =
+  AuthenticatedFinanceGoalsRouteImport.update({
+    id: '/goals',
+    path: '/goals',
+    getParentRoute: () => AuthenticatedFinanceRoute,
+  } as any)
+const AuthenticatedFinanceCategoriesRoute =
+  AuthenticatedFinanceCategoriesRouteImport.update({
+    id: '/categories',
+    path: '/categories',
+    getParentRoute: () => AuthenticatedFinanceRoute,
+  } as any)
+const AuthenticatedFinanceBudgetRoute =
+  AuthenticatedFinanceBudgetRouteImport.update({
+    id: '/budget',
+    path: '/budget',
+    getParentRoute: () => AuthenticatedFinanceRoute,
+  } as any)
+const AuthenticatedFinanceBillsRoute =
+  AuthenticatedFinanceBillsRouteImport.update({
+    id: '/bills',
+    path: '/bills',
+    getParentRoute: () => AuthenticatedFinanceRoute,
+  } as any)
+const AuthenticatedFinanceAnalyticsRoute =
+  AuthenticatedFinanceAnalyticsRouteImport.update({
+    id: '/analytics',
+    path: '/analytics',
+    getParentRoute: () => AuthenticatedFinanceRoute,
+  } as any)
 
 export interface FileRoutesByFullPath {
   '/': typeof AuthenticatedIndexRoute
   '/login': typeof LoginRoute
-  '/finance': typeof AuthenticatedFinanceRoute
+  '/finance': typeof AuthenticatedFinanceRouteWithChildren
   '/habits': typeof AuthenticatedHabitsRoute
   '/auth/verify': typeof AuthVerifyRoute
+  '/finance/analytics': typeof AuthenticatedFinanceAnalyticsRoute
+  '/finance/bills': typeof AuthenticatedFinanceBillsRoute
+  '/finance/budget': typeof AuthenticatedFinanceBudgetRoute
+  '/finance/categories': typeof AuthenticatedFinanceCategoriesRoute
+  '/finance/goals': typeof AuthenticatedFinanceGoalsRoute
+  '/finance/wallets': typeof AuthenticatedFinanceWalletsRoute
+  '/finance/': typeof AuthenticatedFinanceIndexRoute
 }
 export interface FileRoutesByTo {
   '/login': typeof LoginRoute
-  '/finance': typeof AuthenticatedFinanceRoute
   '/habits': typeof AuthenticatedHabitsRoute
   '/auth/verify': typeof AuthVerifyRoute
   '/': typeof AuthenticatedIndexRoute
+  '/finance/analytics': typeof AuthenticatedFinanceAnalyticsRoute
+  '/finance/bills': typeof AuthenticatedFinanceBillsRoute
+  '/finance/budget': typeof AuthenticatedFinanceBudgetRoute
+  '/finance/categories': typeof AuthenticatedFinanceCategoriesRoute
+  '/finance/goals': typeof AuthenticatedFinanceGoalsRoute
+  '/finance/wallets': typeof AuthenticatedFinanceWalletsRoute
+  '/finance': typeof AuthenticatedFinanceIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
   '/_authenticated': typeof AuthenticatedRouteWithChildren
   '/login': typeof LoginRoute
-  '/_authenticated/finance': typeof AuthenticatedFinanceRoute
+  '/_authenticated/finance': typeof AuthenticatedFinanceRouteWithChildren
   '/_authenticated/habits': typeof AuthenticatedHabitsRoute
   '/auth/verify': typeof AuthVerifyRoute
   '/_authenticated/': typeof AuthenticatedIndexRoute
+  '/_authenticated/finance/analytics': typeof AuthenticatedFinanceAnalyticsRoute
+  '/_authenticated/finance/bills': typeof AuthenticatedFinanceBillsRoute
+  '/_authenticated/finance/budget': typeof AuthenticatedFinanceBudgetRoute
+  '/_authenticated/finance/categories': typeof AuthenticatedFinanceCategoriesRoute
+  '/_authenticated/finance/goals': typeof AuthenticatedFinanceGoalsRoute
+  '/_authenticated/finance/wallets': typeof AuthenticatedFinanceWalletsRoute
+  '/_authenticated/finance/': typeof AuthenticatedFinanceIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
-  fullPaths: '/' | '/login' | '/finance' | '/habits' | '/auth/verify'
+  fullPaths:
+    | '/'
+    | '/login'
+    | '/finance'
+    | '/habits'
+    | '/auth/verify'
+    | '/finance/analytics'
+    | '/finance/bills'
+    | '/finance/budget'
+    | '/finance/categories'
+    | '/finance/goals'
+    | '/finance/wallets'
+    | '/finance/'
   fileRoutesByTo: FileRoutesByTo
-  to: '/login' | '/finance' | '/habits' | '/auth/verify' | '/'
+  to:
+    | '/login'
+    | '/habits'
+    | '/auth/verify'
+    | '/'
+    | '/finance/analytics'
+    | '/finance/bills'
+    | '/finance/budget'
+    | '/finance/categories'
+    | '/finance/goals'
+    | '/finance/wallets'
+    | '/finance'
   id:
     | '__root__'
     | '/_authenticated'
@@ -82,6 +174,13 @@ export interface FileRouteTypes {
     | '/_authenticated/habits'
     | '/auth/verify'
     | '/_authenticated/'
+    | '/_authenticated/finance/analytics'
+    | '/_authenticated/finance/bills'
+    | '/_authenticated/finance/budget'
+    | '/_authenticated/finance/categories'
+    | '/_authenticated/finance/goals'
+    | '/_authenticated/finance/wallets'
+    | '/_authenticated/finance/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -134,17 +233,89 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthenticatedFinanceRouteImport
       parentRoute: typeof AuthenticatedRoute
     }
+    '/_authenticated/finance/': {
+      id: '/_authenticated/finance/'
+      path: '/'
+      fullPath: '/finance/'
+      preLoaderRoute: typeof AuthenticatedFinanceIndexRouteImport
+      parentRoute: typeof AuthenticatedFinanceRoute
+    }
+    '/_authenticated/finance/wallets': {
+      id: '/_authenticated/finance/wallets'
+      path: '/wallets'
+      fullPath: '/finance/wallets'
+      preLoaderRoute: typeof AuthenticatedFinanceWalletsRouteImport
+      parentRoute: typeof AuthenticatedFinanceRoute
+    }
+    '/_authenticated/finance/goals': {
+      id: '/_authenticated/finance/goals'
+      path: '/goals'
+      fullPath: '/finance/goals'
+      preLoaderRoute: typeof AuthenticatedFinanceGoalsRouteImport
+      parentRoute: typeof AuthenticatedFinanceRoute
+    }
+    '/_authenticated/finance/categories': {
+      id: '/_authenticated/finance/categories'
+      path: '/categories'
+      fullPath: '/finance/categories'
+      preLoaderRoute: typeof AuthenticatedFinanceCategoriesRouteImport
+      parentRoute: typeof AuthenticatedFinanceRoute
+    }
+    '/_authenticated/finance/budget': {
+      id: '/_authenticated/finance/budget'
+      path: '/budget'
+      fullPath: '/finance/budget'
+      preLoaderRoute: typeof AuthenticatedFinanceBudgetRouteImport
+      parentRoute: typeof AuthenticatedFinanceRoute
+    }
+    '/_authenticated/finance/bills': {
+      id: '/_authenticated/finance/bills'
+      path: '/bills'
+      fullPath: '/finance/bills'
+      preLoaderRoute: typeof AuthenticatedFinanceBillsRouteImport
+      parentRoute: typeof AuthenticatedFinanceRoute
+    }
+    '/_authenticated/finance/analytics': {
+      id: '/_authenticated/finance/analytics'
+      path: '/analytics'
+      fullPath: '/finance/analytics'
+      preLoaderRoute: typeof AuthenticatedFinanceAnalyticsRouteImport
+      parentRoute: typeof AuthenticatedFinanceRoute
+    }
   }
 }
 
+interface AuthenticatedFinanceRouteChildren {
+  AuthenticatedFinanceAnalyticsRoute: typeof AuthenticatedFinanceAnalyticsRoute
+  AuthenticatedFinanceBillsRoute: typeof AuthenticatedFinanceBillsRoute
+  AuthenticatedFinanceBudgetRoute: typeof AuthenticatedFinanceBudgetRoute
+  AuthenticatedFinanceCategoriesRoute: typeof AuthenticatedFinanceCategoriesRoute
+  AuthenticatedFinanceGoalsRoute: typeof AuthenticatedFinanceGoalsRoute
+  AuthenticatedFinanceWalletsRoute: typeof AuthenticatedFinanceWalletsRoute
+  AuthenticatedFinanceIndexRoute: typeof AuthenticatedFinanceIndexRoute
+}
+
+const AuthenticatedFinanceRouteChildren: AuthenticatedFinanceRouteChildren = {
+  AuthenticatedFinanceAnalyticsRoute: AuthenticatedFinanceAnalyticsRoute,
+  AuthenticatedFinanceBillsRoute: AuthenticatedFinanceBillsRoute,
+  AuthenticatedFinanceBudgetRoute: AuthenticatedFinanceBudgetRoute,
+  AuthenticatedFinanceCategoriesRoute: AuthenticatedFinanceCategoriesRoute,
+  AuthenticatedFinanceGoalsRoute: AuthenticatedFinanceGoalsRoute,
+  AuthenticatedFinanceWalletsRoute: AuthenticatedFinanceWalletsRoute,
+  AuthenticatedFinanceIndexRoute: AuthenticatedFinanceIndexRoute,
+}
+
+const AuthenticatedFinanceRouteWithChildren =
+  AuthenticatedFinanceRoute._addFileChildren(AuthenticatedFinanceRouteChildren)
+
 interface AuthenticatedRouteChildren {
-  AuthenticatedFinanceRoute: typeof AuthenticatedFinanceRoute
+  AuthenticatedFinanceRoute: typeof AuthenticatedFinanceRouteWithChildren
   AuthenticatedHabitsRoute: typeof AuthenticatedHabitsRoute
   AuthenticatedIndexRoute: typeof AuthenticatedIndexRoute
 }
 
 const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
-  AuthenticatedFinanceRoute: AuthenticatedFinanceRoute,
+  AuthenticatedFinanceRoute: AuthenticatedFinanceRouteWithChildren,
   AuthenticatedHabitsRoute: AuthenticatedHabitsRoute,
   AuthenticatedIndexRoute: AuthenticatedIndexRoute,
 }

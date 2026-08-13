@@ -13,17 +13,22 @@ import (
 )
 
 var expectedReadTools = []string{
-	"finance_list_transactions", "finance_today_total", "finance_budget_summary",
-	"finance_list_bills", "finance_upcoming_bills", "finance_list_goals",
-	"finance_list_wallets", "finance_list_transfers", "habits_list", "habits_completions",
+	"finance_affordability", "finance_anomalies", "finance_bill_reconciliation",
+	"finance_budget_health", "finance_budget_summary", "finance_cash_flow_summary",
+	"finance_category_trend", "finance_emergency_fund", "finance_goal_health",
+	"finance_list_bills", "finance_list_goals", "finance_list_transactions",
+	"finance_list_transfers", "finance_list_wallets", "finance_monthly_digest",
+	"finance_recurring_charges", "finance_savings_rate", "finance_spending_summary",
+	"finance_today_total", "finance_upcoming_bills", "habits_completions", "habits_list",
 }
 
 var expectedWriteTools = []string{
-	"finance_create_transaction", "finance_delete_transaction", "finance_upsert_budget",
-	"finance_create_bill", "finance_update_bill", "finance_delete_bill", "finance_pay_bill",
-	"finance_create_goal", "finance_update_goal", "finance_delete_goal", "finance_add_goal_contribution",
-	"finance_create_wallet", "finance_update_wallet", "finance_archive_wallet", "finance_create_transfer",
-	"habits_create", "habits_toggle", "habits_archive",
+	"finance_classify_category", "finance_create_transaction", "finance_delete_transaction",
+	"finance_upsert_budget", "finance_create_bill", "finance_update_bill",
+	"finance_delete_bill", "finance_pay_bill", "finance_create_goal",
+	"finance_update_goal", "finance_delete_goal", "finance_add_goal_contribution",
+	"finance_create_wallet", "finance_update_wallet", "finance_archive_wallet",
+	"finance_create_transfer", "habits_create", "habits_toggle", "habits_archive",
 }
 
 func TestToolRegistry(t *testing.T) {
@@ -68,7 +73,7 @@ func TestToolAnnotations(t *testing.T) {
 		if contains(expectedReadTools, tool.Name) && !tool.Annotations.ReadOnlyHint {
 			t.Errorf("read tool %q lacks read-only hint", tool.Name)
 		}
-		if contains([]string{"finance_delete_transaction", "finance_delete_bill", "finance_pay_bill", "finance_delete_goal", "finance_archive_wallet", "habits_archive"}, tool.Name) && (tool.Annotations.DestructiveHint == nil || !*tool.Annotations.DestructiveHint) {
+		if contains([]string{"finance_delete_transaction", "finance_delete_bill", "finance_delete_goal", "finance_archive_wallet", "habits_archive"}, tool.Name) && (tool.Annotations.DestructiveHint == nil || !*tool.Annotations.DestructiveHint) {
 			t.Errorf("destructive tool %q lacks destructive hint", tool.Name)
 		}
 	}

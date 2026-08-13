@@ -9,7 +9,7 @@ import (
 )
 
 func TestNewSavingsGoal_Valid(t *testing.T) {
-	g, err := NewSavingsGoal("g-1", "user@test.com", "Emergency Fund", 50000000, nil, "w-1")
+	g, err := NewSavingsGoal("g-1", "user@test.com", "Emergency Fund", 50000000, nil, "w-1", "PHP")
 	require.NoError(t, err)
 	assert.Equal(t, "Emergency Fund", g.Name)
 	assert.Equal(t, int64(50000000), g.TargetAmountCents)
@@ -20,26 +20,26 @@ func TestNewSavingsGoal_Valid(t *testing.T) {
 
 func TestNewSavingsGoal_WithTargetDate(t *testing.T) {
 	td := time.Date(2027, 1, 1, 0, 0, 0, 0, time.UTC)
-	g, err := NewSavingsGoal("g-2", "user@test.com", "Vacation", 20000000, &td, "w-1")
+	g, err := NewSavingsGoal("g-2", "user@test.com", "Vacation", 20000000, &td, "w-1", "PHP")
 	require.NoError(t, err)
 	assert.NotNil(t, g.TargetDate)
 	assert.Equal(t, 2027, g.TargetDate.Year())
 }
 
 func TestNewSavingsGoal_EmptyName(t *testing.T) {
-	_, err := NewSavingsGoal("g-3", "user@test.com", "  ", 100000, nil, "w-1")
+	_, err := NewSavingsGoal("g-3", "user@test.com", "  ", 100000, nil, "w-1", "PHP")
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "name is required")
 }
 
 func TestNewSavingsGoal_ZeroTarget(t *testing.T) {
-	_, err := NewSavingsGoal("g-4", "user@test.com", "Test", 0, nil, "w-1")
+	_, err := NewSavingsGoal("g-4", "user@test.com", "Test", 0, nil, "w-1", "PHP")
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "target amount must be positive")
 }
 
 func TestNewSavingsGoal_NegativeTarget(t *testing.T) {
-	_, err := NewSavingsGoal("g-5", "user@test.com", "Test", -100, nil, "w-1")
+	_, err := NewSavingsGoal("g-5", "user@test.com", "Test", -100, nil, "w-1", "PHP")
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "target amount must be positive")
 }
@@ -49,7 +49,7 @@ func TestNewSavingsGoal_NameTooLong(t *testing.T) {
 	for i := range long {
 		long[i] = 'a'
 	}
-	_, err := NewSavingsGoal("g-6", "user@test.com", string(long), 1000, nil, "w-1")
+	_, err := NewSavingsGoal("g-6", "user@test.com", string(long), 1000, nil, "w-1", "PHP")
 	assert.Error(t, err)
 	assert.Contains(t, err.Error(), "name too long")
 }
@@ -75,8 +75,8 @@ func TestNewGoalContribution_NoNote(t *testing.T) {
 }
 
 func TestComputeGoalSummary_InProgress(t *testing.T) {
-	g, _ := NewSavingsGoal("g-1", "u@t.com", "Goal", 100000, nil, "w-1")
-	s := ComputeGoalSummary(g, 30000)
+	g, _ := NewSavingsGoal("g-1", "u@t.com", "Goal", 100000, nil, "w-1", "PHP")
+	s := ComputeGoalSummary(g, 30000, time.Now())
 	assert.Equal(t, int64(30000), s.CurrentAmountCents)
 	assert.Equal(t, int64(70000), s.RemainingAmountCents)
 	assert.Equal(t, 30, s.ProgressPercent)
@@ -85,24 +85,24 @@ func TestComputeGoalSummary_InProgress(t *testing.T) {
 }
 
 func TestComputeGoalSummary_Achieved(t *testing.T) {
-	g, _ := NewSavingsGoal("g-2", "u@t.com", "Goal", 100000, nil, "w-1")
-	s := ComputeGoalSummary(g, 100000)
+	g, _ := NewSavingsGoal("g-2", "u@t.com", "Goal", 100000, nil, "w-1", "PHP")
+	s := ComputeGoalSummary(g, 100000, time.Now())
 	assert.Equal(t, int64(0), s.RemainingAmountCents)
 	assert.Equal(t, 100, s.ProgressPercent)
 	assert.Equal(t, GoalAchieved, s.Status)
 }
 
 func TestComputeGoalSummary_OverAchieved(t *testing.T) {
-	g, _ := NewSavingsGoal("g-3", "u@t.com", "Goal", 100000, nil, "w-1")
-	s := ComputeGoalSummary(g, 150000)
+	g, _ := NewSavingsGoal("g-3", "u@t.com", "Goal", 100000, nil, "w-1", "PHP")
+	s := ComputeGoalSummary(g, 150000, time.Now())
 	assert.Equal(t, int64(0), s.RemainingAmountCents)
 	assert.Equal(t, 100, s.ProgressPercent)
 	assert.Equal(t, GoalAchieved, s.Status)
 }
 
 func TestComputeGoalSummary_NotStarted(t *testing.T) {
-	g, _ := NewSavingsGoal("g-4", "u@t.com", "Goal", 100000, nil, "w-1")
-	s := ComputeGoalSummary(g, 0)
+	g, _ := NewSavingsGoal("g-4", "u@t.com", "Goal", 100000, nil, "w-1", "PHP")
+	s := ComputeGoalSummary(g, 0, time.Now())
 	assert.Equal(t, int64(0), s.CurrentAmountCents)
 	assert.Equal(t, GoalNotStarted, s.Status)
 	assert.Equal(t, 0, s.ProgressPercent)
@@ -110,24 +110,24 @@ func TestComputeGoalSummary_NotStarted(t *testing.T) {
 
 func TestComputeGoalSummary_Behind(t *testing.T) {
 	past := time.Date(2025, 1, 1, 0, 0, 0, 0, time.UTC)
-	g, _ := NewSavingsGoal("g-5", "u@t.com", "Goal", 100000, &past, "w-1")
-	s := ComputeGoalSummary(g, 30000)
+	g, _ := NewSavingsGoal("g-5", "u@t.com", "Goal", 100000, &past, "w-1", "PHP")
+	s := ComputeGoalSummary(g, 30000, time.Now())
 	assert.Equal(t, GoalBehind, s.Status)
 }
 
 func TestComputeGoalSummary_RequiredMonthly(t *testing.T) {
 	future := time.Date(2026, 12, 31, 0, 0, 0, 0, time.UTC)
-	g, _ := NewSavingsGoal("g-6", "u@t.com", "Goal", 120000, &future, "w-1")
+	g, _ := NewSavingsGoal("g-6", "u@t.com", "Goal", 120000, &future, "w-1", "PHP")
 	// Current saved: 0, target 120000, ~7 months from May 2026 to Dec 2026
-	s := ComputeGoalSummary(g, 0)
+	s := ComputeGoalSummary(g, 0, time.Now())
 	assert.NotNil(t, s.RequiredMonthlyCents)
 	assert.True(t, *s.RequiredMonthlyCents > 0)
 }
 
 func TestComputeGoalSummary_AchievedNoMonthly(t *testing.T) {
 	future := time.Date(2026, 12, 31, 0, 0, 0, 0, time.UTC)
-	g, _ := NewSavingsGoal("g-7", "u@t.com", "Goal", 100000, &future, "w-1")
-	s := ComputeGoalSummary(g, 100000)
+	g, _ := NewSavingsGoal("g-7", "u@t.com", "Goal", 100000, &future, "w-1", "PHP")
+	s := ComputeGoalSummary(g, 100000, time.Now())
 	assert.Nil(t, s.RequiredMonthlyCents)
 	assert.Equal(t, GoalAchieved, s.Status)
 }

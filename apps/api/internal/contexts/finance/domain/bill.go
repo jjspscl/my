@@ -35,6 +35,7 @@ type RecurringBill struct {
 	Name         string
 	Category     string
 	AmountCents  int64
+	Currency     string
 	Frequency    Frequency
 	DayOfMonth   int
 	StartDate    time.Time
@@ -70,7 +71,7 @@ type UpcomingBill struct {
 }
 
 // NewRecurringBill validates and creates a RecurringBill.
-func NewRecurringBill(id, userEmail, name, category string, amountCents int64, freq Frequency, dayOfMonth int, startDate time.Time, endDate *time.Time, autoMatch bool, matchPattern *string) (*RecurringBill, error) {
+func NewRecurringBill(id, userEmail, name, category string, amountCents int64, currency string, freq Frequency, dayOfMonth int, startDate time.Time, endDate *time.Time, autoMatch bool, matchPattern *string) (*RecurringBill, error) {
 	if id == "" {
 		return nil, fmt.Errorf("id is required")
 	}
@@ -91,6 +92,9 @@ func NewRecurringBill(id, userEmail, name, category string, amountCents int64, f
 	}
 	if amountCents <= 0 {
 		return nil, fmt.Errorf("amount must be positive")
+	}
+	if currency == "" {
+		currency = "PHP"
 	}
 	if freq != FrequencyMonthly && freq != FrequencyWeekly && freq != FrequencyYearly {
 		return nil, fmt.Errorf("invalid frequency: %s", freq)
@@ -113,6 +117,7 @@ func NewRecurringBill(id, userEmail, name, category string, amountCents int64, f
 		Name:         strings.TrimSpace(name),
 		Category:     strings.TrimSpace(category),
 		AmountCents:  amountCents,
+		Currency:     currency,
 		Frequency:    freq,
 		DayOfMonth:   dayOfMonth,
 		StartDate:    startDate,

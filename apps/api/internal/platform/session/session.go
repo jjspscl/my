@@ -50,6 +50,10 @@ func (s *RedisStore) Get(ctx context.Context, sessionID string) (string, error) 
 	if err != nil {
 		return "", fmt.Errorf("get session: %w", err)
 	}
+	// Sliding expiry: every authenticated request resets the TTL window, so
+	// an active user is never bounced to email mid-use. Best-effort — a
+	// failed refresh only shortens the session, it never breaks one.
+	_ = s.client.Expire(ctx, key, s.ttl).Err()
 	return email, nil
 }
 

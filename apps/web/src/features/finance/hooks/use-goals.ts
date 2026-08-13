@@ -1,4 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
+import { toast } from 'sonner'
 import { financeKeys } from '../api/finance.keys'
 import { listGoals, createGoal, updateGoal, deleteGoal, addContribution } from '../api/goal.api'
 import type { CreateGoal } from '../schemas/goal.schemas'
@@ -18,6 +19,9 @@ export function useCreateGoal() {
     mutationFn: (data: CreateGoal) => createGoal(data),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: financeKeys.goalList() })
+    },
+    onError: (err) => {
+      toast.error(err instanceof Error ? err.message : 'Could not create the goal.')
     },
   })
 }
@@ -48,8 +52,8 @@ export function useAddContribution() {
   const queryClient = useQueryClient()
 
   return useMutation({
-    mutationFn: ({ goalId, amountCents, contributedAt, note, sourceWalletId }: { goalId: string; amountCents: number; contributedAt: string; note: string; sourceWalletId?: string }) =>
-      addContribution(goalId, amountCents, contributedAt, note, sourceWalletId),
+    mutationFn: ({ goalId, amountCents, contributedAt, note, sourceWalletId, idempotencyKey }: { goalId: string; amountCents: number; contributedAt: string; note: string; sourceWalletId?: string; idempotencyKey?: string }) =>
+      addContribution(goalId, amountCents, contributedAt, note, sourceWalletId, idempotencyKey),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: financeKeys.goalList() })
       queryClient.invalidateQueries({ queryKey: financeKeys.walletList() })

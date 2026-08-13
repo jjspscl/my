@@ -15,4 +15,9 @@ export const financeKeys = {
   walletList: () => [...financeKeys.wallets(), 'list'] as const,
   transfers: () => [...financeKeys.all, 'transfers'] as const,
   transferList: () => [...financeKeys.transfers(), 'list'] as const,
+  categories: () => [...financeKeys.all, 'categories'] as const,
+  categoryList: () => [...financeKeys.categories(), 'list'] as const,
+  analytics: () => [...financeKeys.all, 'analytics'] as const,
+  analyticsQuery: (name: string, filters?: Record<string, string | number | undefined>) =>
+    [...financeKeys.analytics(), name, filters] as const,
 }

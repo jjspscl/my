@@ -12,6 +12,7 @@ import (
 	accesshttp "github.com/jjspscl/my/internal/contexts/access/interfaces/http"
 	financehttp "github.com/jjspscl/my/internal/contexts/finance/interfaces/http"
 	habithttp "github.com/jjspscl/my/internal/contexts/habits/interfaces/http"
+	"github.com/jjspscl/my/internal/platform/backup"
 	"github.com/jjspscl/my/internal/platform/session"
 )
 
@@ -36,7 +37,9 @@ func testRouter(t *testing.T) http.Handler {
 		log:             slog.Default(),
 		sessions:        routerTestSessions{},
 		authHandler:     authHandler,
-		financeHandler:  financehttp.NewFinanceHandler(nil),
+		backupHandler:   backup.NewHandler(nil),
+		magicLinkRate:   6,
+		financeHandler:  financehttp.NewFinanceHandler(nil, ""),
 		budgetHandler:   financehttp.NewBudgetHandler(nil),
 		billHandler:     financehttp.NewBillHandler(nil),
 		goalHandler:     financehttp.NewGoalHandler(nil),

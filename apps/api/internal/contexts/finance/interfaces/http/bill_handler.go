@@ -37,6 +37,7 @@ type createBillRequest struct {
 	Name         string  `json:"name"`
 	Category     string  `json:"category"`
 	AmountCents  int64   `json:"amountCents"`
+	Currency     string  `json:"currency"`
 	Frequency    string  `json:"frequency"`
 	DayOfMonth   int     `json:"dayOfMonth"`
 	StartDate    string  `json:"startDate"`
@@ -49,6 +50,7 @@ type updateBillRequest struct {
 	Name         string  `json:"name"`
 	Category     string  `json:"category"`
 	AmountCents  int64   `json:"amountCents"`
+	Currency     string  `json:"currency"`
 	Frequency    string  `json:"frequency"`
 	DayOfMonth   int     `json:"dayOfMonth"`
 	StartDate    string  `json:"startDate"`
@@ -69,6 +71,7 @@ type billResponse struct {
 	Name         string  `json:"name"`
 	Category     string  `json:"category"`
 	AmountCents  int64   `json:"amountCents"`
+	Currency     string  `json:"currency"`
 	Frequency    string  `json:"frequency"`
 	DayOfMonth   int     `json:"dayOfMonth"`
 	StartDate    string  `json:"startDate"`
@@ -106,6 +109,7 @@ func toBillResponse(b *domain.RecurringBill) billResponse {
 		Name:         b.Name,
 		Category:     b.Category,
 		AmountCents:  b.AmountCents,
+		Currency:     b.Currency,
 		Frequency:    string(b.Frequency),
 		DayOfMonth:   b.DayOfMonth,
 		StartDate:    b.StartDate.Format("2006-01-02"),
@@ -148,6 +152,7 @@ func (h *BillHandler) Create(w http.ResponseWriter, r *http.Request) {
 		Name:         req.Name,
 		Category:     req.Category,
 		AmountCents:  req.AmountCents,
+		Currency:     req.Currency,
 		Frequency:    domain.Frequency(req.Frequency),
 		DayOfMonth:   req.DayOfMonth,
 		StartDate:    startDate,
@@ -211,6 +216,7 @@ func (h *BillHandler) Update(w http.ResponseWriter, r *http.Request) {
 		Name:         req.Name,
 		Category:     req.Category,
 		AmountCents:  req.AmountCents,
+		Currency:     req.Currency,
 		Frequency:    domain.Frequency(req.Frequency),
 		DayOfMonth:   req.DayOfMonth,
 		StartDate:    startDate,
@@ -295,7 +301,7 @@ func (h *BillHandler) MarkPaid(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	payment, err := h.svc.MarkPaid(r.Context(), id, email, dueDate, req.TransactionID)
+	payment, err := h.svc.MarkPaid(r.Context(), email, application.MarkPaidInput{BillID: id, DueDate: dueDate, TransactionID: req.TransactionID})
 	if err != nil {
 		response.WriteError(w, r, http.StatusBadRequest, err.Error(), err)
 		return

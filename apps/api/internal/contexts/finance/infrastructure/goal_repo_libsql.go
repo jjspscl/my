@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/jjspscl/my/internal/contexts/finance/domain"
@@ -18,10 +19,10 @@ func NewGoalRepoLibSQL(db *sql.DB) *GoalRepoLibSQL {
 }
 
 func (r *GoalRepoLibSQL) SaveGoal(ctx context.Context, goal *domain.SavingsGoal) error {
-	_, err := r.db.ExecContext(ctx, `
-		INSERT INTO savings_goals (id, user_email, name, target_amount_cents, target_date, target_wallet_id, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-	`, goal.ID, goal.UserEmail, goal.Name, goal.TargetAmountCents, nullableTime(goal.TargetDate), goal.TargetWalletID, goal.CreatedAt.Format(time.RFC3339), goal.UpdatedAt.Format(time.RFC3339))
+	_, err := executor(ctx, r.db).ExecContext(ctx, `
+		INSERT INTO savings_goals (id, user_email, name, target_amount_cents, target_date, target_wallet_id, currency, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`, goal.ID, goal.UserEmail, goal.Name, goal.TargetAmountCents, nullableTime(goal.TargetDate), goal.TargetWalletID, goal.Currency, goal.CreatedAt.Format(time.RFC3339), goal.UpdatedAt.Format(time.RFC3339))
 	if err != nil {
 		return fmt.Errorf("save goal: %w", err)
 	}
@@ -29,10 +30,10 @@ func (r *GoalRepoLibSQL) SaveGoal(ctx context.Context, goal *domain.SavingsGoal)
 }
 
 func (r *GoalRepoLibSQL) UpdateGoal(ctx context.Context, goal *domain.SavingsGoal) error {
-	_, err := r.db.ExecContext(ctx, `
-		UPDATE savings_goals SET name = ?, target_amount_cents = ?, target_date = ?, target_wallet_id = ?, updated_at = ?
+	_, err := executor(ctx, r.db).ExecContext(ctx, `
+		UPDATE savings_goals SET name = ?, target_amount_cents = ?, target_date = ?, target_wallet_id = ?, currency = ?, updated_at = ?
 		WHERE id = ? AND user_email = ?
-	`, goal.Name, goal.TargetAmountCents, nullableTime(goal.TargetDate), goal.TargetWalletID, goal.UpdatedAt.Format(time.RFC3339), goal.ID, goal.UserEmail)
+	`, goal.Name, goal.TargetAmountCents, nullableTime(goal.TargetDate), goal.TargetWalletID, goal.Currency, goal.UpdatedAt.Format(time.RFC3339), goal.ID, goal.UserEmail)
 	if err != nil {
 		return fmt.Errorf("update goal: %w", err)
 	}
@@ -40,7 +41,20 @@ func (r *GoalRepoLibSQL) UpdateGoal(ctx context.Context, goal *domain.SavingsGoa
 }
 
 func (r *GoalRepoLibSQL) DeleteGoal(ctx context.Context, id, userEmail string) error {
-	result, err := r.db.ExecContext(ctx, "DELETE FROM savings_goals WHERE id = ? AND user_email = ?", id, userEmail)
+	// Delete children first (explicit, in case foreign_keys is ever off) —
+	// then the parent. The goal may own transfers via goal_contributions;
+	// those transfers remain valid records of money movement.
+	tx, err := r.db.BeginTx(ctx, nil)
+	if err != nil {
+		return fmt.Errorf("begin tx: %w", err)
+	}
+	defer tx.Rollback()
+
+	if _, err := tx.ExecContext(ctx, "DELETE FROM goal_contributions WHERE goal_id = ?", id); err != nil {
+		return fmt.Errorf("delete goal contributions: %w", err)
+	}
+
+	result, err := tx.ExecContext(ctx, "DELETE FROM savings_goals WHERE id = ? AND user_email = ?", id, userEmail)
 	if err != nil {
 		return fmt.Errorf("delete goal: %w", err)
 	}
@@ -48,20 +62,24 @@ func (r *GoalRepoLibSQL) DeleteGoal(ctx context.Context, id, userEmail string) e
 	if n == 0 {
 		return fmt.Errorf("goal not found")
 	}
+
+	if err := tx.Commit(); err != nil {
+		return fmt.Errorf("commit delete goal: %w", err)
+	}
 	return nil
 }
 
 func (r *GoalRepoLibSQL) FindGoalByID(ctx context.Context, id string) (*domain.SavingsGoal, error) {
-	row := r.db.QueryRowContext(ctx, `
-		SELECT id, user_email, name, target_amount_cents, target_date, target_wallet_id, created_at, updated_at
+	row := executor(ctx, r.db).QueryRowContext(ctx, `
+		SELECT id, user_email, name, target_amount_cents, target_date, target_wallet_id, currency, created_at, updated_at
 		FROM savings_goals WHERE id = ?
 	`, id)
 	return scanGoal(row)
 }
 
 func (r *GoalRepoLibSQL) ListGoals(ctx context.Context, userEmail string) ([]*domain.SavingsGoal, error) {
-	rows, err := r.db.QueryContext(ctx, `
-		SELECT id, user_email, name, target_amount_cents, target_date, target_wallet_id, created_at, updated_at
+	rows, err := executor(ctx, r.db).QueryContext(ctx, `
+		SELECT id, user_email, name, target_amount_cents, target_date, target_wallet_id, currency, created_at, updated_at
 		FROM savings_goals WHERE user_email = ? ORDER BY created_at DESC
 	`, userEmail)
 	if err != nil {
@@ -81,18 +99,30 @@ func (r *GoalRepoLibSQL) ListGoals(ctx context.Context, userEmail string) ([]*do
 }
 
 func (r *GoalRepoLibSQL) SaveContribution(ctx context.Context, c *domain.GoalContribution) error {
-	_, err := r.db.ExecContext(ctx, `
-		INSERT INTO goal_contributions (id, goal_id, amount_cents, contributed_at, note, source_wallet_id, transfer_id, created_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-	`, c.ID, c.GoalID, c.AmountCents, c.ContributedAt.Format("2006-01-02"), c.Note, nullableString(c.SourceWalletID), nullableString(c.TransferID), c.CreatedAt.Format(time.RFC3339))
+	_, err := executor(ctx, r.db).ExecContext(ctx, `
+		INSERT INTO goal_contributions (id, goal_id, amount_cents, contributed_at, note, source_wallet_id, transfer_id, idempotency_key, created_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+	`, c.ID, c.GoalID, c.AmountCents, c.ContributedAt.Format("2006-01-02"), c.Note, nullableString(c.SourceWalletID), nullableString(c.TransferID), optionalString(c.IdempotencyKey), c.CreatedAt.Format(time.RFC3339))
 	if err != nil {
 		return fmt.Errorf("save contribution: %w", err)
 	}
 	return nil
 }
 
+func (r *GoalRepoLibSQL) FindContributionByIdempotencyKey(ctx context.Context, key string) (*domain.GoalContribution, error) {
+	row := executor(ctx, r.db).QueryRowContext(ctx, `
+		SELECT id, goal_id, amount_cents, contributed_at, note, source_wallet_id, transfer_id, created_at
+		FROM goal_contributions WHERE idempotency_key = ?
+	`, key)
+	c, err := scanContribution(row)
+	if err != nil && err.Error() == "contribution not found" {
+		return nil, nil
+	}
+	return c, err
+}
+
 func (r *GoalRepoLibSQL) ListContributionsByGoal(ctx context.Context, goalID string) ([]*domain.GoalContribution, error) {
-	rows, err := r.db.QueryContext(ctx, `
+	rows, err := executor(ctx, r.db).QueryContext(ctx, `
 		SELECT id, goal_id, amount_cents, contributed_at, note, source_wallet_id, transfer_id, created_at
 		FROM goal_contributions WHERE goal_id = ? ORDER BY contributed_at DESC
 	`, goalID)
@@ -114,11 +144,47 @@ func (r *GoalRepoLibSQL) ListContributionsByGoal(ctx context.Context, goalID str
 
 func (r *GoalRepoLibSQL) GetCurrentAmountByGoal(ctx context.Context, goalID string) (int64, error) {
 	var total sql.NullInt64
-	err := r.db.QueryRowContext(ctx, `SELECT COALESCE(SUM(amount_cents), 0) FROM goal_contributions WHERE goal_id = ?`, goalID).Scan(&total)
+	err := executor(ctx, r.db).QueryRowContext(ctx, `SELECT COALESCE(SUM(amount_cents), 0) FROM goal_contributions WHERE goal_id = ?`, goalID).Scan(&total)
 	if err != nil {
 		return 0, fmt.Errorf("get current amount: %w", err)
 	}
 	return total.Int64, nil
+}
+
+// GetCurrentAmountsByGoals returns the summed contribution per goal in one
+// query, replacing the per-goal GetCurrentAmountByGoal calls in ListSummaries.
+func (r *GoalRepoLibSQL) GetCurrentAmountsByGoals(ctx context.Context, goalIDs []string) (map[string]int64, error) {
+	result := make(map[string]int64, len(goalIDs))
+	if len(goalIDs) == 0 {
+		return result, nil
+	}
+
+	placeholders := strings.TrimSuffix(strings.Repeat("?,", len(goalIDs)), ",")
+	args := make([]any, 0, len(goalIDs))
+	for _, id := range goalIDs {
+		args = append(args, id)
+	}
+
+	rows, err := executor(ctx, r.db).QueryContext(ctx, `
+		SELECT goal_id, COALESCE(SUM(amount_cents), 0)
+		FROM goal_contributions
+		WHERE goal_id IN (`+placeholders+`)
+		GROUP BY goal_id
+	`, args...)
+	if err != nil {
+		return nil, fmt.Errorf("get current amounts: %w", err)
+	}
+	defer rows.Close()
+
+	for rows.Next() {
+		var goalID string
+		var total int64
+		if err := rows.Scan(&goalID, &total); err != nil {
+			return nil, fmt.Errorf("scan current amount: %w", err)
+		}
+		result[goalID] = total
+	}
+	return result, rows.Err()
 }
 
 func scanGoal(row scannable) (*domain.SavingsGoal, error) {
@@ -127,7 +193,7 @@ func scanGoal(row scannable) (*domain.SavingsGoal, error) {
 	var createdAt, updatedAt string
 	var targetWalletID *string
 
-	err := row.Scan(&g.ID, &g.UserEmail, &g.Name, &g.TargetAmountCents, &targetDate, &targetWalletID, &createdAt, &updatedAt)
+	err := row.Scan(&g.ID, &g.UserEmail, &g.Name, &g.TargetAmountCents, &targetDate, &targetWalletID, &g.Currency, &createdAt, &updatedAt)
 	if err == sql.ErrNoRows {
 		return nil, fmt.Errorf("goal not found")
 	}

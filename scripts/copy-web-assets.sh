@@ -1,5 +1,5 @@
-#!/usr/bin/env bash
-set -euo pipefail
+#!/bin/sh
+set -eu
 
 rm -rf apps/api/internal/platform/web/static
 mkdir -p apps/api/internal/platform/web/static

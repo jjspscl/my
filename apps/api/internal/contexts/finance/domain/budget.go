@@ -12,6 +12,7 @@ type Budget struct {
 	ID        string
 	UserEmail string
 	Month     string // YYYY-MM
+	Currency  string
 	CreatedAt time.Time
 	UpdatedAt time.Time
 }
@@ -41,7 +42,7 @@ type BudgetSummary struct {
 }
 
 // NewBudget validates and creates a Budget.
-func NewBudget(id, userEmail, month string) (*Budget, error) {
+func NewBudget(id, userEmail, month, currency string) (*Budget, error) {
 	if id == "" {
 		return nil, fmt.Errorf("id is required")
 	}
@@ -51,11 +52,15 @@ func NewBudget(id, userEmail, month string) (*Budget, error) {
 	if !monthRegex.MatchString(month) {
 		return nil, fmt.Errorf("invalid month format, expected YYYY-MM: %s", month)
 	}
+	if currency == "" {
+		currency = "PHP"
+	}
 
 	return &Budget{
 		ID:        id,
 		UserEmail: userEmail,
 		Month:     month,
+		Currency:  currency,
 		CreatedAt: time.Now().UTC(),
 		UpdatedAt: time.Now().UTC(),
 	}, nil

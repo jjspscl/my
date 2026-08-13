@@ -44,6 +44,7 @@ mise run dev
 | `mise run migrate` | Run database migrations |
 | `mise run seed` | Seed local dev data |
 | `mise run clean` | Clean build outputs |
+| `mise run release:guard` | Pre-flight release checks (pass version, optional `--fix`) |
 | `mise run release:check` | Snapshot GoReleaser build without publishing |
 | `MY_RELEASE_VERSION=v1.0.0 mise run release:tag` | Validate and create annotated release tag; push manually |
 
@@ -84,6 +85,8 @@ my/
   apps/web/                         React/Vite frontend
   docs/                             Current-state architecture and workflow docs
   .opencode/                        Repo-local OpenCode skills
+  skills/                           End-user finance agent skills (runtime)
+  agent/                            Finance agent profile (SOUL + wiring)
   infrastructure/                   Infra placeholders
   deployments/                      Deployment placeholders
   packages/                         Shared package workspace (currently light use)
@@ -142,15 +145,15 @@ Current workflow:
 
 - `plan` is the default OpenCode agent
 - `build` executes implementation work
-- `HANDOFF.md` is temporary task state, not durable project documentation
 - repo-local skills live in `.opencode/skills/`
+- end-user finance agent skills live in `skills/`; profile in `agent/finance/`
 
 ### MCP server for coding agents
 
 Install latest standalone MCP server on macOS or Linux:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/jjspscl/my/v1.0.2/scripts/install-mcp.sh | sh
+curl -fsSL https://raw.githubusercontent.com/jjspscl/my/v1.1.0/scripts/install-mcp.sh | sh
 ```
 
 Installer verifies release checksum and GitHub attestation when `gh` is available. It prints client configuration; it never edits agent config files.

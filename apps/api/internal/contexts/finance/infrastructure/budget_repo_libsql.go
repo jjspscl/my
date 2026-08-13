@@ -18,11 +18,11 @@ func NewBudgetRepoLibSQL(db *sql.DB) *BudgetRepoLibSQL {
 }
 
 func (r *BudgetRepoLibSQL) UpsertBudget(ctx context.Context, b *domain.Budget) error {
-	_, err := r.db.ExecContext(ctx, `
-		INSERT INTO budgets (id, user_email, month, created_at, updated_at)
-		VALUES (?, ?, ?, ?, ?)
-		ON CONFLICT(user_email, month) DO UPDATE SET updated_at = ?
-	`, b.ID, b.UserEmail, b.Month, b.CreatedAt.Format(time.RFC3339), b.UpdatedAt.Format(time.RFC3339), b.UpdatedAt.Format(time.RFC3339))
+	_, err := executor(ctx, r.db).ExecContext(ctx, `
+		INSERT INTO budgets (id, user_email, month, currency, created_at, updated_at)
+		VALUES (?, ?, ?, ?, ?, ?)
+		ON CONFLICT(user_email, month) DO UPDATE SET currency = ?, updated_at = ?
+	`, b.ID, b.UserEmail, b.Month, b.Currency, b.CreatedAt.Format(time.RFC3339), b.UpdatedAt.Format(time.RFC3339), b.Currency, b.UpdatedAt.Format(time.RFC3339))
 	if err != nil {
 		return fmt.Errorf("upsert budget: %w", err)
 	}
@@ -30,14 +30,14 @@ func (r *BudgetRepoLibSQL) UpsertBudget(ctx context.Context, b *domain.Budget) e
 }
 
 func (r *BudgetRepoLibSQL) FindBudgetByMonth(ctx context.Context, userEmail, month string) (*domain.Budget, error) {
-	row := r.db.QueryRowContext(ctx, `
-		SELECT id, user_email, month, created_at, updated_at
+	row := executor(ctx, r.db).QueryRowContext(ctx, `
+		SELECT id, user_email, month, currency, created_at, updated_at
 		FROM budgets WHERE user_email = ? AND month = ?
 	`, userEmail, month)
 
 	var b domain.Budget
 	var createdAt, updatedAt string
-	err := row.Scan(&b.ID, &b.UserEmail, &b.Month, &createdAt, &updatedAt)
+	err := row.Scan(&b.ID, &b.UserEmail, &b.Month, &b.Currency, &createdAt, &updatedAt)
 	if err == sql.ErrNoRows {
 		return nil, nil
 	}
@@ -111,15 +111,21 @@ func (r *BudgetRepoLibSQL) GetBudgetCategories(ctx context.Context, budgetID str
 	return result, nil
 }
 
-func (r *BudgetRepoLibSQL) GetSpentByCategory(ctx context.Context, userEmail, month string) (map[string]int64, error) {
-	rows, err := r.db.QueryContext(ctx, `
+// GetSpentByCategory sums expense transactions per category within the
+// half-open [from, to) range, restricted to a single currency. The range
+// predicate lets the (user_email, transaction_date) index apply, unlike a
+// strftime('%Y-%m', transaction_date) filter which forces a full scan.
+func (r *BudgetRepoLibSQL) GetSpentByCategory(ctx context.Context, userEmail, currency string, from, to time.Time) (map[string]int64, error) {
+	rows, err := executor(ctx, r.db).QueryContext(ctx, `
 		SELECT category, COALESCE(SUM(amount_cents), 0)
 		FROM transactions
 		WHERE user_email = ?
 		  AND type = 'expense'
-		  AND strftime('%Y-%m', transaction_date) = ?
+		  AND currency = ?
+		  AND transaction_date >= ?
+		  AND transaction_date < ?
 		GROUP BY category
-	`, userEmail, month)
+	`, userEmail, currency, from.Format("2006-01-02"), to.Format("2006-01-02"))
 	if err != nil {
 		return nil, fmt.Errorf("get spent by category: %w", err)
 	}

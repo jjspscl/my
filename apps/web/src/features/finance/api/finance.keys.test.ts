@@ -32,4 +32,43 @@ describe('financeKeys', () => {
   it('transactionList and todayTotal produce different keys', () => {
     expect(financeKeys.transactionList()).not.toEqual(financeKeys.todayTotal())
   })
+
+  it('analytics returns key with analytics suffix', () => {
+    expect(financeKeys.analytics()).toEqual(['finance', 'analytics'])
+  })
+
+  it('analyticsQuery returns key with query name', () => {
+    expect(financeKeys.analyticsQuery('spending-summary')).toEqual([
+      'finance',
+      'analytics',
+      'spending-summary',
+      undefined,
+    ])
+  })
+
+  it('analyticsQuery with filters returns key with filters object', () => {
+    const filters = { from: '2026-01-01', to: '2026-05-23' }
+    expect(financeKeys.analyticsQuery('spending-summary', filters)).toEqual([
+      'finance',
+      'analytics',
+      'spending-summary',
+      filters,
+    ])
+  })
+
+  it('analyticsQuery with different filters produce different keys', () => {
+    const f1 = financeKeys.analyticsQuery('spending-summary', { from: '2026-01-01' })
+    const f2 = financeKeys.analyticsQuery('spending-summary', { from: '2026-02-01' })
+    expect(f1).not.toEqual(f2)
+  })
+
+  it('analyticsQuery with different names produce different keys', () => {
+    const f1 = financeKeys.analyticsQuery('spending-summary')
+    const f2 = financeKeys.analyticsQuery('cash-flow-summary')
+    expect(f1).not.toEqual(f2)
+  })
+
+  it('analytics and transactions produce different keys', () => {
+    expect(financeKeys.analytics()).not.toEqual(financeKeys.transactions())
+  })
 })

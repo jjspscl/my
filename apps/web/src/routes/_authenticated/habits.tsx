@@ -6,6 +6,7 @@ import { useHabits, useCompletionsMap, useArchiveHabit } from '@/features/habits
 import { HabitCard } from '@/features/habits/components/habit-card'
 import { AddHabitDialog } from '@/features/habits/components/add-habit-dialog'
 import { HabitContributionGraph } from '@/features/habits/components/contribution-graph'
+import { toLocalDateStr } from '@/shared/lib/utils'
 
 export const Route = createFileRoute('/_authenticated/habits')({
   component: HabitsPage,
@@ -20,8 +21,8 @@ function HabitsPage() {
   const today = new Date()
   const yearAgo = new Date(today)
   yearAgo.setFullYear(yearAgo.getFullYear() - 1)
-  const fromStr = yearAgo.toISOString().split('T')[0]
-  const toStr = today.toISOString().split('T')[0]
+  const fromStr = toLocalDateStr(yearAgo)
+  const toStr = toLocalDateStr(today)
   const { data: completionsMap, isLoading: mapLoading } = useCompletionsMap(fromStr, toStr)
 
   if (isLoading) {

@@ -4,6 +4,8 @@ import (
 	"log/slog"
 	"net/http"
 	"time"
+
+	chimw "github.com/go-chi/chi/v5/middleware"
 )
 
 type statusWriter struct {
@@ -30,7 +32,10 @@ func RequestLogger(log *slog.Logger) func(http.Handler) http.Handler {
 				slog.String("path", r.URL.Path),
 				slog.Int("status", sw.status),
 				slog.Duration("duration", time.Since(start)),
-				slog.String("request_id", r.Header.Get("X-Request-Id")),
+				// chimw.RequestID stores the ID in the request context; the
+				// X-Request-Id header is only the client-supplied input and is
+				// empty on requests that did not send one.
+				slog.String("request_id", chimw.GetReqID(r.Context())),
 			)
 		})
 	}

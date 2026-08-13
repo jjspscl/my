@@ -19,9 +19,9 @@ Project-wide agent rules live in root `AGENTS.md`.
 
 ## Custom command
 
-`opencode.jsonc` defines a `build` command that tells the `build` agent to read and execute the current `HANDOFF.md` instructions.
+`opencode.jsonc` defines a `build` command that executes the plan approved in the conversation (no repo handoff file).
 
-`HANDOFF.md` is temporary execution state, not durable architecture documentation.
+Session handoffs are temporary execution state: Engram summaries + temp files, never durable architecture documentation.
 
 ## Skills
 

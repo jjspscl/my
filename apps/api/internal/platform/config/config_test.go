@@ -1,6 +1,28 @@
 package config
 
-import "testing"
+import (
+	"testing"
+	"time"
+)
+
+func TestLoadDefaultTimezoneResolves(t *testing.T) {
+	// Guards the time/tzdata import: on a machine or container without system
+	// zoneinfo, the default Asia/Manila must still resolve. If someone removes
+	// the import, this fails and boots on distroless would break.
+	t.Setenv("MY_USER_EMAIL", "user@example.com")
+	t.Setenv("MY_TIMEZONE", "")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Location == nil {
+		t.Fatal("Location = nil, want Asia/Manila")
+	}
+	if _, err := time.LoadLocation("Asia/Manila"); err != nil {
+		t.Fatalf("time.LoadLocation(Asia/Manila) without system zoneinfo: %v", err)
+	}
+}
 
 func TestLoadSecureCookiesExplicitValue(t *testing.T) {
 	for _, tc := range []struct {

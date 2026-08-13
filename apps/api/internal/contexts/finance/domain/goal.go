@@ -24,6 +24,7 @@ type SavingsGoal struct {
 	TargetAmountCents int64
 	TargetDate        *time.Time
 	TargetWalletID    string
+	Currency          string
 	CreatedAt         time.Time
 	UpdatedAt         time.Time
 }
@@ -36,6 +37,7 @@ type GoalContribution struct {
 	Note           *string
 	SourceWalletID *string
 	TransferID     *string
+	IdempotencyKey string
 	CreatedAt      time.Time
 }
 
@@ -49,7 +51,7 @@ type GoalSummary struct {
 }
 
 // NewSavingsGoal validates and creates a SavingsGoal.
-func NewSavingsGoal(id, userEmail, name string, targetAmountCents int64, targetDate *time.Time, targetWalletID string) (*SavingsGoal, error) {
+func NewSavingsGoal(id, userEmail, name string, targetAmountCents int64, targetDate *time.Time, targetWalletID, currency string) (*SavingsGoal, error) {
 	if id == "" {
 		return nil, fmt.Errorf("id is required")
 	}
@@ -68,6 +70,9 @@ func NewSavingsGoal(id, userEmail, name string, targetAmountCents int64, targetD
 	if targetWalletID == "" {
 		return nil, fmt.Errorf("target wallet is required")
 	}
+	if currency == "" {
+		currency = "PHP"
+	}
 
 	return &SavingsGoal{
 		ID:                id,
@@ -76,6 +81,7 @@ func NewSavingsGoal(id, userEmail, name string, targetAmountCents int64, targetD
 		TargetAmountCents: targetAmountCents,
 		TargetDate:        targetDate,
 		TargetWalletID:    targetWalletID,
+		Currency:          currency,
 		CreatedAt:         time.Now().UTC(),
 		UpdatedAt:         time.Now().UTC(),
 	}, nil
@@ -108,8 +114,10 @@ func NewGoalContribution(id, goalID string, amountCents int64, contributedAt tim
 	}, nil
 }
 
-// ComputeGoalSummary computes a summary for a goal given its contributions total.
-func ComputeGoalSummary(goal *SavingsGoal, currentAmountCents int64) GoalSummary {
+// ComputeGoalSummary computes a summary for a goal given its contributions
+// total. now is the current instant in the user's financial timezone; it is a
+// parameter so callers control the calendar, not the UTC clock.
+func ComputeGoalSummary(goal *SavingsGoal, currentAmountCents int64, now time.Time) GoalSummary {
 	remaining := goal.TargetAmountCents - currentAmountCents
 	if remaining < 0 {
 		remaining = 0
@@ -126,7 +134,6 @@ func ComputeGoalSummary(goal *SavingsGoal, currentAmountCents int64) GoalSummary
 
 	var monthly *int64
 	if goal.TargetDate != nil && remaining > 0 {
-		now := time.Now().UTC()
 		if goal.TargetDate.After(now) {
 			monthsLeft := monthsBetween(now, *goal.TargetDate)
 			if monthsLeft > 0 {
@@ -141,7 +148,7 @@ func ComputeGoalSummary(goal *SavingsGoal, currentAmountCents int64) GoalSummary
 		status = GoalNotStarted
 	} else if currentAmountCents >= goal.TargetAmountCents {
 		status = GoalAchieved
-	} else if goal.TargetDate != nil && time.Now().UTC().After(*goal.TargetDate) {
+	} else if goal.TargetDate != nil && now.After(*goal.TargetDate) {
 		status = GoalBehind
 	}
 

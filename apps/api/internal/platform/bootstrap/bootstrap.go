@@ -17,6 +17,8 @@ import (
 	"github.com/jjspscl/my/internal/platform/mail"
 	predis "github.com/jjspscl/my/internal/platform/redis"
 	"github.com/jjspscl/my/internal/platform/session"
+	"github.com/jjspscl/my/internal/platform/timeutil"
+	"github.com/jjspscl/my/migrations"
 	redis "github.com/redis/go-redis/v9"
 )
 
@@ -27,14 +29,17 @@ type App struct {
 	Redis    *redis.Client
 	Sessions session.Store
 
-	Auth     *accessapp.AuthService
-	Tx       *financeapp.TransactionService
-	Budget   *financeapp.BudgetService
-	Bill     *financeapp.BillService
-	Goal     *financeapp.GoalService
-	Wallet   *financeapp.WalletService
-	Transfer *financeapp.TransferService
-	Habit    *habitapp.HabitService
+	Auth             *accessapp.AuthService
+	Tx               *financeapp.TransactionService
+	Budget           *financeapp.BudgetService
+	Bill             *financeapp.BillService
+	Goal             *financeapp.GoalService
+	Wallet           *financeapp.WalletService
+	Transfer         *financeapp.TransferService
+	Category         *financeapp.CategoryService
+	Analytics        *financeapp.AnalyticsService
+	DerivedAnalytics *financeapp.DerivedAnalyticsService
+	Habit            *habitapp.HabitService
 
 	closeOnce sync.Once
 	closeErr  error
@@ -55,7 +60,7 @@ func NewWithOptions(cfg *config.Config, log *slog.Logger, opts Options) (*App, e
 	}
 
 	if !opts.SkipMigrations {
-		if err := database.Migrate(db, "migrations"); err != nil {
+		if err := database.Migrate(db, migrations.FS, log); err != nil {
 			_ = db.Close()
 			return nil, err
 		}
@@ -63,6 +68,8 @@ func NewWithOptions(cfg *config.Config, log *slog.Logger, opts Options) (*App, e
 		_ = db.Close()
 		return nil, err
 	}
+
+	reportOrphans(db, log)
 
 	rdb, err := predis.NewClient(cfg.RedisURL)
 	if err != nil {
@@ -77,38 +84,50 @@ func NewWithOptions(cfg *config.Config, log *slog.Logger, opts Options) (*App, e
 
 	txRepo := financeinfra.NewTransactionRepoLibSQL(db)
 	walletRepo := financeinfra.NewWalletRepoLibSQL(db)
-	txSvc := financeapp.NewTransactionService(txRepo, walletRepo, cfg.DefaultCurrency)
+	coordinator := financeinfra.NewCoordinator(db)
+	clock := timeutil.New(cfg.Location)
+	txSvc := financeapp.NewTransactionService(txRepo, walletRepo, clock)
 
 	budgetRepo := financeinfra.NewBudgetRepoLibSQL(db)
-	budgetSvc := financeapp.NewBudgetService(budgetRepo)
+	budgetSvc := financeapp.NewBudgetService(budgetRepo).WithCurrency(cfg.DefaultCurrency).WithClock(clock)
 
 	billRepo := financeinfra.NewBillRepoLibSQL(db)
-	billSvc := financeapp.NewBillService(billRepo)
+	billSvc := financeapp.NewBillService(billRepo).WithCurrency(cfg.DefaultCurrency).WithClock(clock).WithTransactionSupport(txRepo, walletRepo).WithCoordinator(coordinator)
 	txSvc.WithBillAutoMatcher(billSvc)
 
 	goalRepo := financeinfra.NewGoalRepoLibSQL(db)
 	transferRepo := financeinfra.NewTransferRepoLibSQL(db)
-	goalSvc := financeapp.NewGoalService(goalRepo, transferRepo, walletRepo)
+	goalSvc := financeapp.NewGoalService(goalRepo, transferRepo, walletRepo).WithClock(clock).WithCoordinator(coordinator)
 	walletSvc := financeapp.NewWalletService(walletRepo)
 	transferSvc := financeapp.NewTransferService(transferRepo, walletRepo)
+
+	categoryRepo := financeinfra.NewCategoryRepoLibSQL(db)
+	categorySvc := financeapp.NewCategoryService(categoryRepo)
+
+	analyticsRepo := financeinfra.NewAnalyticsRepoLibSQL(db)
+	analyticsSvc := financeapp.NewAnalyticsService(analyticsRepo, budgetRepo, goalRepo).WithClock(clock)
+	derivedAnalyticsSvc := financeapp.NewDerivedAnalyticsService(analyticsRepo, walletRepo, billRepo, analyticsSvc, billSvc).WithClock(clock)
 
 	habitRepo := habitinfra.NewHabitRepoLibSQL(db)
 	habitSvc := habitapp.NewHabitService(habitRepo)
 
 	return &App{
-		Cfg:      cfg,
-		Log:      log,
-		DB:       db,
-		Redis:    rdb,
-		Sessions: sessions,
-		Auth:     authSvc,
-		Tx:       txSvc,
-		Budget:   budgetSvc,
-		Bill:     billSvc,
-		Goal:     goalSvc,
-		Wallet:   walletSvc,
-		Transfer: transferSvc,
-		Habit:    habitSvc,
+		Cfg:              cfg,
+		Log:              log,
+		DB:               db,
+		Redis:            rdb,
+		Sessions:         sessions,
+		Auth:             authSvc,
+		Tx:               txSvc,
+		Budget:           budgetSvc,
+		Bill:             billSvc,
+		Goal:             goalSvc,
+		Wallet:           walletSvc,
+		Transfer:         transferSvc,
+		Category:         categorySvc,
+		Analytics:        analyticsSvc,
+		DerivedAnalytics: derivedAnalyticsSvc,
+		Habit:            habitSvc,
 	}, nil
 }
 
@@ -128,4 +147,27 @@ func (a *App) Close() error {
 		a.closeErr = errors.Join(errs...)
 	})
 	return a.closeErr
+}
+
+// reportOrphans surfaces pre-existing orphaned child rows (created while
+// foreign_keys was OFF) without failing boot. New orphans cannot form: the
+// goal and bill repos delete children explicitly, and FKs are ON.
+func reportOrphans(db *sql.DB, log *slog.Logger) {
+	rows, err := db.Query("PRAGMA foreign_key_check")
+	if err != nil {
+		log.Warn("foreign_key_check failed", slog.Any("error", err))
+		return
+	}
+	defer rows.Close()
+
+	count := 0
+	for rows.Next() {
+		count++
+	}
+	if count > 0 {
+		log.Warn("foreign_key_check found orphaned rows (pre-existing from the foreign_keys=OFF era); review before relying on cascades",
+			slog.Int("count", count))
+	} else {
+		log.Debug("foreign_key_check clean")
+	}
 }

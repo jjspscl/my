@@ -3,6 +3,7 @@ package application
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/require"
@@ -44,7 +45,7 @@ func (m *mockBudgetRepo) GetBudgetCategories(_ context.Context, budgetID string)
 	return m.categories[budgetID], nil
 }
 
-func (m *mockBudgetRepo) GetSpentByCategory(_ context.Context, _, _ string) (map[string]int64, error) {
+func (m *mockBudgetRepo) GetSpentByCategory(_ context.Context, _, _ string, _, _ time.Time) (map[string]int64, error) {
 	return m.spentMap, nil
 }
 

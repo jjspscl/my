@@ -20,9 +20,9 @@ Compact current conversation so a fresh agent can continue work.
    - validation already run and remaining validation
    - relevant paths, commands, branches, commits, issues, or URLs
    - `Suggested skills` section listing useful skills for continuation
-4. Do not copy content already present in specs, plans, ADRs, issues, commits, diffs, or repository `HANDOFF.md`; reference artifact path or URL instead.
+4. Do not copy content already present in specs, plans, ADRs, issues, commits, diffs, or Engram session summaries; reference artifact path or URL instead.
 5. Redact secrets, credentials, personal records, and personally identifiable information.
 6. Save same concise state through `mem_session_summary` for durable searchable recall. Reference temp handoff path; do not duplicate large artifact bodies.
 7. Return temp handoff path and Engram save result.
 
-Repository `HANDOFF.md` is plan→build task state. This skill creates session→session continuity; never overwrite repository file.
+Repository HANDOFF.md no longer exists: handoffs live in Engram session summaries plus the temp file this skill writes. Never create a new repo-root HANDOFF.md.

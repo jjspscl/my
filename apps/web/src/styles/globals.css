@@ -59,6 +59,13 @@
     --input: 0 0% 89.8%;
     --ring: 0 0% 3.9%;
     --radius: 0.5rem;
+
+    /* Monochrome chart palette (minimal dashboard) */
+    --chart-1: 0 0% 20%;
+    --chart-2: 0 0% 38%;
+    --chart-3: 0 0% 55%;
+    --chart-4: 0 0% 70%;
+    --chart-5: 0 0% 82%;
   }
 
   .dark {
@@ -81,6 +88,13 @@
     --border: 0 0% 14.9%;
     --input: 0 0% 14.9%;
     --ring: 0 0% 83.1%;
+
+    /* Monochrome chart palette (minimal dashboard) */
+    --chart-1: 0 0% 85%;
+    --chart-2: 0 0% 68%;
+    --chart-3: 0 0% 52%;
+    --chart-4: 0 0% 38%;
+    --chart-5: 0 0% 26%;
   }
 }
 

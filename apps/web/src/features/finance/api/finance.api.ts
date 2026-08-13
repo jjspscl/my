@@ -6,17 +6,18 @@ import {
   DailyTotalSchema,
   TransactionSchema,
 } from '../schemas/transaction.schemas'
+import { financeMutate, type MutateResult } from './mutate'
 import { z } from 'zod'
 
 const TransactionListDataSchema = z.object({ data: z.array(TransactionSchema) })
 const DailyTotalDataSchema = z.object({ data: DailyTotalSchema })
 
-export function createTransaction(data: CreateTransaction) {
-  const parsed = CreateTransactionSchema.parse(data)
-  return apiClient('/api/v1/finance/transactions', z.any(), {
-    method: 'POST',
-    body: JSON.stringify(parsed),
+export function createTransaction(data: CreateTransaction): Promise<MutateResult<unknown>> {
+  const parsed = CreateTransactionSchema.parse({
+    ...data,
+    idempotencyKey: data.idempotencyKey ?? crypto.randomUUID(),
   })
+  return financeMutate('/api/v1/finance/transactions', parsed, z.any())
 }
 
 export async function listTransactions(from?: string, to?: string) {

@@ -1,0 +1,65 @@
+name: E2E
+
+on:
+  push:
+    branches: [main]
+    paths: ['apps/web/**', 'apps/api/**']
+  pull_request:
+    branches: [main]
+
+jobs:
+  e2e:
+    runs-on: ubuntu-latest
+    services:
+      redis:
+        image: redis:7-alpine
+        ports:
+          - '6379:6379'
+      mailpit:
+        image: axllent/mailpit
+        ports:
+          - '1025:1025'
+          - '8025:8025'
+    env:
+      # E2E_EMAIL must match MY_USER_EMAIL: the backend silently no-ops on
+      # mismatched magic-link emails.
+      MY_USER_EMAIL: e2e@example.com
+      E2E_EMAIL: e2e@example.com
+      MY_WEB_URL: http://localhost:8080
+      E2E_BASE_URL: http://localhost:8080
+      MY_SMTP_HOST: localhost
+      MY_SMTP_PORT: '1025'
+      MY_REDIS_URL: redis://localhost:6379
+      MY_DATABASE_URL: file:e2e.db
+      E2E_MAILPIT_URL: http://localhost:8025/api/v1
+      # 7 magic-link requests across the suite; the production default (6 per
+      # 15 min per IP) would 429 the last one.
+      MY_MAGIC_LINK_RATE: '100'
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: '1.26'
+      - uses: pnpm/action-setup@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: pnpm
+      - run: pnpm install
+      - run: pnpm --filter @my/web build
+      - run: bash scripts/copy-web-assets.sh
+      - run: go build -o ../../bin/my ./cmd/api
+        working-directory: apps/api
+      - name: Fresh e2e database
+        run: rm -f apps/web/e2e.db*
+      - run: pnpm --filter @my/web exec playwright install --with-deps chromium
+      - name: Run e2e suite
+        # The webServer binary applies the embedded migrations at boot, so no
+        # separate migrate step is needed.
+        run: pnpm --filter @my/web e2e
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: playwright-report
+          path: apps/web/playwright-report
+          retention-days: 7

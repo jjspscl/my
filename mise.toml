@@ -57,6 +57,14 @@ run = [
 	"mise run build:mcp",
 ]
 
+[tasks.backup]
+description = "Snapshot the database with VACUUM INTO (safe on a live DB) into ~/.local/share/my/backups/"
+run = [
+	{ task = "build:api" },
+	"mkdir -p \"$HOME/.local/share/my/backups\"",
+	"bash -c './bin/my -backup \"$HOME/.local/share/my/backups/my-$(date +%Y%m%d-%H%M%S).db\"'",
+]
+
 [tasks."build:client"]
 description = "Build React/Vite client"
 run = "pnpm build"
@@ -118,6 +126,10 @@ dir = "apps/api"
 [tasks.clean]
 description = "Clean build outputs"
 run = "rm -rf bin apps/web/dist apps/api/internal/platform/web/static"
+
+[tasks."release:guard"]
+description = "Pre-flight release checks (scripts/release-guard.sh). Usage: mise run release:guard v1.1.0 [--fix] [--skip-build]"
+run = "bash scripts/release-guard.sh"
 
 [tasks."release:check"]
 description = "Dry-run release build without publishing"

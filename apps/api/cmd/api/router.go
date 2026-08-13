@@ -1,16 +1,19 @@
 package main
 
 import (
+	"database/sql"
 	"encoding/json"
 	"log/slog"
 	"net/http"
 
 	"github.com/go-chi/chi/v5"
 	chimw "github.com/go-chi/chi/v5/middleware"
+	redis "github.com/redis/go-redis/v9"
 
 	accesshttp "github.com/jjspscl/my/internal/contexts/access/interfaces/http"
 	financehttp "github.com/jjspscl/my/internal/contexts/finance/interfaces/http"
 	habithttp "github.com/jjspscl/my/internal/contexts/habits/interfaces/http"
+	"github.com/jjspscl/my/internal/platform/backup"
 	"github.com/jjspscl/my/internal/platform/session"
 	platformversion "github.com/jjspscl/my/internal/platform/version"
 	"github.com/jjspscl/my/internal/platform/web"
@@ -18,16 +21,23 @@ import (
 )
 
 type routerDeps struct {
-	log             *slog.Logger
-	sessions        session.Store
-	authHandler     *accesshttp.AuthHandler
-	financeHandler  *financehttp.FinanceHandler
-	budgetHandler   *financehttp.BudgetHandler
-	billHandler     *financehttp.BillHandler
-	goalHandler     *financehttp.GoalHandler
-	walletHandler   *financehttp.WalletHandler
-	transferHandler *financehttp.TransferHandler
-	habitHandler    *habithttp.HabitHandler
+	log                     *slog.Logger
+	sessions                session.Store
+	db                      *sql.DB
+	redis                   *redis.Client
+	authHandler             *accesshttp.AuthHandler
+	backupHandler           *backup.Handler
+	magicLinkRate           int
+	financeHandler          *financehttp.FinanceHandler
+	budgetHandler           *financehttp.BudgetHandler
+	billHandler             *financehttp.BillHandler
+	goalHandler             *financehttp.GoalHandler
+	walletHandler           *financehttp.WalletHandler
+	transferHandler         *financehttp.TransferHandler
+	categoryHandler         *financehttp.CategoryHandler
+	analyticsHandler        *financehttp.AnalyticsHandler
+	derivedAnalyticsHandler *financehttp.DerivedAnalyticsHandler
+	habitHandler            *habithttp.HabitHandler
 }
 
 func newRouter(deps routerDeps) chi.Router {
@@ -46,9 +56,28 @@ func newRouter(deps routerDeps) chi.Router {
 			})
 		})
 
+		// Readiness: dependency liveness for orchestrators. /health stays a
+		// pure process probe (the Playwright webServer waits on it), while
+		// /ready tells a scheduler whether the app can actually serve.
+		r.Get("/ready", func(w http.ResponseWriter, r *http.Request) {
+			status := map[string]string{"db": "ok", "redis": "ok"}
+			code := http.StatusOK
+			if err := deps.db.PingContext(r.Context()); err != nil {
+				status["db"] = "error"
+				code = http.StatusServiceUnavailable
+			}
+			if err := deps.redis.Ping(r.Context()).Err(); err != nil {
+				status["redis"] = "error"
+				code = http.StatusServiceUnavailable
+			}
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(code)
+			_ = json.NewEncoder(w).Encode(status)
+		})
+
 		// Mount auth once. Public routes and protected logout share this subrouter.
 		r.Route("/auth", func(r chi.Router) {
-			deps.authHandler.PublicRoutes(r)
+			deps.authHandler.PublicRoutes(r, deps.magicLinkRate)
 			r.Group(func(r chi.Router) {
 				r.Use(middleware.RequireAuth(deps.sessions))
 				r.Use(middleware.CSRFProtect())
@@ -60,6 +89,11 @@ func newRouter(deps routerDeps) chi.Router {
 			r.Use(middleware.RequireAuth(deps.sessions))
 			r.Use(middleware.CSRFProtect())
 
+			// Database snapshot and JSON export — full data dump, so they sit
+			// behind session auth and are deliberately NOT exposed via MCP.
+			r.Get("/backup", deps.backupHandler.Snapshot)
+			r.Get("/export", deps.backupHandler.Export)
+
 			r.Route("/finance", func(r chi.Router) {
 				deps.financeHandler.Routes(r)
 				r.Route("/budgets", deps.budgetHandler.Routes)
@@ -67,6 +101,11 @@ func newRouter(deps routerDeps) chi.Router {
 				r.Route("/goals", deps.goalHandler.Routes)
 				r.Route("/wallets", deps.walletHandler.Routes)
 				r.Route("/transfers", deps.transferHandler.Routes)
+				r.Route("/categories", deps.categoryHandler.Routes)
+				r.Route("/analytics", func(r chi.Router) {
+					deps.analyticsHandler.Routes(r)
+					deps.derivedAnalyticsHandler.Routes(r)
+				})
 			})
 
 			r.Route("/habits", deps.habitHandler.Routes)

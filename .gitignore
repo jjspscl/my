@@ -65,3 +65,6 @@ test-results/
 
 # TypeScript build info
 *.tsbuildinfo
+
+# Database snapshots (personal data)
+/backup/

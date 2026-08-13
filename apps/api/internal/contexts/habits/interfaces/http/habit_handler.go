@@ -112,6 +112,9 @@ func (h *HabitHandler) List(w http.ResponseWriter, r *http.Request) {
 
 type toggleRequest struct {
 	Date string `json:"date,omitempty"`
+	// completed is an optional explicit set-state. When present the endpoint
+	// is idempotent (safe for offline replay); when absent it flips.
+	Completed *bool `json:"completed,omitempty"`
 }
 
 func (h *HabitHandler) Toggle(w http.ResponseWriter, r *http.Request) {
@@ -126,7 +129,7 @@ func (h *HabitHandler) Toggle(w http.ResponseWriter, r *http.Request) {
 		dateStr = time.Now().Format("2006-01-02")
 	}
 
-	toggled, err := h.svc.ToggleCompletion(r.Context(), id, email, dateStr)
+	toggled, err := h.svc.ToggleCompletion(r.Context(), id, email, dateStr, req.Completed)
 	if err != nil {
 		response.WriteError(w, r, http.StatusNotFound, err.Error(), err)
 		return

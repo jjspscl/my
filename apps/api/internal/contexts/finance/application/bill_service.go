@@ -3,25 +3,62 @@ package application
 import (
 	"context"
 	"fmt"
+	"sort"
 	"time"
 
 	"github.com/google/uuid"
 
 	"github.com/jjspscl/my/internal/contexts/finance/domain"
+	"github.com/jjspscl/my/internal/platform/timeutil"
 )
 
 type BillService struct {
-	billRepo domain.BillRepository
+	billRepo    domain.BillRepository
+	txRepo      domain.TransactionRepository
+	walletRepo  domain.WalletRepository
+	coordinator TxCoordinator
+	currency    string
+	clock       *timeutil.Clock
 }
 
 func NewBillService(billRepo domain.BillRepository) *BillService {
-	return &BillService{billRepo: billRepo}
+	return &BillService{billRepo: billRepo, currency: "PHP", clock: timeutil.New(time.UTC)}
+}
+
+// WithCurrency sets the default currency for new bills. Bills are expectations
+// without a wallet, so they default to the reporting base currency.
+func (s *BillService) WithCurrency(c string) *BillService {
+	if c != "" {
+		s.currency = c
+	}
+	return s
+}
+
+// WithClock pins the calendar used for due-date computation.
+func (s *BillService) WithClock(c *timeutil.Clock) *BillService {
+	s.clock = c
+	return s
+}
+
+// WithTransactionSupport wires the repositories needed to create an expense
+// transaction when a bill is marked paid with CreateTransaction.
+func (s *BillService) WithTransactionSupport(txRepo domain.TransactionRepository, walletRepo domain.WalletRepository) *BillService {
+	s.txRepo = txRepo
+	s.walletRepo = walletRepo
+	return s
+}
+
+// WithCoordinator makes the payment + created transaction writes atomic.
+func (s *BillService) WithCoordinator(c TxCoordinator) *BillService {
+	s.coordinator = c
+	return s
 }
 
 type CreateBillInput struct {
 	Name         string
 	Category     string
 	AmountCents  int64
+	Currency     string
 	Frequency    domain.Frequency
 	DayOfMonth   int
 	StartDate    time.Time
@@ -35,6 +72,7 @@ type UpdateBillInput struct {
 	Name         string
 	Category     string
 	AmountCents  int64
+	Currency     string
 	Frequency    domain.Frequency
 	DayOfMonth   int
 	StartDate    time.Time
@@ -44,12 +82,18 @@ type UpdateBillInput struct {
 }
 
 func (s *BillService) Create(ctx context.Context, userEmail string, input CreateBillInput) (*domain.RecurringBill, error) {
+	currency := input.Currency
+	if currency == "" {
+		currency = s.currency
+	}
+
 	bill, err := domain.NewRecurringBill(
 		uuid.New().String(),
 		userEmail,
 		input.Name,
 		input.Category,
 		input.AmountCents,
+		currency,
 		input.Frequency,
 		input.DayOfMonth,
 		input.StartDate,
@@ -77,12 +121,18 @@ func (s *BillService) Update(ctx context.Context, userEmail string, input Update
 		return nil, fmt.Errorf("bill not found")
 	}
 
+	currency := input.Currency
+	if currency == "" {
+		currency = existing.Currency
+	}
+
 	bill, err := domain.NewRecurringBill(
 		input.ID,
 		userEmail,
 		input.Name,
 		input.Category,
 		input.AmountCents,
+		currency,
 		input.Frequency,
 		input.DayOfMonth,
 		input.StartDate,
@@ -119,83 +169,110 @@ type UpcomingBillResult struct {
 }
 
 // GetUpcoming returns upcoming bills with computed due dates and status.
-// It generates occurrences for each bill starting from start_date up to now + daysAhead,
-// and checks bill_payments for paid status.
+// Occurrences are generated per bill, then all payment records for the window
+// are fetched in one batched query (no per-occurrence FindPayment N+1).
 func (s *BillService) GetUpcoming(ctx context.Context, userEmail string, daysAhead int) ([]UpcomingBillResult, error) {
 	bills, err := s.billRepo.ListBills(ctx, userEmail)
 	if err != nil {
 		return nil, fmt.Errorf("list bills: %w", err)
 	}
 
-	now := time.Now().UTC().Truncate(24 * time.Hour)
+	now := s.clock.TodayStart()
 	cutoff := now.AddDate(0, 0, daysAhead)
+	windowStart := now.AddDate(0, 0, -60)
 
-	var results []UpcomingBillResult
+	// Collect every due date we will need to look up, per bill.
+	type occurrence struct {
+		bill    *domain.RecurringBill
+		dueDate time.Time
+	}
+	var occurrences []occurrence
+	billIDs := make([]string, 0, len(bills))
+	seen := make(map[string]bool, len(bills))
 	for _, bill := range bills {
-		// Generate occurrences from start date to cutoff
-		occurrences := generateOccurrences(bill, now.AddDate(0, 0, -60), cutoff)
-
-		for _, dueDate := range occurrences {
-			dueStr := dueDate.Format("2006-01-02")
-
-			// Check if bill has an end date
+		if !seen[bill.ID] {
+			seen[bill.ID] = true
+			billIDs = append(billIDs, bill.ID)
+		}
+		for _, dueDate := range generateOccurrences(bill, windowStart, cutoff) {
 			if bill.EndDate != nil && dueDate.After(*bill.EndDate) {
 				continue
 			}
+			occurrences = append(occurrences, occurrence{bill: bill, dueDate: dueDate})
+		}
+	}
 
-			// Look for payment record
-			payment, err := s.billRepo.FindPayment(ctx, bill.ID, dueStr)
-			if err != nil && err.Error() != "payment not found" {
-				return nil, fmt.Errorf("find payment: %w", err)
-			}
+	// One batched query for all payments in the window.
+	payments, err := s.billRepo.ListPaymentsByBills(ctx, billIDs, windowStart, cutoff)
+	if err != nil {
+		return nil, fmt.Errorf("list payments: %w", err)
+	}
+	paymentByKey := make(map[string]*domain.BillPayment, len(payments))
+	for _, p := range payments {
+		paymentByKey[p.BillID+"|"+p.DueDate.Format("2006-01-02")] = p
+	}
 
-			status := domain.OccurrencePending
-			var paidAmount *int64
-			var paidDate *time.Time
+	results := make([]UpcomingBillResult, 0, len(occurrences))
+	for _, occ := range occurrences {
+		dueStr := occ.dueDate.Format("2006-01-02")
+		payment := paymentByKey[occ.bill.ID+"|"+dueStr]
 
-			if payment != nil {
-				switch payment.Status {
-				case domain.OccurrencePaid:
-					status = domain.OccurrencePaid
-					paidAmount = &payment.AmountCents
-					paidDate = payment.PaidDate
-				case domain.OccurrenceOverdue:
-					status = domain.OccurrenceOverdue
-				case domain.OccurrenceSkipped:
-					status = domain.OccurrenceSkipped
-				default:
-					if dueDate.Before(now) {
-						status = domain.OccurrenceOverdue
-					}
-				}
-			} else if dueDate.Before(now) {
+		status := domain.OccurrencePending
+		var paidAmount *int64
+		var paidDate *time.Time
+
+		if payment != nil {
+			switch payment.Status {
+			case domain.OccurrencePaid:
+				status = domain.OccurrencePaid
+				paidAmount = &payment.AmountCents
+				paidDate = payment.PaidDate
+			case domain.OccurrenceOverdue:
 				status = domain.OccurrenceOverdue
+			case domain.OccurrenceSkipped:
+				status = domain.OccurrenceSkipped
+			default:
+				if occ.dueDate.Before(now) {
+					status = domain.OccurrenceOverdue
+				}
 			}
-
-			results = append(results, UpcomingBillResult{
-				Bill:            *bill,
-				DueDate:         dueDate,
-				Status:          status,
-				PaidAmountCents: paidAmount,
-				PaidDate:        paidDate,
-			})
+		} else if occ.dueDate.Before(now) {
+			status = domain.OccurrenceOverdue
 		}
+
+		results = append(results, UpcomingBillResult{
+			Bill:            *occ.bill,
+			DueDate:         occ.dueDate,
+			Status:          status,
+			PaidAmountCents: paidAmount,
+			PaidDate:        paidDate,
+		})
 	}
 
-	// Sort by due date ascending
-	for i := 0; i < len(results); i++ {
-		for j := i + 1; j < len(results); j++ {
-			if results[j].DueDate.Before(results[i].DueDate) {
-				results[i], results[j] = results[j], results[i]
-			}
-		}
-	}
+	sort.Slice(results, func(i, j int) bool {
+		return results[i].DueDate.Before(results[j].DueDate)
+	})
 
 	return results, nil
 }
 
-func (s *BillService) MarkPaid(ctx context.Context, billID, userEmail string, dueDate time.Time, transactionID *string) (*domain.BillPayment, error) {
-	bill, err := s.billRepo.FindBillByID(ctx, billID)
+// MarkPaidInput describes a bill occurrence to mark as paid.
+type MarkPaidInput struct {
+	BillID  string
+	DueDate time.Time
+	// TransactionID links the payment to an existing transaction. When nil and
+	// CreateTransaction is true, a new expense transaction is created instead.
+	TransactionID *string
+	// CreateTransaction books an expense transaction for the bill amount and
+	// links the payment to it. Ignored when TransactionID is provided.
+	CreateTransaction bool
+	// WalletID optionally targets the wallet for the created transaction;
+	// empty uses the user's default wallet.
+	WalletID string
+}
+
+func (s *BillService) MarkPaid(ctx context.Context, userEmail string, input MarkPaidInput) (*domain.BillPayment, error) {
+	bill, err := s.billRepo.FindBillByID(ctx, input.BillID)
 	if err != nil {
 		return nil, fmt.Errorf("find bill: %w", err)
 	}
@@ -203,18 +280,26 @@ func (s *BillService) MarkPaid(ctx context.Context, billID, userEmail string, du
 		return nil, fmt.Errorf("bill not found")
 	}
 
+	// An explicit transaction ID wins over creating a new one.
+	if input.CreateTransaction && input.TransactionID == nil {
+		return s.markPaidWithTransaction(ctx, userEmail, bill, input)
+	}
+	return s.markPaid(ctx, userEmail, bill, input.DueDate, input.TransactionID)
+}
+
+func (s *BillService) markPaid(ctx context.Context, userEmail string, bill *domain.RecurringBill, dueDate time.Time, transactionID *string) (*domain.BillPayment, error) {
 	dueStr := dueDate.Format("2006-01-02")
 
-	existing, err := s.billRepo.FindPayment(ctx, billID, dueStr)
+	existing, err := s.billRepo.FindPayment(ctx, bill.ID, dueStr)
 	if err != nil && err.Error() != "payment not found" {
 		return nil, fmt.Errorf("find payment: %w", err)
 	}
 
-	now := time.Now().UTC()
+	now := s.clock.Now()
 
 	payment := existing
 	if payment == nil {
-		payment, err = domain.NewBillPayment(uuid.New().String(), billID, dueDate, bill.AmountCents)
+		payment, err = domain.NewBillPayment(uuid.New().String(), bill.ID, dueDate, bill.AmountCents)
 		if err != nil {
 			return nil, err
 		}
@@ -222,13 +307,90 @@ func (s *BillService) MarkPaid(ctx context.Context, billID, userEmail string, du
 
 	payment.Status = domain.OccurrencePaid
 	payment.PaidDate = &now
-	payment.TransactionID = transactionID
+	// Only overwrite the linked transaction when the caller supplies one;
+	// marking paid without a transaction ID must not null an existing link.
+	if transactionID != nil {
+		payment.TransactionID = transactionID
+	}
 
 	if err := s.billRepo.SavePayment(ctx, payment); err != nil {
 		return nil, fmt.Errorf("save payment: %w", err)
 	}
 
 	return payment, nil
+}
+
+// markPaidWithTransaction books the expense transaction and the payment in one
+// database transaction. When no coordinator is wired (unit tests), the writes
+// still happen but without the transaction wrapper.
+func (s *BillService) markPaidWithTransaction(ctx context.Context, userEmail string, bill *domain.RecurringBill, input MarkPaidInput) (*domain.BillPayment, error) {
+	var payment *domain.BillPayment
+	run := func(txCtx context.Context) error {
+		tx, err := s.createTransaction(txCtx, userEmail, bill, input.DueDate, input.WalletID)
+		if err != nil {
+			return err
+		}
+		p, err := s.markPaid(txCtx, userEmail, bill, input.DueDate, &tx.ID)
+		if err != nil {
+			return err
+		}
+		payment = p
+		return nil
+	}
+
+	var err error
+	if s.coordinator != nil {
+		err = s.coordinator.WithTx(ctx, run)
+	} else {
+		err = run(ctx)
+	}
+	if err != nil {
+		return nil, err
+	}
+	return payment, nil
+}
+
+// createTransaction books an expense transaction for a bill occurrence. The
+// wallet is the currency authority: the transaction is denominated in the
+// wallet's currency, never in a global default.
+func (s *BillService) createTransaction(ctx context.Context, userEmail string, bill *domain.RecurringBill, dueDate time.Time, walletID string) (*domain.Transaction, error) {
+	if s.txRepo == nil || s.walletRepo == nil {
+		return nil, fmt.Errorf("transaction support not wired")
+	}
+
+	var wallet *domain.Wallet
+	var err error
+	if walletID == "" {
+		wallet, err = s.walletRepo.FindDefault(ctx, userEmail)
+		if err != nil {
+			return nil, fmt.Errorf("no wallet specified and no default wallet found: %w", err)
+		}
+	} else {
+		wallet, err = ensureUsableWallet(ctx, s.walletRepo, userEmail, walletID)
+		if err != nil {
+			return nil, err
+		}
+	}
+
+	tx, err := domain.NewTransaction(
+		uuid.New().String(),
+		userEmail,
+		wallet.Currency,
+		bill.Category,
+		fmt.Sprintf("Bill payment: %s", bill.Name),
+		bill.AmountCents,
+		domain.TransactionExpense,
+		dueDate,
+	)
+	if err != nil {
+		return nil, err
+	}
+	tx.WalletID = wallet.ID
+
+	if err := s.txRepo.Save(ctx, tx); err != nil {
+		return nil, fmt.Errorf("save transaction: %w", err)
+	}
+	return tx, nil
 }
 
 // TryAutoMatch checks if a transaction matches any bill's auto-match criteria.

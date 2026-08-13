@@ -229,6 +229,14 @@
   sliding session expiry, `-login-link` SMTP-down escape hatch
 - Deployment docs: backup/restore runbook, probes, WAL caveats
 
+### Release v1.1.0
+- 64 commits since v1.0.2: Phases 7-11 (observability, production
+  Docker, e2e in CI, offline correctness, MVP hardening) plus release
+  tooling (release-guard preflight, HANDOFF.md removal)
+- First-ever CI runs for api-ci/web-ci/fullstack-ci/e2e-ci/docker.yml
+  and the release + GHCR pipelines; goreleaser snapshot verified via
+  `mise run release:check`
+
 ## Remaining Work
 
 - Phase 6: Offline/sync backend — server sync context (push/pull/status),

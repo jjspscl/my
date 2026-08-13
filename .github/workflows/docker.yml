@@ -58,7 +58,9 @@ jobs:
             COMMIT=${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
-          provenance: true
+          # Provenance attestations produce manifest lists that the docker
+          # exporter cannot load — keep them for pushed images only.
+          provenance: ${{ github.event_name != 'pull_request' }}
 
       # Proves the packaged runtime works: embedded migrations apply, tzdata
       # resolves, health responds. Without this, a broken image still

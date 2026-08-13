@@ -97,7 +97,7 @@ MY_USER_EMAIL=you@example.com MY_WEB_URL=http://localhost:8080 \
 
 Environment variables (defaults in parentheses):
 
-- `E2E_EMAIL` (`jjspscl@gmail.com`) — login email; **must equal
+- `E2E_EMAIL` (`you@example.com`) — login email; **must equal
   `MY_USER_EMAIL`** or the backend silently no-ops and the suite times out
 - `E2E_BASE_URL` (`http://localhost:5173`) — origin the suite targets;
   CI uses `http://localhost:8080`

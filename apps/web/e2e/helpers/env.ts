@@ -5,7 +5,7 @@
  * no-ops when the submitted email differs (no token, no email, non-
  * disclosing 200), which would make the magic-link helpers time out.
  */
-export const TEST_EMAIL = process.env.E2E_EMAIL ?? 'jjspscl@gmail.com'
+export const TEST_EMAIL = process.env.E2E_EMAIL ?? 'you@example.com'
 
 /** Mailpit HTTP API base. */
 export const MAILPIT_API_URL =

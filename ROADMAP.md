@@ -237,6 +237,12 @@
   and the release + GHCR pipelines; goreleaser snapshot verified via
   `mise run release:check`
 
+### Release v1.1.1
+- Fix finance pages crashing on private HTTP origins where
+  `crypto.randomUUID` is unavailable (non-secure context). New shared
+  `randomUUID()` utility falls back to RFC 4122 v4 via
+  `crypto.getRandomValues`; idempotency keys unchanged.
+
 ## Remaining Work
 
 - Phase 6: Offline/sync backend — server sync context (push/pull/status),

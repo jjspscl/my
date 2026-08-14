@@ -1,4 +1,5 @@
 import { apiClient } from '@/shared/api/client'
+import { randomUUID } from '@/shared/lib/uuid'
 import { z } from 'zod'
 import { WalletTransferSchema, CreateTransferSchema, type CreateTransfer } from '../schemas/transfer.schemas'
 import { financeMutate, isQueued, type MutateResult } from './mutate'
@@ -20,7 +21,7 @@ export async function listTransfers(): Promise<import('../schemas/transfer.schem
 export async function createTransfer(data: CreateTransfer): Promise<MutateResult<import('../schemas/transfer.schemas').WalletTransfer>> {
   const parsed = CreateTransferSchema.parse({
     ...data,
-    idempotencyKey: data.idempotencyKey ?? crypto.randomUUID(),
+    idempotencyKey: data.idempotencyKey ?? randomUUID(),
   })
   const res = await financeMutate('/api/v1/finance/transfers', parsed, TransferDataSchema)
   if (isQueued(res)) return res

@@ -1,5 +1,6 @@
 import { get, set, del, keys, createStore } from 'idb-keyval'
 import { z } from 'zod'
+import { randomUUID } from '@/shared/lib/uuid'
 
 const mutationQueueStore = createStore('my-sync', 'mutations')
 // Raw entries that no longer parse (corruption, foreign writes). Kept instead
@@ -44,7 +45,7 @@ type EnqueueInput = Omit<
 > & { maxRetries?: number }
 
 export async function enqueue(mutation: EnqueueInput): Promise<string> {
-  const id = crypto.randomUUID()
+  const id = randomUUID()
   const entry: QueuedMutation = {
     ...mutation,
     id,

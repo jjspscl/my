@@ -9,6 +9,7 @@ import { useWallets } from '../hooks/use-wallets'
 import type { GoalSummary } from '../schemas/goal.schemas'
 import type { Wallet } from '../schemas/wallet.schemas'
 import { todayLocalStr } from '@/shared/lib/utils'
+import { randomUUID } from '@/shared/lib/uuid'
 
 interface GoalContributionDialogProps {
   goal: GoalSummary
@@ -23,7 +24,7 @@ export function GoalContributionDialog({ goal, open, onOpenChange }: GoalContrib
   const [sourceWalletId, setSourceWalletId] = useState('')
   // One key per form session: a double-submit or a queued replay reuses it, so
   // the server dedupes instead of crediting the goal twice.
-  const [idempotencyKey, setIdempotencyKey] = useState(() => crypto.randomUUID())
+  const [idempotencyKey, setIdempotencyKey] = useState(() => randomUUID())
 
   const { data: wallets } = useWallets()
   const addContribution = useAddContribution()
@@ -39,7 +40,7 @@ export function GoalContributionDialog({ goal, open, onOpenChange }: GoalContrib
       { goalId: goal.id, amountCents: cents, contributedAt, note, sourceWalletId: swId, idempotencyKey },
       {
         onSuccess: () => {
-          setIdempotencyKey(crypto.randomUUID())
+          setIdempotencyKey(randomUUID())
           onOpenChange(false)
           setAmount('')
           setNote('')

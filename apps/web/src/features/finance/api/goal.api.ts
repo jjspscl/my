@@ -1,4 +1,5 @@
 import { apiClient } from '@/shared/api/client'
+import { randomUUID } from '@/shared/lib/uuid'
 import { z } from 'zod'
 import { GoalSummarySchema, CreateGoalSchema, type CreateGoal } from '../schemas/goal.schemas'
 import { financeMutate, type MutateResult } from './mutate'
@@ -69,6 +70,6 @@ export async function addContribution(goalId: string, amountCents: number, contr
     contributedAt,
     note,
     sourceWalletId,
-    idempotencyKey: idempotencyKey ?? crypto.randomUUID(),
+    idempotencyKey: idempotencyKey ?? randomUUID(),
   }, ContributionResponseSchema)
 }

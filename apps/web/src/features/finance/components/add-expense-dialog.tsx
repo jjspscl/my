@@ -28,6 +28,7 @@ import {
   FormMessage,
 } from '@/components/ui/form'
 import { CategoryCombobox } from './category-combobox'
+import { randomUUID } from '@/shared/lib/uuid'
 import { useCreateTransaction } from '../hooks/use-transactions'
 import { useWallets } from '../hooks/use-wallets'
 import { type CreateTransaction } from '../schemas/transaction.schemas'
@@ -60,7 +61,7 @@ export function AddExpenseDialog({ trigger, defaultType = 'expense' }: AddExpens
   const { data: wallets } = useWallets()
   // One key per form session: a double-submit or a queued replay reuses it, so
   // the server dedupes instead of recording the expense twice.
-  const [idempotencyKey, setIdempotencyKey] = useState(() => crypto.randomUUID())
+  const [idempotencyKey, setIdempotencyKey] = useState(() => randomUUID())
 
   const form = useForm<FormValues>({
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -90,7 +91,7 @@ export function AddExpenseDialog({ trigger, defaultType = 'expense' }: AddExpens
 
     createTx.mutate(data, {
       onSuccess: () => {
-        setIdempotencyKey(crypto.randomUUID())
+        setIdempotencyKey(randomUUID())
         setOpen(false)
         form.reset()
       },

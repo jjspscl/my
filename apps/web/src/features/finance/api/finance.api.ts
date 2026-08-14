@@ -1,4 +1,5 @@
 import { apiClient } from '@/shared/api/client'
+import { randomUUID } from '@/shared/lib/uuid'
 import {
   ApiOKResponseSchema,
   type CreateTransaction,
@@ -15,7 +16,7 @@ const DailyTotalDataSchema = z.object({ data: DailyTotalSchema })
 export function createTransaction(data: CreateTransaction): Promise<MutateResult<unknown>> {
   const parsed = CreateTransactionSchema.parse({
     ...data,
-    idempotencyKey: data.idempotencyKey ?? crypto.randomUUID(),
+    idempotencyKey: data.idempotencyKey ?? randomUUID(),
   })
   return financeMutate('/api/v1/finance/transactions', parsed, z.any())
 }

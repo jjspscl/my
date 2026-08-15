@@ -37,6 +37,7 @@ type App struct {
 	Wallet           *financeapp.WalletService
 	Transfer         *financeapp.TransferService
 	Category         *financeapp.CategoryService
+	Import           *financeapp.ImportService
 	Analytics        *financeapp.AnalyticsService
 	DerivedAnalytics *financeapp.DerivedAnalyticsService
 	Habit            *habitapp.HabitService
@@ -101,6 +102,9 @@ func NewWithOptions(cfg *config.Config, log *slog.Logger, opts Options) (*App, e
 	walletSvc := financeapp.NewWalletService(walletRepo)
 	transferSvc := financeapp.NewTransferService(transferRepo, walletRepo)
 
+	importRepo := financeinfra.NewImportRepoLibSQL(db)
+	importSvc := financeapp.NewImportService(importRepo, txRepo, transferRepo, walletRepo, coordinator)
+
 	categoryRepo := financeinfra.NewCategoryRepoLibSQL(db)
 	categorySvc := financeapp.NewCategoryService(categoryRepo)
 
@@ -125,6 +129,7 @@ func NewWithOptions(cfg *config.Config, log *slog.Logger, opts Options) (*App, e
 		Wallet:           walletSvc,
 		Transfer:         transferSvc,
 		Category:         categorySvc,
+		Import:           importSvc,
 		Analytics:        analyticsSvc,
 		DerivedAnalytics: derivedAnalyticsSvc,
 		Habit:            habitSvc,

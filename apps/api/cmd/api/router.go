@@ -35,6 +35,7 @@ type routerDeps struct {
 	walletHandler           *financehttp.WalletHandler
 	transferHandler         *financehttp.TransferHandler
 	categoryHandler         *financehttp.CategoryHandler
+	importHandler           *financehttp.ImportHandler
 	analyticsHandler        *financehttp.AnalyticsHandler
 	derivedAnalyticsHandler *financehttp.DerivedAnalyticsHandler
 	habitHandler            *habithttp.HabitHandler
@@ -101,6 +102,7 @@ func newRouter(deps routerDeps) chi.Router {
 				r.Route("/goals", deps.goalHandler.Routes)
 				r.Route("/wallets", deps.walletHandler.Routes)
 				r.Route("/transfers", deps.transferHandler.Routes)
+				r.Route("/imports", deps.importHandler.Routes)
 				r.Route("/categories", deps.categoryHandler.Routes)
 				r.Route("/analytics", func(r chi.Router) {
 					deps.analyticsHandler.Routes(r)

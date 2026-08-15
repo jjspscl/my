@@ -78,7 +78,7 @@ func TestMigrate_EmbeddedSet_AppliesFully(t *testing.T) {
 
 	var applied int
 	require.NoError(t, db.QueryRow("SELECT COUNT(*) FROM _migrations").Scan(&applied))
-	assert.Equal(t, 10, applied, "all ten migration files applied")
+	assert.Equal(t, 11, applied, "all eleven migration files applied")
 
 	// Spot-check a real table and the finance categories seed.
 	var tables int

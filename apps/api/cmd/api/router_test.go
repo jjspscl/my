@@ -45,6 +45,7 @@ func testRouter(t *testing.T) http.Handler {
 		goalHandler:     financehttp.NewGoalHandler(nil),
 		walletHandler:   financehttp.NewWalletHandler(nil),
 		transferHandler: financehttp.NewTransferHandler(nil),
+		importHandler:   financehttp.NewImportHandler(nil),
 		habitHandler:    habithttp.NewHabitHandler(nil),
 	})
 }

@@ -243,6 +243,23 @@
   `randomUUID()` utility falls back to RFC 4122 v4 via
   `crypto.getRandomValues`; idempotency keys unchanged.
 
+### Release v1.2.0
+- GCash PDF statement import: privacy-first client-side parsing (pdf.js),
+  atomic backend batch commit, fingerprint replay protection, dependency-safe
+  rollback, import history/undo, wizard with wallet selection or creation and
+  reviewed transfer mapping (migration 011)
+- Confidence-gated LLM analysis (`intelligence` context): OpenAI
+  Responses/Codex, OpenAI-compatible (Yunwu) and Ollama providers, optional
+  sandboxed Codex CLI adapter, Brave/Exa MCP web-search connectors,
+  encrypted credentials (AES-256-GCM, env master key), per-field calibrated
+  confidence with preselect/review/unresolved buckets; suggestions never
+  commit finance data (migration 012)
+- Settings page: provider + web-search configuration with credential
+  replacement and connection tests; status endpoint; import page shows
+  availability card
+- Security hardening: SSRF DNS + redirect defense, feature-flag enforcement,
+  privacy-safe agent-run summaries (counts only), calibrated search gating
+
 ## Remaining Work
 
 - Phase 6: Offline/sync backend — server sync context (push/pull/status),

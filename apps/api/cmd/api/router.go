@@ -13,6 +13,7 @@ import (
 	accesshttp "github.com/jjspscl/my/internal/contexts/access/interfaces/http"
 	financehttp "github.com/jjspscl/my/internal/contexts/finance/interfaces/http"
 	habithttp "github.com/jjspscl/my/internal/contexts/habits/interfaces/http"
+	intelhttp "github.com/jjspscl/my/internal/contexts/intelligence/interfaces/http"
 	"github.com/jjspscl/my/internal/platform/backup"
 	"github.com/jjspscl/my/internal/platform/session"
 	platformversion "github.com/jjspscl/my/internal/platform/version"
@@ -35,6 +36,8 @@ type routerDeps struct {
 	walletHandler           *financehttp.WalletHandler
 	transferHandler         *financehttp.TransferHandler
 	categoryHandler         *financehttp.CategoryHandler
+	importHandler           *financehttp.ImportHandler
+	intelligenceHandler     *intelhttp.IntelligenceHandler
 	analyticsHandler        *financehttp.AnalyticsHandler
 	derivedAnalyticsHandler *financehttp.DerivedAnalyticsHandler
 	habitHandler            *habithttp.HabitHandler
@@ -101,11 +104,23 @@ func newRouter(deps routerDeps) chi.Router {
 				r.Route("/goals", deps.goalHandler.Routes)
 				r.Route("/wallets", deps.walletHandler.Routes)
 				r.Route("/transfers", deps.transferHandler.Routes)
+				r.Route("/imports", func(r chi.Router) {
+					deps.importHandler.Routes(r)
+					if deps.intelligenceHandler != nil {
+						r.Route("/analyses", deps.intelligenceHandler.AnalysisRoutes)
+					}
+				})
 				r.Route("/categories", deps.categoryHandler.Routes)
 				r.Route("/analytics", func(r chi.Router) {
 					deps.analyticsHandler.Routes(r)
 					deps.derivedAnalyticsHandler.Routes(r)
 				})
+			})
+
+			// Intelligence settings are always mounted: status and provider
+			// management remain usable even when analysis is disabled.
+			r.Route("/intelligence", func(r chi.Router) {
+				deps.intelligenceHandler.Routes(r)
 			})
 
 			r.Route("/habits", deps.habitHandler.Routes)

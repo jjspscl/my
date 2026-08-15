@@ -13,10 +13,12 @@ import { Route as LoginRouteImport } from './routes/login'
 import { Route as AuthenticatedRouteImport } from './routes/_authenticated'
 import { Route as AuthenticatedIndexRouteImport } from './routes/_authenticated/index'
 import { Route as AuthVerifyRouteImport } from './routes/auth.verify'
+import { Route as AuthenticatedSettingsRouteImport } from './routes/_authenticated/settings'
 import { Route as AuthenticatedHabitsRouteImport } from './routes/_authenticated/habits'
 import { Route as AuthenticatedFinanceRouteImport } from './routes/_authenticated/finance'
 import { Route as AuthenticatedFinanceIndexRouteImport } from './routes/_authenticated/finance/index'
 import { Route as AuthenticatedFinanceWalletsRouteImport } from './routes/_authenticated/finance/wallets'
+import { Route as AuthenticatedFinanceImportRouteImport } from './routes/_authenticated/finance/import'
 import { Route as AuthenticatedFinanceGoalsRouteImport } from './routes/_authenticated/finance/goals'
 import { Route as AuthenticatedFinanceCategoriesRouteImport } from './routes/_authenticated/finance/categories'
 import { Route as AuthenticatedFinanceBudgetRouteImport } from './routes/_authenticated/finance/budget'
@@ -42,6 +44,11 @@ const AuthVerifyRoute = AuthVerifyRouteImport.update({
   path: '/auth/verify',
   getParentRoute: () => rootRouteImport,
 } as any)
+const AuthenticatedSettingsRoute = AuthenticatedSettingsRouteImport.update({
+  id: '/settings',
+  path: '/settings',
+  getParentRoute: () => AuthenticatedRoute,
+} as any)
 const AuthenticatedHabitsRoute = AuthenticatedHabitsRouteImport.update({
   id: '/habits',
   path: '/habits',
@@ -62,6 +69,12 @@ const AuthenticatedFinanceWalletsRoute =
   AuthenticatedFinanceWalletsRouteImport.update({
     id: '/wallets',
     path: '/wallets',
+    getParentRoute: () => AuthenticatedFinanceRoute,
+  } as any)
+const AuthenticatedFinanceImportRoute =
+  AuthenticatedFinanceImportRouteImport.update({
+    id: '/import',
+    path: '/import',
     getParentRoute: () => AuthenticatedFinanceRoute,
   } as any)
 const AuthenticatedFinanceGoalsRoute =
@@ -100,18 +113,21 @@ export interface FileRoutesByFullPath {
   '/login': typeof LoginRoute
   '/finance': typeof AuthenticatedFinanceRouteWithChildren
   '/habits': typeof AuthenticatedHabitsRoute
+  '/settings': typeof AuthenticatedSettingsRoute
   '/auth/verify': typeof AuthVerifyRoute
   '/finance/analytics': typeof AuthenticatedFinanceAnalyticsRoute
   '/finance/bills': typeof AuthenticatedFinanceBillsRoute
   '/finance/budget': typeof AuthenticatedFinanceBudgetRoute
   '/finance/categories': typeof AuthenticatedFinanceCategoriesRoute
   '/finance/goals': typeof AuthenticatedFinanceGoalsRoute
+  '/finance/import': typeof AuthenticatedFinanceImportRoute
   '/finance/wallets': typeof AuthenticatedFinanceWalletsRoute
   '/finance/': typeof AuthenticatedFinanceIndexRoute
 }
 export interface FileRoutesByTo {
   '/login': typeof LoginRoute
   '/habits': typeof AuthenticatedHabitsRoute
+  '/settings': typeof AuthenticatedSettingsRoute
   '/auth/verify': typeof AuthVerifyRoute
   '/': typeof AuthenticatedIndexRoute
   '/finance/analytics': typeof AuthenticatedFinanceAnalyticsRoute
@@ -119,6 +135,7 @@ export interface FileRoutesByTo {
   '/finance/budget': typeof AuthenticatedFinanceBudgetRoute
   '/finance/categories': typeof AuthenticatedFinanceCategoriesRoute
   '/finance/goals': typeof AuthenticatedFinanceGoalsRoute
+  '/finance/import': typeof AuthenticatedFinanceImportRoute
   '/finance/wallets': typeof AuthenticatedFinanceWalletsRoute
   '/finance': typeof AuthenticatedFinanceIndexRoute
 }
@@ -128,6 +145,7 @@ export interface FileRoutesById {
   '/login': typeof LoginRoute
   '/_authenticated/finance': typeof AuthenticatedFinanceRouteWithChildren
   '/_authenticated/habits': typeof AuthenticatedHabitsRoute
+  '/_authenticated/settings': typeof AuthenticatedSettingsRoute
   '/auth/verify': typeof AuthVerifyRoute
   '/_authenticated/': typeof AuthenticatedIndexRoute
   '/_authenticated/finance/analytics': typeof AuthenticatedFinanceAnalyticsRoute
@@ -135,6 +153,7 @@ export interface FileRoutesById {
   '/_authenticated/finance/budget': typeof AuthenticatedFinanceBudgetRoute
   '/_authenticated/finance/categories': typeof AuthenticatedFinanceCategoriesRoute
   '/_authenticated/finance/goals': typeof AuthenticatedFinanceGoalsRoute
+  '/_authenticated/finance/import': typeof AuthenticatedFinanceImportRoute
   '/_authenticated/finance/wallets': typeof AuthenticatedFinanceWalletsRoute
   '/_authenticated/finance/': typeof AuthenticatedFinanceIndexRoute
 }
@@ -145,18 +164,21 @@ export interface FileRouteTypes {
     | '/login'
     | '/finance'
     | '/habits'
+    | '/settings'
     | '/auth/verify'
     | '/finance/analytics'
     | '/finance/bills'
     | '/finance/budget'
     | '/finance/categories'
     | '/finance/goals'
+    | '/finance/import'
     | '/finance/wallets'
     | '/finance/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/login'
     | '/habits'
+    | '/settings'
     | '/auth/verify'
     | '/'
     | '/finance/analytics'
@@ -164,6 +186,7 @@ export interface FileRouteTypes {
     | '/finance/budget'
     | '/finance/categories'
     | '/finance/goals'
+    | '/finance/import'
     | '/finance/wallets'
     | '/finance'
   id:
@@ -172,6 +195,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/_authenticated/finance'
     | '/_authenticated/habits'
+    | '/_authenticated/settings'
     | '/auth/verify'
     | '/_authenticated/'
     | '/_authenticated/finance/analytics'
@@ -179,6 +203,7 @@ export interface FileRouteTypes {
     | '/_authenticated/finance/budget'
     | '/_authenticated/finance/categories'
     | '/_authenticated/finance/goals'
+    | '/_authenticated/finance/import'
     | '/_authenticated/finance/wallets'
     | '/_authenticated/finance/'
   fileRoutesById: FileRoutesById
@@ -219,6 +244,13 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof AuthVerifyRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/_authenticated/settings': {
+      id: '/_authenticated/settings'
+      path: '/settings'
+      fullPath: '/settings'
+      preLoaderRoute: typeof AuthenticatedSettingsRouteImport
+      parentRoute: typeof AuthenticatedRoute
+    }
     '/_authenticated/habits': {
       id: '/_authenticated/habits'
       path: '/habits'
@@ -245,6 +277,13 @@ declare module '@tanstack/react-router' {
       path: '/wallets'
       fullPath: '/finance/wallets'
       preLoaderRoute: typeof AuthenticatedFinanceWalletsRouteImport
+      parentRoute: typeof AuthenticatedFinanceRoute
+    }
+    '/_authenticated/finance/import': {
+      id: '/_authenticated/finance/import'
+      path: '/import'
+      fullPath: '/finance/import'
+      preLoaderRoute: typeof AuthenticatedFinanceImportRouteImport
       parentRoute: typeof AuthenticatedFinanceRoute
     }
     '/_authenticated/finance/goals': {
@@ -291,6 +330,7 @@ interface AuthenticatedFinanceRouteChildren {
   AuthenticatedFinanceBudgetRoute: typeof AuthenticatedFinanceBudgetRoute
   AuthenticatedFinanceCategoriesRoute: typeof AuthenticatedFinanceCategoriesRoute
   AuthenticatedFinanceGoalsRoute: typeof AuthenticatedFinanceGoalsRoute
+  AuthenticatedFinanceImportRoute: typeof AuthenticatedFinanceImportRoute
   AuthenticatedFinanceWalletsRoute: typeof AuthenticatedFinanceWalletsRoute
   AuthenticatedFinanceIndexRoute: typeof AuthenticatedFinanceIndexRoute
 }
@@ -301,6 +341,7 @@ const AuthenticatedFinanceRouteChildren: AuthenticatedFinanceRouteChildren = {
   AuthenticatedFinanceBudgetRoute: AuthenticatedFinanceBudgetRoute,
   AuthenticatedFinanceCategoriesRoute: AuthenticatedFinanceCategoriesRoute,
   AuthenticatedFinanceGoalsRoute: AuthenticatedFinanceGoalsRoute,
+  AuthenticatedFinanceImportRoute: AuthenticatedFinanceImportRoute,
   AuthenticatedFinanceWalletsRoute: AuthenticatedFinanceWalletsRoute,
   AuthenticatedFinanceIndexRoute: AuthenticatedFinanceIndexRoute,
 }
@@ -311,12 +352,14 @@ const AuthenticatedFinanceRouteWithChildren =
 interface AuthenticatedRouteChildren {
   AuthenticatedFinanceRoute: typeof AuthenticatedFinanceRouteWithChildren
   AuthenticatedHabitsRoute: typeof AuthenticatedHabitsRoute
+  AuthenticatedSettingsRoute: typeof AuthenticatedSettingsRoute
   AuthenticatedIndexRoute: typeof AuthenticatedIndexRoute
 }
 
 const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
   AuthenticatedFinanceRoute: AuthenticatedFinanceRouteWithChildren,
   AuthenticatedHabitsRoute: AuthenticatedHabitsRoute,
+  AuthenticatedSettingsRoute: AuthenticatedSettingsRoute,
   AuthenticatedIndexRoute: AuthenticatedIndexRoute,
 }
 

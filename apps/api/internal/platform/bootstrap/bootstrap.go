@@ -12,6 +12,8 @@ import (
 	financeinfra "github.com/jjspscl/my/internal/contexts/finance/infrastructure"
 	habitapp "github.com/jjspscl/my/internal/contexts/habits/application"
 	habitinfra "github.com/jjspscl/my/internal/contexts/habits/infrastructure"
+	intelapp "github.com/jjspscl/my/internal/contexts/intelligence/application"
+	intelinfra "github.com/jjspscl/my/internal/contexts/intelligence/infrastructure"
 	"github.com/jjspscl/my/internal/platform/config"
 	"github.com/jjspscl/my/internal/platform/database"
 	"github.com/jjspscl/my/internal/platform/mail"
@@ -37,9 +39,12 @@ type App struct {
 	Wallet           *financeapp.WalletService
 	Transfer         *financeapp.TransferService
 	Category         *financeapp.CategoryService
+	Import           *financeapp.ImportService
 	Analytics        *financeapp.AnalyticsService
 	DerivedAnalytics *financeapp.DerivedAnalyticsService
 	Habit            *habitapp.HabitService
+	Intelligence     *intelapp.SettingsService
+	Analysis         *intelapp.AnalysisService
 
 	closeOnce sync.Once
 	closeErr  error
@@ -101,6 +106,9 @@ func NewWithOptions(cfg *config.Config, log *slog.Logger, opts Options) (*App, e
 	walletSvc := financeapp.NewWalletService(walletRepo)
 	transferSvc := financeapp.NewTransferService(transferRepo, walletRepo)
 
+	importRepo := financeinfra.NewImportRepoLibSQL(db)
+	importSvc := financeapp.NewImportService(importRepo, txRepo, transferRepo, walletRepo, coordinator)
+
 	categoryRepo := financeinfra.NewCategoryRepoLibSQL(db)
 	categorySvc := financeapp.NewCategoryService(categoryRepo)
 
@@ -110,6 +118,18 @@ func NewWithOptions(cfg *config.Config, log *slog.Logger, opts Options) (*App, e
 
 	habitRepo := habitinfra.NewHabitRepoLibSQL(db)
 	habitSvc := habitapp.NewHabitService(habitRepo)
+
+	// Intelligence: confidence-gated LLM analysis. Services are always built
+	// so settings/status stay reachable; the SecretBox may be nil (no master
+	// key), in which case credential writes fail closed and analysis is
+	// unavailable. Analysis additionally requires MY_LLM_ENABLED.
+	intelRepo := intelinfra.NewIntelligenceRepoLibSQL(db)
+	box, _ := intelinfra.NewSecretBox(cfg.LLMMasterKey) // nil when unconfigured
+	runtime := intelapp.RuntimeConfig{LLMEnabled: cfg.LLMEnabled, CodexPath: cfg.LLMCodexPath}
+	intelligenceSvc := intelapp.NewSettingsService(intelRepo, box, runtime)
+	confidenceSvc := intelapp.NewConfidenceService()
+	gateway := intelinfra.NewMCPGateway()
+	analysisSvc := intelapp.NewAnalysisService(intelRepo, intelligenceSvc, confidenceSvc, gateway, box != nil && cfg.LLMEnabled)
 
 	return &App{
 		Cfg:              cfg,
@@ -125,9 +145,12 @@ func NewWithOptions(cfg *config.Config, log *slog.Logger, opts Options) (*App, e
 		Wallet:           walletSvc,
 		Transfer:         transferSvc,
 		Category:         categorySvc,
+		Import:           importSvc,
 		Analytics:        analyticsSvc,
 		DerivedAnalytics: derivedAnalyticsSvc,
 		Habit:            habitSvc,
+		Intelligence:     intelligenceSvc,
+		Analysis:         analysisSvc,
 	}, nil
 }
 

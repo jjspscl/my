@@ -55,6 +55,8 @@ Current implemented slices under `apps/api/internal/contexts/`:
 - `access`
 - `finance`
 - `habits`
+- `intelligence` — confidence-gated LLM analysis (suggestions only; see
+  `docs/intelligence.md`)
 
 ### Scaffold-only contexts
 

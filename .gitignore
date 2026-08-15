@@ -68,3 +68,6 @@ test-results/
 
 # Database snapshots (personal data)
 /backup/
+
+# Personal sample data (bank statements, PDFs, exports)
+/data/

@@ -1,11 +1,12 @@
 import { Link, useLocation } from '@tanstack/react-router'
-import { LayoutDashboard, Wallet, CheckSquare } from 'lucide-react'
+import { LayoutDashboard, Wallet, CheckSquare, Settings } from 'lucide-react'
 import { cn } from '@/shared/lib/utils'
 
 const navItems = [
   { to: '/' as const, label: 'Home', icon: LayoutDashboard },
   { to: '/finance' as const, label: 'Finance', icon: Wallet },
   { to: '/habits' as const, label: 'Habits', icon: CheckSquare },
+  { to: '/settings' as const, label: 'Settings', icon: Settings },
 ]
 
 export function BottomNav() {

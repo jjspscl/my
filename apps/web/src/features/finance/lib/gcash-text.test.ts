@@ -63,7 +63,9 @@ describe('findColumns', () => {
   it('detects numeric columns from the header line', () => {
     const cols = findColumns([HEADER])
     expect(cols).not.toBeNull()
-    expect(cols!.debit.min).toBe(0)
+    // Numeric zone starts between the reference column end and the Debit
+    // label (right-aligned amounts may start left of the label).
+    expect(cols!.debit.min).toBe(480)
     expect(cols!.credit.min).toBeGreaterThan(cols!.debit.min)
     expect(cols!.balance.min).toBeGreaterThan(cols!.credit.min)
   })
@@ -145,5 +147,106 @@ describe('parseCents', () => {
     expect(parseCents('')).toBeNull()
     expect(parseCents(undefined)).toBeNull()
     expect(parseCents('abc')).toBeNull()
+  })
+})
+
+// ---- character-level PDF fixtures (one TextItem per character) ----
+
+const CHAR_W = 4.5 // per-character advance
+
+function charItems(text: string, startX: number, y: number): TextItemLike[] {
+  const items: TextItemLike[] = []
+  let x = startX
+  for (const ch of text) {
+    items.push({ str: ch, x, y, width: ch === ' ' ? CHAR_W : CHAR_W })
+    x += CHAR_W
+  }
+  return items
+}
+
+// Header rendered one character at a time, 30 units between words.
+function charLine(y: number, words: Array<[string, number]>): GcashLine {
+  const items: TextItemLike[] = []
+  for (const [word, x] of words) {
+    items.push(...charItems(word, x, y))
+  }
+  return { y, items }
+}
+
+const CHAR_HEADER = charLine(800, [
+  ['Date and Time', 50],
+  ['Description', 211],
+  ['Reference No.', 341],
+  ['Debit', 427],
+  ['Credit', 476],
+  ['Balance', 524],
+])
+
+function charRow(
+  y: number,
+  date: string,
+  desc: string,
+  ref: string,
+  debit: string,
+  credit: string,
+  balance: string,
+): GcashLine {
+  const items: TextItemLike[] = []
+  items.push(...charItems(date + ' ', 50, y))
+  items.push(...charItems(desc + ' ', 126, y))
+  items.push(...charItems(ref + ' ', 329, y))
+  // Right-aligned amounts: digits may start left of the column label.
+  if (debit) items.push(...charItems(debit, 421 - (debit.length - 6) * CHAR_W, y))
+  if (credit) items.push(...charItems(credit, 468 - (credit.length - 6) * CHAR_W, y))
+  items.push(...charItems(balance, 521 - (balance.length - 6) * CHAR_W, y))
+  return { y, items }
+}
+
+describe('character-level PDFs (one item per char)', () => {
+  it('reconstructs the header and detects columns', () => {
+    const cols = findColumns([CHAR_HEADER])
+    expect(cols).not.toBeNull()
+    expect(cols!.numericStart).toBeGreaterThan(380) // between Reference end and Debit
+    expect(cols!.numericStart).toBeLessThan(427)
+  })
+
+  it('assembles rows with right-aligned debits starting left of the label', () => {
+    const cols = findColumns([CHAR_HEADER])!
+    const row = charRow(770, '2026-07-01 09:30 AM', 'Jollibee', '1234567890123', '1510.11', '', '38808.39')
+
+    const { rows, warnings } = assembleRows([CHAR_HEADER, row], cols)
+    expect(rows).toHaveLength(1)
+    expect(rows[0]).toEqual({
+      dateTime: '2026-07-01 09:30 AM',
+      description: 'Jollibee',
+      referenceNo: '1234567890123',
+      debit: '1510.11',
+      credit: '',
+      balance: '38808.39',
+    })
+    expect(warnings).toEqual([])
+  })
+
+  it('parses credit rows too', () => {
+    const cols = findColumns([CHAR_HEADER])!
+    const row = charRow(770, '2026-07-02 06:00 PM', 'Received from Juan', '9876543210987', '', '2500.00', '7500.00')
+
+    const { rows } = assembleRows([CHAR_HEADER, row], cols)
+    expect(rows).toHaveLength(1)
+    expect(rows[0]!.credit).toBe('2500.00')
+    expect(rows[0]!.debit).toBe('')
+  })
+
+  it('picks the standalone 13-digit reference, not a suffix of a longer number', () => {
+    const cols = findColumns([CHAR_HEADER])!
+    // GL1782529307961784 contains a 13-digit run with a digit after it — must
+    // be rejected. The real reference follows.
+    const row = charRow(770, '2026-06-27 11:01 AM', 'GLoan Repayment GL1782529307961784', '5042278509918', '1510.11', '', '38808.39')
+
+    const { rows, warnings } = assembleRows([CHAR_HEADER, row], cols)
+    expect(rows).toHaveLength(1)
+    expect(rows[0]!.referenceNo).toBe('5042278509918')
+    expect(rows[0]!.description).toContain('GL1782529307961784')
+    expect(warnings).toEqual([])
   })
 })

@@ -31,6 +31,7 @@ type apiResp struct {
 }
 
 func (h *IntelligenceHandler) Routes(r chi.Router) {
+	r.Get("/status", h.Status)
 	r.Route("/providers", func(r chi.Router) {
 		r.Get("/", h.ListProviders)
 		r.Post("/", h.CreateProvider)
@@ -49,6 +50,42 @@ func (h *IntelligenceHandler) Routes(r chi.Router) {
 	})
 }
 
+// Status reports runtime availability without revealing secrets: whether
+// analysis is enabled, whether the master key is configured, and how many
+// providers exist.
+func (h *IntelligenceHandler) Status(w http.ResponseWriter, r *http.Request) {
+	email := middleware.GetEmailFromContext(r.Context())
+
+	enabled := false
+	masterKeyConfigured := false
+	providerCount := 0
+	activeProvider := ""
+
+	if h.settings != nil {
+		masterKeyConfigured = h.settings.MasterKeyConfigured()
+		profiles, err := h.settings.ListProviders(r.Context(), email)
+		if err == nil {
+			providerCount = len(profiles)
+			for _, p := range profiles {
+				if p.Enabled && h.settings.HasCredential(r.Context(), "provider", p.ID) {
+					activeProvider = p.Name
+					break
+				}
+			}
+		}
+	}
+	if h.analysis != nil {
+		enabled = h.analysis.Enabled()
+	}
+
+	response.WriteJSON(w, http.StatusOK, apiResp{Data: map[string]any{
+		"enabled":             enabled,
+		"masterKeyConfigured": masterKeyConfigured,
+		"providerCount":       providerCount,
+		"activeProvider":      activeProvider,
+	}})
+}
+
 // AnalysisRoutes mount under /finance/imports/analyses (inside the
 // authenticated + CSRF group).
 func (h *IntelligenceHandler) AnalysisRoutes(r chi.Router) {
@@ -60,19 +97,19 @@ func (h *IntelligenceHandler) AnalysisRoutes(r chi.Router) {
 // ---- providers ----
 
 type providerResponse struct {
-	ID           string `json:"id"`
-	Name         string `json:"name"`
-	ProviderType string `json:"providerType"`
-	BaseURL      string `json:"baseUrl,omitempty"`
-	Model        string `json:"model"`
-	Enabled      bool   `json:"enabled"`
-	Priority     int    `json:"priority"`
-	MaxTokens    int    `json:"maxTokens,omitempty"`
-	TimeoutMS    int    `json:"timeoutMs"`
-	AllowLocal   bool   `json:"allowLocal"`
-	HasCredential bool  `json:"hasCredential"`
-	CreatedAt    string `json:"createdAt"`
-	UpdatedAt    string `json:"updatedAt"`
+	ID            string `json:"id"`
+	Name          string `json:"name"`
+	ProviderType  string `json:"providerType"`
+	BaseURL       string `json:"baseUrl,omitempty"`
+	Model         string `json:"model"`
+	Enabled       bool   `json:"enabled"`
+	Priority      int    `json:"priority"`
+	MaxTokens     int    `json:"maxTokens,omitempty"`
+	TimeoutMS     int    `json:"timeoutMs"`
+	AllowLocal    bool   `json:"allowLocal"`
+	HasCredential bool   `json:"hasCredential"`
+	CreatedAt     string `json:"createdAt"`
+	UpdatedAt     string `json:"updatedAt"`
 }
 
 type createProviderRequest struct {
@@ -348,13 +385,13 @@ type suggestionResponse struct {
 }
 
 type runResponse struct {
-	ID        string `json:"id"`
-	Scope     string `json:"scope"`
-	ScopeID   string `json:"scopeId"`
-	Status    string `json:"status"`
-	Model     string `json:"model,omitempty"`
-	Error     string `json:"error,omitempty"`
-	CreatedAt string `json:"createdAt"`
+	ID          string `json:"id"`
+	Scope       string `json:"scope"`
+	ScopeID     string `json:"scopeId"`
+	Status      string `json:"status"`
+	Model       string `json:"model,omitempty"`
+	Error       string `json:"error,omitempty"`
+	CreatedAt   string `json:"createdAt"`
 	CompletedAt string `json:"completedAt,omitempty"`
 }
 
@@ -368,6 +405,11 @@ func toRunResponse(r *domain.AgentRun) runResponse {
 
 func (h *IntelligenceHandler) CreateAnalysis(w http.ResponseWriter, r *http.Request) {
 	email := middleware.GetEmailFromContext(r.Context())
+	if h.analysis == nil || !h.analysis.Enabled() {
+		response.WriteError(w, r, http.StatusServiceUnavailable,
+			"LLM analysis is not enabled (set MY_LLM_ENABLED=true and MY_LLM_MASTER_KEY)", nil)
+		return
+	}
 	var req createAnalysisRequest
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<20)).Decode(&req); err != nil {
 		response.WriteError(w, r, http.StatusBadRequest, "invalid request body", err)

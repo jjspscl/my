@@ -25,13 +25,24 @@ type AnalysisService struct {
 	settings   *SettingsService
 	confidence *ConfidenceService
 	gateway    *infrastructure.MCPGateway
+	enabled    bool // MY_LLM_ENABLED && master key configured
 }
 
-func NewAnalysisService(repo domain.IntelligenceRepository, settings *SettingsService, confidence *ConfidenceService, gateway *infrastructure.MCPGateway) *AnalysisService {
-	return &AnalysisService{repo: repo, settings: settings, confidence: confidence, gateway: gateway}
+func NewAnalysisService(repo domain.IntelligenceRepository, settings *SettingsService, confidence *ConfidenceService, gateway *infrastructure.MCPGateway, enabled bool) *AnalysisService {
+	return &AnalysisService{repo: repo, settings: settings, confidence: confidence, gateway: gateway, enabled: enabled}
 }
+
+// Enabled reports whether analysis is available at runtime.
+func (s *AnalysisService) Enabled() bool { return s.enabled }
 
 const promptVersion = "finance-import-v1"
+
+// MaxAnalysisRows caps one analysis request; the client chunks larger
+// statements.
+const MaxAnalysisRows = 50
+
+// MaxSearchesPerRun bounds web corroboration cost per analysis run.
+const MaxSearchesPerRun = 10
 
 // AnalysisRow is one statement row the agent may analyze.
 type AnalysisRow struct {
@@ -47,13 +58,12 @@ type AnalysisResult struct {
 	Suggestions []*domain.Suggestion
 }
 
-// MaxAnalysisRows caps one analysis request; the client chunks larger
-// statements.
-const MaxAnalysisRows = 50
-
 // AnalyzeImport runs the full pipeline synchronously (provider calls are fast
 // and bounded) and persists run + suggestions.
 func (s *AnalysisService) AnalyzeImport(ctx context.Context, userEmail, scopeID string, rows []AnalysisRow) (*AnalysisResult, error) {
+	if !s.enabled {
+		return nil, fmt.Errorf("LLM analysis is not enabled (set MY_LLM_ENABLED=true and MY_LLM_MASTER_KEY)")
+	}
 	if len(rows) == 0 {
 		return nil, fmt.Errorf("no rows to analyze")
 	}
@@ -86,8 +96,8 @@ func (s *AnalysisService) AnalyzeImport(ctx context.Context, userEmail, scopeID 
 	var activeConnector *domain.MCPConnector
 	var connectorCred string
 	for i := range connectors {
-		if !connectors[i].Enabled {
-			continue
+		if !connectors[i].Enabled || len(connectors[i].Allowlist) == 0 {
+			continue // an allowlist-less connector can never be used safely
 		}
 		cred, err := s.settings.decryptCredential(ctx, "connector", connectors[i].ID)
 		if err != nil {
@@ -98,14 +108,13 @@ func (s *AnalysisService) AnalyzeImport(ctx context.Context, userEmail, scopeID 
 		break
 	}
 
-	inputJSON, _ := json.Marshal(map[string]any{
-		"rows": rows,
-		"hints": map[string]any{
-			"wallets": walletHints(rows),
-		},
+	// Persist as running so interrupted runs are visible as such. The input
+	// summary holds ONLY counts and hints — never the raw descriptions or
+	// amounts, which stay in the provider request and are not persisted.
+	inputSummary, _ := json.Marshal(map[string]any{
+		"rows":        len(rows),
+		"walletHints": len(walletHints(rows)),
 	})
-
-	// Persist as running so interrupted runs are visible as such.
 	if err := s.repo.SaveRun(ctx, run); err != nil {
 		return nil, err
 	}
@@ -118,7 +127,7 @@ func (s *AnalysisService) AnalyzeImport(ctx context.Context, userEmail, scopeID 
 		run.Status = status
 		run.Model = provider.Model
 		run.PromptVersion = promptVersion
-		run.InputSummary = string(inputJSON)
+		run.InputSummary = string(inputSummary)
 		run.DurationMS = time.Since(started).Milliseconds()
 		run.Error = truncateS(errMsg, domain.MaxRunErrorLen)
 		usageJSON, _ := json.Marshal(usage)
@@ -152,9 +161,18 @@ func (s *AnalysisService) AnalyzeImport(ctx context.Context, userEmail, scopeID 
 	}
 
 	// Web corroboration for weak merchant claims (redacted queries only).
+	// The decision is based on the CALIBRATED score (model evidence only at
+	// this point), never the model's self-rated confidence.
 	if activeConnector != nil {
+		searches := 0
 		for i := range parsed {
-			if parsed[i].merchant == "" || parsed[i].merchantConfidence >= 0.90 {
+			if parsed[i].merchant == "" || searches >= MaxSearchesPerRun {
+				continue
+			}
+			modelOnly := s.confidence.Calibrate(domain.FieldMerchant, []domain.Evidence{
+				{Source: domain.EvidenceModel},
+			})
+			if modelOnly >= PreselectThreshold {
 				continue
 			}
 			query := redactQuery(parsed[i].merchant)
@@ -168,6 +186,7 @@ func (s *AnalysisService) AnalyzeImport(ctx context.Context, userEmail, scopeID 
 			}); err == nil {
 				parsed[i].evidence = append(parsed[i].evidence, domain.Evidence{Source: domain.EvidenceWeb, Detail: "search result for " + query})
 				searchedKeys = append(searchedKeys, query)
+				searches++
 			}
 		}
 	}

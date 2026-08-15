@@ -117,9 +117,11 @@ func newRouter(deps routerDeps) chi.Router {
 				})
 			})
 
-			if deps.intelligenceHandler != nil {
-				r.Route("/intelligence", deps.intelligenceHandler.Routes)
-			}
+			// Intelligence settings are always mounted: status and provider
+			// management remain usable even when analysis is disabled.
+			r.Route("/intelligence", func(r chi.Router) {
+				deps.intelligenceHandler.Routes(r)
+			})
 
 			r.Route("/habits", deps.habitHandler.Routes)
 		})

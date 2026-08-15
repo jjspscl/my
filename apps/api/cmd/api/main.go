@@ -108,10 +108,7 @@ func main() {
 	transferHandler := financehttp.NewTransferHandler(app.Transfer)
 	categoryHandler := financehttp.NewCategoryHandler(app.Category)
 	importHandler := financehttp.NewImportHandler(app.Import)
-	var intelligenceHandler *intelhttp.IntelligenceHandler
-	if app.Intelligence != nil {
-		intelligenceHandler = intelhttp.NewIntelligenceHandler(app.Intelligence, app.Analysis)
-	}
+	intelligenceHandler := intelhttp.NewIntelligenceHandler(app.Intelligence, app.Analysis)
 	analyticsHandler := financehttp.NewAnalyticsHandler(app.Analytics, timeutil.New(app.Cfg.Location))
 	derivedAnalyticsHandler := financehttp.NewDerivedAnalyticsHandler(app.DerivedAnalytics, timeutil.New(app.Cfg.Location))
 

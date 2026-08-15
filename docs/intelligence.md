@@ -27,8 +27,14 @@ export MY_LLM_CODEX_PATH="$(command -v codex)"
 ```
 
 Without a master key the encrypted credential store is unavailable and
-analysis fails closed. `MY_LLM_ENABLED=true` without a master key refuses to
-boot.
+credential writes fail closed; provider profiles and status stay usable.
+Analysis additionally requires `MY_LLM_ENABLED=true` — the analysis endpoints
+answer 503 with a clear message when either condition is missing.
+
+Settings live in the UI under **Settings → AI analysis** (`/settings`); the
+import page shows an availability card linking there. `GET
+/api/v1/intelligence/status` reports `enabled`, `masterKeyConfigured`,
+`providerCount`, and the active provider without revealing secrets.
 
 ## Providers
 
@@ -101,7 +107,11 @@ only), `intelligence_mcp_connectors`, `intelligence_agent_runs`,
 ## Safety checklist
 
 - Secrets: env-held master key only; ciphertext in DB; write-only API.
-- No PDFs, passwords, raw prompts, or chain-of-thought persisted.
-- SSRF guard on every endpoint; https required off-loopback.
+- No PDFs, passwords, raw prompts, or chain-of-thought persisted; agent-run
+  input summaries hold counts only — never raw descriptions or amounts.
+- SSRF guard on every endpoint (URL + DNS resolution + redirect policy);
+  https required off-loopback; private/link-local/metadata targets always
+  rejected.
 - Suggestions never commit finance data; final import confirmation mandatory.
-- Model output treated as untrusted; confidence ceilings enforced server-side.
+- Model output treated as untrusted; confidence ceilings enforced server-side;
+  search decisions use calibrated scores, bounded to 10 redacted queries/run.

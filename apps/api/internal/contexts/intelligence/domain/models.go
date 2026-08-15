@@ -8,10 +8,10 @@ import (
 
 // Provider types.
 const (
-	ProviderOpenAI          = "openai"
+	ProviderOpenAI           = "openai"
 	ProviderOpenAICompatible = "openai_compatible"
-	ProviderOllama          = "ollama"
-	ProviderCodexCLI        = "codex_cli"
+	ProviderOllama           = "ollama"
+	ProviderCodexCLI         = "codex_cli"
 )
 
 // Run scopes.
@@ -120,14 +120,14 @@ func NewProviderProfile(id, userEmail, name, providerType, baseURL, model string
 // Credential is a write-only encrypted secret. The plaintext exists only in
 // memory during use.
 type Credential struct {
-	ID         string
-	UserEmail  string
+	ID          string
+	UserEmail   string
 	SubjectType string // provider | connector
-	SubjectID  string
-	KeyVersion int
-	Ciphertext string
-	CreatedAt  time.Time
-	UpdatedAt  time.Time
+	SubjectID   string
+	KeyVersion  int
+	Ciphertext  string
+	CreatedAt   time.Time
+	UpdatedAt   time.Time
 }
 
 // MCPConnector is an outbound search connector (Brave, Exa, …). Only the
@@ -182,10 +182,10 @@ func NewMCPConnector(id, userEmail, name, endpoint string, allowlist []string, t
 type EvidenceSource string
 
 const (
-	EvidenceRule     EvidenceSource = "rule"     // exact prior/user-approved mapping
-	EvidenceHistory  EvidenceSource = "history"  // agreement with known transactions
-	EvidenceModel    EvidenceSource = "model"    // LLM alone
-	EvidenceWeb      EvidenceSource = "web"      // search result corroboration
+	EvidenceRule     EvidenceSource = "rule"    // exact prior/user-approved mapping
+	EvidenceHistory  EvidenceSource = "history" // agreement with known transactions
+	EvidenceModel    EvidenceSource = "model"   // LLM alone
+	EvidenceWeb      EvidenceSource = "web"     // search result corroboration
 	EvidenceUserRule EvidenceSource = "user_rule"
 )
 

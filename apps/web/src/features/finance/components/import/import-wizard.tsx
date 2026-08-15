@@ -29,16 +29,16 @@ import { classifyRow, type DraftKind } from '../../lib/gcash-classifier'
 import { parseCents } from '../../lib/gcash-text'
 import { useCreateImport, useImports, useRollbackImport } from '../../hooks/use-imports'
 import { useWallets } from '../../hooks/use-wallets'
-import { useRunAnalysis } from '../../hooks/use-intelligence'
+import { useRunAnalysis } from '@/features/intelligence/hooks/use-intelligence'
 import type { CreateImport, ImportBatch, ImportRowDraft } from '../../schemas/import.schemas'
 import {
   confidenceBucket,
   type AnalysisResult,
   type Suggestion,
-} from '../../schemas/intelligence.schemas'
+} from '@/features/intelligence/schemas/intelligence.schemas'
 import type { Wallet } from '../../schemas/wallet.schemas'
 import { formatCents } from '../../lib/format'
-import { AiSettings } from './ai-settings'
+import { AiAnalysisCard } from '@/features/intelligence/components/ai-analysis-card'
 
 const MAX_FILE_BYTES = 20 * 1024 * 1024
 
@@ -350,7 +350,7 @@ export function ImportWizard() {
 
       <ImportsHistory imports={imports ?? []} onRollback={(id) => rollback.mutate(id)} />
 
-      <AiSettings />
+      <AiAnalysisCard />
     </div>
   )
 }

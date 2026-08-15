@@ -60,10 +60,10 @@ func TestValidateEndpoint(t *testing.T) {
 		wantErr    bool
 	}{
 		{"https://api.openai.com/v1", false, false},
-		{"http://api.openai.com/v1", false, true},       // non-loopback http
-		{"http://localhost:11434/v1", false, true},      // loopback without flag
-		{"http://localhost:11434/v1", true, false},      // loopback with flag
-		{"http://127.0.0.1:8080/v1", true, false},       // loopback IP with flag
+		{"http://api.openai.com/v1", false, true},  // non-loopback http
+		{"http://localhost:11434/v1", false, true}, // loopback without flag
+		{"http://localhost:11434/v1", true, false}, // loopback with flag
+		{"http://127.0.0.1:8080/v1", true, false},  // loopback IP with flag
 		{"http://127.0.0.1:8080/v1", false, true},
 		{"http://169.254.169.254/latest/meta-data", true, true}, // link-local metadata
 		{"file:///etc/passwd", false, true},                     // bad scheme

@@ -119,23 +119,17 @@ func NewWithOptions(cfg *config.Config, log *slog.Logger, opts Options) (*App, e
 	habitRepo := habitinfra.NewHabitRepoLibSQL(db)
 	habitSvc := habitapp.NewHabitService(habitRepo)
 
-	// Intelligence: confidence-gated LLM analysis. Fails closed: without a
-	// master key the encrypted credential store is unusable and analysis is
-	// unavailable.
-	var intelligenceSvc *intelapp.SettingsService
-	var analysisSvc *intelapp.AnalysisService
-	box, boxErr := intelinfra.NewSecretBox(cfg.LLMMasterKey)
-	if boxErr != nil && cfg.LLMEnabled {
-		return nil, boxErr
-	}
-	if box != nil {
-		intelRepo := intelinfra.NewIntelligenceRepoLibSQL(db)
-		runtime := intelapp.RuntimeConfig{LLMEnabled: cfg.LLMEnabled, CodexPath: cfg.LLMCodexPath}
-		intelligenceSvc = intelapp.NewSettingsService(intelRepo, box, runtime)
-		confidenceSvc := intelapp.NewConfidenceService()
-		gateway := intelinfra.NewMCPGateway()
-		analysisSvc = intelapp.NewAnalysisService(intelRepo, intelligenceSvc, confidenceSvc, gateway)
-	}
+	// Intelligence: confidence-gated LLM analysis. Services are always built
+	// so settings/status stay reachable; the SecretBox may be nil (no master
+	// key), in which case credential writes fail closed and analysis is
+	// unavailable. Analysis additionally requires MY_LLM_ENABLED.
+	intelRepo := intelinfra.NewIntelligenceRepoLibSQL(db)
+	box, _ := intelinfra.NewSecretBox(cfg.LLMMasterKey) // nil when unconfigured
+	runtime := intelapp.RuntimeConfig{LLMEnabled: cfg.LLMEnabled, CodexPath: cfg.LLMCodexPath}
+	intelligenceSvc := intelapp.NewSettingsService(intelRepo, box, runtime)
+	confidenceSvc := intelapp.NewConfidenceService()
+	gateway := intelinfra.NewMCPGateway()
+	analysisSvc := intelapp.NewAnalysisService(intelRepo, intelligenceSvc, confidenceSvc, gateway, box != nil && cfg.LLMEnabled)
 
 	return &App{
 		Cfg:              cfg,

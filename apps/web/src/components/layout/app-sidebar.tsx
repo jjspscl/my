@@ -3,6 +3,7 @@ import {
   LayoutDashboard,
   Wallet,
   CheckSquare,
+  Settings,
   LogOut,
 } from 'lucide-react'
 
@@ -15,6 +16,7 @@ const navItems = [
   { to: '/', label: 'Dashboard', icon: LayoutDashboard },
   { to: '/finance', label: 'Finance', icon: Wallet },
   { to: '/habits', label: 'Habits', icon: CheckSquare },
+  { to: '/settings', label: 'Settings', icon: Settings },
 ]
 
 function SidebarContent({ onNavigate }: { onNavigate?: () => void }) {

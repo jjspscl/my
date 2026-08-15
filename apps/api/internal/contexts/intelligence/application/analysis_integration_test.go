@@ -72,7 +72,7 @@ func TestAnalysisEndToEndWithRealProvider(t *testing.T) {
 	box, err := infra.NewSecretBox("test-master-key-32-bytes-minimum!")
 	require.NoError(t, err)
 	settings := NewSettingsService(repo, box, RuntimeConfig{LLMEnabled: true})
-	analysis := NewAnalysisService(repo, settings, NewConfidenceService(), infra.NewMCPGateway())
+	analysis := NewAnalysisService(repo, settings, NewConfidenceService(), infra.NewMCPGateway(), true)
 
 	// Configure a provider + credential (the fake endpoint is loopback, so
 	// AllowLocal must be true).
@@ -116,6 +116,12 @@ func TestAnalysisEndToEndWithRealProvider(t *testing.T) {
 	require.Len(t, runs, 1)
 	assert.Equal(t, "fake-model", runs[0].Model)
 
+	// Privacy contract: the input summary never contains raw descriptions or
+	// amounts — only counts and hints.
+	assert.NotContains(t, runs[0].InputSummary, "Jollibee")
+	assert.NotContains(t, runs[0].InputSummary, "BDO Bank Transfer")
+	assert.Contains(t, runs[0].InputSummary, "\"rows\":2")
+
 	got, err := analysis.Get(ctx, "you@example.com", result.Run.ID)
 	require.NoError(t, err)
 	assert.Len(t, got.Suggestions, 5)
@@ -135,7 +141,7 @@ func TestAnalysisRejectsUnknownReferences(t *testing.T) {
 	repo := newIntelDB(t)
 	box, _ := infra.NewSecretBox("test-master-key-32-bytes-minimum!")
 	settings := NewSettingsService(repo, box, RuntimeConfig{LLMEnabled: true})
-	analysis := NewAnalysisService(repo, settings, NewConfidenceService(), infra.NewMCPGateway())
+	analysis := NewAnalysisService(repo, settings, NewConfidenceService(), infra.NewMCPGateway(), true)
 
 	_, err := settings.CreateProvider(ctx, "you@example.com", CreateProviderInput{
 		Name: "Fake", ProviderType: domain.ProviderOpenAICompatible, BaseURL: srv.URL,
@@ -157,7 +163,7 @@ func TestAnalysisFailsClosedWithoutProvider(t *testing.T) {
 	repo := newIntelDB(t)
 	box, _ := infra.NewSecretBox("test-master-key-32-bytes-minimum!")
 	settings := NewSettingsService(repo, box, RuntimeConfig{LLMEnabled: true})
-	analysis := NewAnalysisService(repo, settings, NewConfidenceService(), infra.NewMCPGateway())
+	analysis := NewAnalysisService(repo, settings, NewConfidenceService(), infra.NewMCPGateway(), true)
 
 	_, err := analysis.AnalyzeImport(ctx, "you@example.com", "fingerprint-3", []AnalysisRow{
 		{SourceReference: "REF1", Description: "x", AmountCents: 1},
@@ -174,4 +180,3 @@ func findSuggestion(list []*domain.Suggestion, target, field string) *domain.Sug
 	}
 	return nil
 }
-

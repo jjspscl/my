@@ -16,10 +16,10 @@ func TestConfidenceCalibrationCaps(t *testing.T) {
 		want     float64
 	}{
 		{
-			name:  "category model only stays below preselect",
-			field: domain.FieldCategory,
+			name:     "category model only stays below preselect",
+			field:    domain.FieldCategory,
 			evidence: []domain.Evidence{{Source: domain.EvidenceModel}},
-			want:  0.70,
+			want:     0.70,
 		},
 		{
 			name:  "category model plus web capped at 0.85",
@@ -64,10 +64,10 @@ func TestConfidenceCalibrationCaps(t *testing.T) {
 			want: 0.98,
 		},
 		{
-			name:  "no evidence scores zero",
-			field: domain.FieldCategory,
+			name:     "no evidence scores zero",
+			field:    domain.FieldCategory,
 			evidence: nil,
-			want:  0,
+			want:     0,
 		},
 		{
 			name:  "duplicate sources count once",

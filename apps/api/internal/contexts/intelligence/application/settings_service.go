@@ -21,7 +21,8 @@ type RuntimeConfig struct {
 
 // SettingsService manages provider profiles, encrypted credentials, and MCP
 // connectors. Secrets are write-only: plaintext never leaves the service and
-// is never returned over HTTP.
+// is never returned over HTTP. A nil box means the master key is not
+// configured: credential writes fail closed, everything else still works.
 type SettingsService struct {
 	repo    domain.IntelligenceRepository
 	box     *infrastructure.SecretBox
@@ -30,6 +31,11 @@ type SettingsService struct {
 
 func NewSettingsService(repo domain.IntelligenceRepository, box *infrastructure.SecretBox, runtime RuntimeConfig) *SettingsService {
 	return &SettingsService{repo: repo, box: box, runtime: runtime}
+}
+
+// MasterKeyConfigured reports whether encrypted credentials are usable.
+func (s *SettingsService) MasterKeyConfigured() bool {
+	return s.box != nil
 }
 
 // ---- providers ----
@@ -116,6 +122,9 @@ func (s *SettingsService) DeleteProvider(ctx context.Context, userEmail, id stri
 // SaveCredential encrypts and upserts a secret for a subject. Plaintext is
 // zeroed after use where practical.
 func (s *SettingsService) SaveCredential(ctx context.Context, userEmail, subjectType, subjectID, plaintext string) error {
+	if s.box == nil {
+		return fmt.Errorf("master key is not configured (set MY_LLM_MASTER_KEY)")
+	}
 	ciphertext, err := s.box.Encrypt(plaintext)
 	if err != nil {
 		return fmt.Errorf("encrypt credential: %w", err)
@@ -224,11 +233,15 @@ func (s *SettingsService) DeleteConnector(ctx context.Context, userEmail, id str
 	return s.repo.DeleteCredential(ctx, "connector", id)
 }
 
-// TestConnector dials the connector and lists tools (read-only probe).
+// TestConnector dials the connector and invokes the first allowlisted tool
+// (read-only probe).
 func (s *SettingsService) TestConnector(ctx context.Context, userEmail, id string) error {
 	c, err := s.repo.FindConnector(ctx, id, userEmail)
 	if err != nil {
 		return err
+	}
+	if len(c.Allowlist) == 0 {
+		return fmt.Errorf("connector has no allowlisted tools")
 	}
 	cred, err := s.decryptCredential(ctx, "connector", id)
 	if err != nil {
@@ -249,6 +262,9 @@ func (s *SettingsService) HasCredential(ctx context.Context, subjectType, subjec
 }
 
 func (s *SettingsService) decryptCredential(ctx context.Context, subjectType, subjectID string) (string, error) {
+	if s.box == nil {
+		return "", fmt.Errorf("master key is not configured (set MY_LLM_MASTER_KEY)")
+	}
 	cred, err := s.repo.FindCredential(ctx, subjectType, subjectID)
 	if err != nil {
 		return "", err
@@ -263,9 +279,6 @@ func (s *SettingsService) ResolveProvider(ctx context.Context, userEmail string)
 	if err != nil {
 		return nil, "", err
 	}
-	best := profiles[0:0]
-	_ = best
-	var chosen *domain.ProviderProfile
 	for i := range profiles {
 		p := profiles[i]
 		if !p.Enabled {
@@ -273,21 +286,16 @@ func (s *SettingsService) ResolveProvider(ctx context.Context, userEmail string)
 		}
 		if p.ProviderType == domain.ProviderCodexCLI {
 			if s.runtime.CodexPath != "" {
-				chosen = p
-				break
+				return p, "", nil
 			}
 			continue
 		}
 		cred, err := s.decryptCredential(ctx, "provider", p.ID)
 		if err == nil && cred != "" {
-			chosen = p
-			return chosen, cred, nil
+			return p, cred, nil
 		}
 	}
-	if chosen == nil {
-		return nil, "", fmt.Errorf("no enabled provider with a credential is configured")
-	}
-	return chosen, "", nil
+	return nil, "", fmt.Errorf("no enabled provider with a credential is configured")
 }
 
 func (s *SettingsService) BuildProvider(ctx context.Context, p *domain.ProviderProfile, credential string) (providers.Provider, error) {

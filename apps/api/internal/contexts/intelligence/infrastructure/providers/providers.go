@@ -6,7 +6,9 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/jjspscl/my/internal/contexts/intelligence/domain"
@@ -46,13 +48,13 @@ func New(p *domain.ProviderProfile, credential string, cfg Config) (Provider, er
 		if base == "" {
 			base = "https://api.openai.com/v1"
 		}
-		return &openAIResponses{baseURL: base, apiKey: credential, model: p.Model, maxTokens: p.MaxTokens, timeout: p.Timeout}, nil
+		return &openAIResponses{baseURL: base, apiKey: credential, model: p.Model, maxTokens: p.MaxTokens, timeout: p.Timeout, allowLocal: p.AllowLocal}, nil
 	case domain.ProviderOpenAICompatible, domain.ProviderOllama:
 		base := p.BaseURL
 		if base == "" {
 			return nil, fmt.Errorf("base url is required for %s providers", p.ProviderType)
 		}
-		return &openAICompatible{baseURL: base, apiKey: credential, model: p.Model, maxTokens: p.MaxTokens, timeout: p.Timeout}, nil
+		return &openAICompatible{baseURL: base, apiKey: credential, model: p.Model, maxTokens: p.MaxTokens, timeout: p.Timeout, allowLocal: p.AllowLocal}, nil
 	case domain.ProviderCodexCLI:
 		if cfg.CodexPath == "" {
 			return nil, fmt.Errorf("codex CLI provider requires a configured binary path")
@@ -66,11 +68,12 @@ func New(p *domain.ProviderProfile, credential string, cfg Config) (Provider, er
 // ---- OpenAI-compatible chat completions (Ollama, Yunwu, gateways) ----
 
 type openAICompatible struct {
-	baseURL   string
-	apiKey    string
-	model     string
-	maxTokens int
-	timeout   time.Duration
+	baseURL    string
+	apiKey     string
+	model      string
+	maxTokens  int
+	timeout    time.Duration
+	allowLocal bool
 }
 
 func (p *openAICompatible) Complete(ctx context.Context, req ChatRequest) (*ChatResult, error) {
@@ -101,7 +104,10 @@ func (p *openAICompatible) Complete(ctx context.Context, req ChatRequest) (*Chat
 		httpReq.Header.Set("Authorization", "Bearer "+p.apiKey)
 	}
 
-	client := &http.Client{Timeout: p.timeout}
+	client := &http.Client{
+		Timeout:       p.timeout,
+		CheckRedirect: checkRedirect(p.allowLocal),
+	}
 	resp, err := client.Do(httpReq)
 	if err != nil {
 		return nil, fmt.Errorf("call provider: %w", err)
@@ -142,14 +148,47 @@ func (p *openAICompatible) Complete(ctx context.Context, req ChatRequest) (*Chat
 	}, nil
 }
 
+// checkRedirect blocks redirect hops that would escape the endpoint policy
+// (SSRF defense-in-depth: URL validation alone is not enough).
+func checkRedirect(allowLocal bool) func(req *http.Request, via []*http.Request) error {
+	return func(req *http.Request, via []*http.Request) error {
+		if len(via) >= 5 {
+			return fmt.Errorf("stopped after 5 redirects")
+		}
+		host := strings.ToLower(req.URL.Hostname())
+		if host == "" {
+			return fmt.Errorf("redirect target has no host")
+		}
+		if ip := net.ParseIP(host); ip != nil && (ip.IsPrivate() || ip.IsLinkLocalUnicast() || ip.IsUnspecified() || ip.IsMulticast()) {
+			return fmt.Errorf("redirect blocked: private or link-local target %q", host)
+		}
+		if ip := net.ParseIP(host); ip != nil && ip.IsLoopback() && !allowLocal {
+			return fmt.Errorf("redirect blocked: loopback target requires local mode")
+		}
+		if !isLoopbackHost(host) && req.URL.Scheme != "https" {
+			return fmt.Errorf("redirect blocked: non-https target %q", req.URL.String())
+		}
+		return nil
+	}
+}
+
+func isLoopbackHost(host string) bool {
+	if host == "localhost" {
+		return true
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
+}
+
 // ---- OpenAI Responses API (OpenAI + Codex-capable model IDs) ----
 
 type openAIResponses struct {
-	baseURL   string
-	apiKey    string
-	model     string
-	maxTokens int
-	timeout   time.Duration
+	baseURL    string
+	apiKey     string
+	model      string
+	maxTokens  int
+	timeout    time.Duration
+	allowLocal bool
 }
 
 func (p *openAIResponses) Complete(ctx context.Context, req ChatRequest) (*ChatResult, error) {
@@ -181,7 +220,10 @@ func (p *openAIResponses) Complete(ctx context.Context, req ChatRequest) (*ChatR
 		httpReq.Header.Set("Authorization", "Bearer "+p.apiKey)
 	}
 
-	client := &http.Client{Timeout: p.timeout}
+	client := &http.Client{
+		Timeout:       p.timeout,
+		CheckRedirect: checkRedirect(p.allowLocal),
+	}
 	resp, err := client.Do(httpReq)
 	if err != nil {
 		return nil, fmt.Errorf("call provider: %w", err)
@@ -197,10 +239,14 @@ func (p *openAIResponses) Complete(ctx context.Context, req ChatRequest) (*ChatR
 	}
 
 	var parsed struct {
-		Model       string `json:"model"`
-		OutputText  string `json:"output_text"`
-		Output      []struct {
-			Type string `json:"type"`
+		Model      string `json:"model"`
+		OutputText string `json:"output_text"`
+		Output     []struct {
+			Type    string `json:"type"`
+			Content []struct {
+				Type string `json:"type"`
+				Text string `json:"text"`
+			} `json:"content"`
 			Text string `json:"text"`
 		} `json:"output"`
 		Usage struct {
@@ -214,8 +260,17 @@ func (p *openAIResponses) Complete(ctx context.Context, req ChatRequest) (*ChatR
 	content := parsed.OutputText
 	if content == "" {
 		for _, o := range parsed.Output {
-			if o.Type == "message" && o.Text != "" {
-				content += o.Text
+			if o.Type != "message" {
+				continue
+			}
+			for _, c := range o.Content {
+				if (c.Type == "output_text" || c.Type == "text") && c.Text != "" {
+					content += c.Text
+				}
+			}
+			// Some implementations put the text directly on the item.
+			if content == "" && o.Text != "" {
+				content = o.Text
 			}
 		}
 	}

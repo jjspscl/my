@@ -14,7 +14,7 @@ import (
 // AES-256-GCM. The key is derived from the environment-held master key
 // (MY_LLM_MASTER_KEY); ciphertext carries a key version for rotation.
 type SecretBox struct {
-	key    []byte
+	key     []byte
 	version int
 }
 

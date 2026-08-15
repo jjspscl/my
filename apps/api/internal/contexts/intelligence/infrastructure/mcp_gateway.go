@@ -53,9 +53,10 @@ func (g *MCPGateway) Call(ctx context.Context, connector *domain.MCPConnector, c
 				token:   credential,
 				timeout: connector.Timeout,
 			},
+			CheckRedirect: CheckRedirectFor(false), // connectors are never local
 		},
-		MaxRetries:            1,
-		DisableStandaloneSSE:  true, // request/response only; no server-initiated streams
+		MaxRetries:           1,
+		DisableStandaloneSSE: true, // request/response only; no server-initiated streams
 	}
 
 	client := mcpsdk.NewClient(&mcpsdk.Implementation{Name: "my-intelligence", Version: "1.0.0"}, nil)

@@ -13,6 +13,7 @@ import { Route as LoginRouteImport } from './routes/login'
 import { Route as AuthenticatedRouteImport } from './routes/_authenticated'
 import { Route as AuthenticatedIndexRouteImport } from './routes/_authenticated/index'
 import { Route as AuthVerifyRouteImport } from './routes/auth.verify'
+import { Route as AuthenticatedSettingsRouteImport } from './routes/_authenticated/settings'
 import { Route as AuthenticatedHabitsRouteImport } from './routes/_authenticated/habits'
 import { Route as AuthenticatedFinanceRouteImport } from './routes/_authenticated/finance'
 import { Route as AuthenticatedFinanceIndexRouteImport } from './routes/_authenticated/finance/index'
@@ -42,6 +43,11 @@ const AuthVerifyRoute = AuthVerifyRouteImport.update({
   id: '/auth/verify',
   path: '/auth/verify',
   getParentRoute: () => rootRouteImport,
+} as any)
+const AuthenticatedSettingsRoute = AuthenticatedSettingsRouteImport.update({
+  id: '/settings',
+  path: '/settings',
+  getParentRoute: () => AuthenticatedRoute,
 } as any)
 const AuthenticatedHabitsRoute = AuthenticatedHabitsRouteImport.update({
   id: '/habits',
@@ -107,6 +113,7 @@ export interface FileRoutesByFullPath {
   '/login': typeof LoginRoute
   '/finance': typeof AuthenticatedFinanceRouteWithChildren
   '/habits': typeof AuthenticatedHabitsRoute
+  '/settings': typeof AuthenticatedSettingsRoute
   '/auth/verify': typeof AuthVerifyRoute
   '/finance/analytics': typeof AuthenticatedFinanceAnalyticsRoute
   '/finance/bills': typeof AuthenticatedFinanceBillsRoute
@@ -120,6 +127,7 @@ export interface FileRoutesByFullPath {
 export interface FileRoutesByTo {
   '/login': typeof LoginRoute
   '/habits': typeof AuthenticatedHabitsRoute
+  '/settings': typeof AuthenticatedSettingsRoute
   '/auth/verify': typeof AuthVerifyRoute
   '/': typeof AuthenticatedIndexRoute
   '/finance/analytics': typeof AuthenticatedFinanceAnalyticsRoute
@@ -137,6 +145,7 @@ export interface FileRoutesById {
   '/login': typeof LoginRoute
   '/_authenticated/finance': typeof AuthenticatedFinanceRouteWithChildren
   '/_authenticated/habits': typeof AuthenticatedHabitsRoute
+  '/_authenticated/settings': typeof AuthenticatedSettingsRoute
   '/auth/verify': typeof AuthVerifyRoute
   '/_authenticated/': typeof AuthenticatedIndexRoute
   '/_authenticated/finance/analytics': typeof AuthenticatedFinanceAnalyticsRoute
@@ -155,6 +164,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/finance'
     | '/habits'
+    | '/settings'
     | '/auth/verify'
     | '/finance/analytics'
     | '/finance/bills'
@@ -168,6 +178,7 @@ export interface FileRouteTypes {
   to:
     | '/login'
     | '/habits'
+    | '/settings'
     | '/auth/verify'
     | '/'
     | '/finance/analytics'
@@ -184,6 +195,7 @@ export interface FileRouteTypes {
     | '/login'
     | '/_authenticated/finance'
     | '/_authenticated/habits'
+    | '/_authenticated/settings'
     | '/auth/verify'
     | '/_authenticated/'
     | '/_authenticated/finance/analytics'
@@ -231,6 +243,13 @@ declare module '@tanstack/react-router' {
       fullPath: '/auth/verify'
       preLoaderRoute: typeof AuthVerifyRouteImport
       parentRoute: typeof rootRouteImport
+    }
+    '/_authenticated/settings': {
+      id: '/_authenticated/settings'
+      path: '/settings'
+      fullPath: '/settings'
+      preLoaderRoute: typeof AuthenticatedSettingsRouteImport
+      parentRoute: typeof AuthenticatedRoute
     }
     '/_authenticated/habits': {
       id: '/_authenticated/habits'
@@ -333,12 +352,14 @@ const AuthenticatedFinanceRouteWithChildren =
 interface AuthenticatedRouteChildren {
   AuthenticatedFinanceRoute: typeof AuthenticatedFinanceRouteWithChildren
   AuthenticatedHabitsRoute: typeof AuthenticatedHabitsRoute
+  AuthenticatedSettingsRoute: typeof AuthenticatedSettingsRoute
   AuthenticatedIndexRoute: typeof AuthenticatedIndexRoute
 }
 
 const AuthenticatedRouteChildren: AuthenticatedRouteChildren = {
   AuthenticatedFinanceRoute: AuthenticatedFinanceRouteWithChildren,
   AuthenticatedHabitsRoute: AuthenticatedHabitsRoute,
+  AuthenticatedSettingsRoute: AuthenticatedSettingsRoute,
   AuthenticatedIndexRoute: AuthenticatedIndexRoute,
 }
 

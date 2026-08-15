@@ -35,8 +35,8 @@ import {
   useSaveProviderCredential,
   useTestConnector,
   useTestProvider,
-} from '../../hooks/use-intelligence'
-import type { Connector, ProviderProfile } from '../../schemas/intelligence.schemas'
+} from '../hooks/use-intelligence'
+import type { Connector, ProviderProfile } from '../schemas/intelligence.schemas'
 
 const PROVIDER_TYPES = [
   { value: 'openai', label: 'OpenAI (Responses / Codex models)' },

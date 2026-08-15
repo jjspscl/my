@@ -94,9 +94,9 @@ func TestOpenAICompatibleErrorStatus(t *testing.T) {
 
 func TestOpenAIResponsesComplete(t *testing.T) {
 	body, _ := json.Marshal(map[string]any{
-		"model":      "gpt-5.2-codex",
+		"model":       "gpt-5.2-codex",
 		"output_text": "structured answer",
-		"usage":      map[string]int{"input_tokens": 20, "output_tokens": 8},
+		"usage":       map[string]int{"input_tokens": 20, "output_tokens": 8},
 	})
 	srv := responsesServer(t, string(body))
 	defer srv.Close()

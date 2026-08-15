@@ -260,6 +260,12 @@
 - Security hardening: SSRF DNS + redirect defense, feature-flag enforcement,
   privacy-safe agent-run summaries (counts only), calibrated search gating
 
+### Release v1.2.1
+- Fix GCash PDF import crashing on private HTTP/tailnet origins where
+  `crypto.subtle` is undefined (non-secure context). File fingerprinting now
+  prefers Web Crypto and falls back to lazily-loaded audited @noble/hashes;
+  known-vector + insecure-origin regression tests added.
+
 ## Remaining Work
 
 - Phase 6: Offline/sync backend — server sync context (push/pull/status),

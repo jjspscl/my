@@ -30,6 +30,7 @@ import { parseCents } from '../../lib/gcash-text'
 import { useCreateImport, useImports, useRollbackImport } from '../../hooks/use-imports'
 import { useWallets } from '../../hooks/use-wallets'
 import { useRunAnalysis } from '@/features/intelligence/hooks/use-intelligence'
+import { sha256Hex } from '@/shared/lib/sha256'
 import type { CreateImport, ImportBatch, ImportRowDraft } from '../../schemas/import.schemas'
 import {
   confidenceBucket,
@@ -96,11 +97,6 @@ function toRfc3339Local(dateTime: string): string {
   return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}T${pad(
     date.getHours(),
   )}:${pad(date.getMinutes())}:00${sign}${pad(Math.floor(abs / 60))}:${pad(abs % 60)}`
-}
-
-async function sha256Hex(buffer: ArrayBuffer): Promise<string> {
-  const digest = await crypto.subtle.digest('SHA-256', buffer)
-  return [...new Uint8Array(digest)].map((b) => b.toString(16).padStart(2, '0')).join('')
 }
 
 function buildDrafts(statement: GcashParsedStatement, walletNames: string[]): ImportRowDraft[] {

@@ -146,7 +146,9 @@ func (f *fakeTransferRepo) Save(ctx context.Context, tr *domain.WalletTransfer) 
 	return nil
 }
 
-func (f *fakeTransferRepo) FindByID(ctx context.Context, id string) (*domain.WalletTransfer, error) { return nil, nil }
+func (f *fakeTransferRepo) FindByID(ctx context.Context, id string) (*domain.WalletTransfer, error) {
+	return nil, nil
+}
 
 func (f *fakeTransferRepo) FindByIdempotencyKey(ctx context.Context, email, key string) (*domain.WalletTransfer, error) {
 	for _, t := range f.saved {
@@ -434,4 +436,71 @@ func TestImportRejectsTransferToSameWallet(t *testing.T) {
 	_, err := svc.Create(context.Background(), "you@example.com", input)
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "different counter wallet")
+}
+
+func transferRowInput(ref, counterID string) ImportRowInput {
+	return ImportRowInput{
+		SourceReference: ref,
+		OccurredAt:      time.Date(2026, 7, 5, 0, 0, 0, 0, time.UTC),
+		AmountCents:     1000,
+		Kind:            domain.EntryTransferOut,
+		Category:        "Transfer",
+		CounterWalletID: counterID,
+	}
+}
+
+func TestImportRejectsTransferToNonexistentCounterWallet(t *testing.T) {
+	svc, _, _, _, walletRepo := newImportService()
+	walletRepo.wallets = []*domain.Wallet{gcashWallet("wallet-1", "PHP")}
+
+	input := baseImportInput()
+	input.Rows = []ImportRowInput{transferRowInput("REF000000030", "ghost-wallet")}
+
+	_, err := svc.Create(context.Background(), "you@example.com", input)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "REF000000030")
+	assert.Contains(t, err.Error(), "counter wallet")
+	assert.Contains(t, err.Error(), "not found")
+}
+
+func TestImportRejectsTransferToForeignCounterWallet(t *testing.T) {
+	svc, _, _, _, walletRepo := newImportService()
+	foreign, err := domain.NewWallet("foreign-1", "other@example.com", "BDO", domain.WalletEwallet, "PHP", 0, false)
+	require.NoError(t, err)
+	walletRepo.wallets = []*domain.Wallet{gcashWallet("wallet-1", "PHP"), foreign}
+
+	input := baseImportInput()
+	input.Rows = []ImportRowInput{transferRowInput("REF000000031", "foreign-1")}
+
+	_, err = svc.Create(context.Background(), "you@example.com", input)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "counter wallet")
+	assert.Contains(t, err.Error(), "not found")
+}
+
+func TestImportRejectsTransferToArchivedCounterWallet(t *testing.T) {
+	svc, _, _, _, walletRepo := newImportService()
+	archived := gcashWallet("archived-1", "PHP")
+	now := time.Now()
+	archived.ArchivedAt = &now
+	walletRepo.wallets = []*domain.Wallet{gcashWallet("wallet-1", "PHP"), archived}
+
+	input := baseImportInput()
+	input.Rows = []ImportRowInput{transferRowInput("REF000000032", "archived-1")}
+
+	_, err := svc.Create(context.Background(), "you@example.com", input)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "archived")
+}
+
+func TestImportRejectsTransferToForeignCurrencyCounterWallet(t *testing.T) {
+	svc, _, _, _, walletRepo := newImportService()
+	walletRepo.wallets = []*domain.Wallet{gcashWallet("wallet-1", "PHP"), gcashWallet("usd-1", "USD")}
+
+	input := baseImportInput()
+	input.Rows = []ImportRowInput{transferRowInput("REF000000033", "usd-1")}
+
+	_, err := svc.Create(context.Background(), "you@example.com", input)
+	require.Error(t, err)
+	assert.Contains(t, err.Error(), "currency")
 }

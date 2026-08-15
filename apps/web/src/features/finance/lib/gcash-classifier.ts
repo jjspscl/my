@@ -36,12 +36,6 @@ const WALLET_HINTS: Array<{ pattern: RegExp; wallet: string }> = [
   { pattern: /\bGCash to GCash\b|\bG2G\b/i, wallet: 'GCash' },
 ]
 
-const INCOME_RE =
-  /\b(Received from|Cash In|Salary|Payroll|Refund|Disbursement|Remittance|Send Money received|Load Wallet|Transfer received|Top-?up|Rewards|Cashback|Interest)\b/i
-
-const TRANSFER_RE =
-  /\b(InstaPay|PESONet|Bank Transfer|Transfer to|Transferred|Move Money|Withdrawal to)\b/i
-
 const CATEGORY_HINTS: Array<{ re: RegExp; category: string }> = [
   { re: /\b(Jollibee|McDonald|McDo|KFC|Chowking|Greenwich|Mang Inasal|Foodpanda|GrabFood|Shakey|Pizza|Wendy|Subway|Starbucks|Coffee)\b/i, category: 'Food' },
   { re: /\b(Grab|Angkas|JoyRide|Move It|Lalamove|Transport|Fare|Gas|Petron|Shell|Caltex|Unioil)\b/i, category: 'Transport' },
@@ -52,22 +46,30 @@ const CATEGORY_HINTS: Array<{ re: RegExp; category: string }> = [
   { re: /\b(Insurance|SSS|PhilHealth|Pag-?IBIG)\b/i, category: 'Insurance' },
   { re: /\b(Hospital|Clinic|Pharmacy|Mercury|Watsons|Doctor|Medical|Medicine)\b/i, category: 'Health' },
   { re: /\b(Netflix|Spotify|Disney|YouTube|Streaming|Prime|Subscrib)\b/i, category: 'Subscriptions' },
-  { re: /\b(Received from|Cash In|Salary|Payroll|Disbursement|Remittance)\b/i, category: 'Income' },
+  { re: /\b(Received from|Received GCash from|Cash In|Salary|Payroll|Disbursement|Remittance|Refund|Reversal|Cashback|Rewards|Money received)\b/i, category: 'Income' },
 ]
 
-/** Classify one statement row deterministically. */
+/**
+ * Classify one statement row deterministically.
+ *
+ * Transfers are ONLY claimed when the description matches a wallet the user
+ * owns (case-insensitive, unique match). Everything else defaults to the
+ * safer income/expense kinds: an unmapped "transfer-looking" row can still
+ * be reclassified in review, but it must never arrive at the API without a
+ * counter wallet.
+ */
 export function classifyRow(row: GcashRow, ownedWalletNames: string[] = []): Classification {
   const text = `${row.description} ${row.referenceNo}`
   const isDebit = !!row.debit && !row.credit
 
-  // Wallet-name match against known user wallets: strong transfer hint.
-  const exactWallet = ownedWalletNames.find((name) => name && text.includes(name))
+  // Case-insensitive, unique owned-wallet match → transfer candidate.
+  const owned = findOwnedWallet(text, ownedWalletNames)
 
   let kind: DraftKind
   if (isDebit) {
-    kind = TRANSFER_RE.test(text) || exactWallet ? 'transfer_out' : 'expense'
+    kind = owned ? 'transfer_out' : 'expense'
   } else {
-    kind = INCOME_RE.test(text) ? 'income' : 'transfer_in'
+    kind = owned ? 'transfer_in' : 'income'
   }
 
   // Counterparty hint from wallet patterns in the description.
@@ -90,9 +92,18 @@ export function classifyRow(row: GcashRow, ownedWalletNames: string[] = []): Cla
   return {
     kind,
     category,
-    counterparty: walletHint?.wallet ?? exactWallet,
-    transferWalletHint: walletHint?.wallet ?? exactWallet,
+    counterparty: walletHint?.wallet ?? owned,
+    transferWalletHint: owned ?? walletHint?.wallet,
   }
+}
+
+// findOwnedWallet returns the wallet name when EXACTLY ONE owned wallet name
+// appears in the text. Ambiguous mentions (or none) return undefined: a
+// generic bank/e-wallet word is not proof of ownership.
+function findOwnedWallet(text: string, names: string[]): string | undefined {
+  const lower = text.toLowerCase()
+  const matches = names.filter((n) => n && lower.includes(n.toLowerCase()))
+  return matches.length === 1 ? matches[0] : undefined
 }
 
 /** Group rows by normalized description for the transfer-mapping review. */

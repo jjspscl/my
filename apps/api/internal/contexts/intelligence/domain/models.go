@@ -130,13 +130,32 @@ type Credential struct {
 	UpdatedAt   time.Time
 }
 
-// MCPConnector is an outbound search connector (Brave, Exa, …). Only the
-// allowlisted tool names may be invoked, and only search-like tools.
+// Connector kinds. Native providers use fixed endpoints and tools and ignore
+// the editable Endpoint/Allowlist fields; custom_mcp keeps them.
+const (
+	ConnectorKindTavily    = "tavily"
+	ConnectorKindBrave     = "brave"
+	ConnectorKindExa       = "exa"
+	ConnectorKindCustomMCP = "custom_mcp"
+)
+
+// Connector auth modes for custom MCP connectors.
+const (
+	ConnectorAuthNone   = "none"
+	ConnectorAuthBearer = "bearer"
+	ConnectorAuthXKey   = "x-api-key"
+)
+
+// MCPConnector is an outbound search connector (Tavily, Brave, Exa, custom
+// MCP, …). Only the allowlisted tool names may be invoked, and only
+// search-like tools.
 type MCPConnector struct {
 	ID        string
 	UserEmail string
 	Name      string
-	Endpoint  string
+	Kind      string // tavily | brave | exa | custom_mcp
+	Endpoint  string // custom_mcp only; native kinds ignore it
+	AuthType  string // none | bearer | x-api-key (custom_mcp)
 	Enabled   bool
 	Allowlist []string
 	Timeout   time.Duration
@@ -145,7 +164,7 @@ type MCPConnector struct {
 }
 
 // NewMCPConnector validates a connector.
-func NewMCPConnector(id, userEmail, name, endpoint string, allowlist []string, timeout time.Duration) (*MCPConnector, error) {
+func NewMCPConnector(id, userEmail, name, kind, endpoint, authType string, allowlist []string, timeout time.Duration) (*MCPConnector, error) {
 	if id == "" {
 		return nil, fmt.Errorf("id is required")
 	}
@@ -155,11 +174,23 @@ func NewMCPConnector(id, userEmail, name, endpoint string, allowlist []string, t
 	if strings.TrimSpace(name) == "" || len(name) > MaxConnectorName {
 		return nil, fmt.Errorf("name is required (max %d)", MaxConnectorName)
 	}
-	if endpoint == "" || len(endpoint) > MaxEndpointLen {
-		return nil, fmt.Errorf("endpoint is required (max %d)", MaxEndpointLen)
+	switch kind {
+	case ConnectorKindTavily, ConnectorKindBrave, ConnectorKindExa, ConnectorKindCustomMCP:
+	default:
+		return nil, fmt.Errorf("unknown connector kind %q", kind)
 	}
-	if len(allowlist) == 0 {
-		return nil, fmt.Errorf("at least one allowlisted tool is required")
+	switch authType {
+	case ConnectorAuthNone, ConnectorAuthBearer, ConnectorAuthXKey:
+	default:
+		return nil, fmt.Errorf("unknown connector auth type %q", authType)
+	}
+	if kind == ConnectorKindCustomMCP {
+		if endpoint == "" || len(endpoint) > MaxEndpointLen {
+			return nil, fmt.Errorf("endpoint is required (max %d)", MaxEndpointLen)
+		}
+		if len(allowlist) == 0 {
+			return nil, fmt.Errorf("at least one allowlisted tool is required")
+		}
 	}
 	if timeout <= 0 {
 		timeout = 15 * time.Second
@@ -169,13 +200,23 @@ func NewMCPConnector(id, userEmail, name, endpoint string, allowlist []string, t
 		ID:        id,
 		UserEmail: userEmail,
 		Name:      strings.TrimSpace(name),
+		Kind:      kind,
 		Endpoint:  endpoint,
+		AuthType:  authType,
 		Enabled:   true,
 		Allowlist: allowlist,
 		Timeout:   timeout,
 		CreatedAt: time.Now().UTC(),
 		UpdatedAt: time.Now().UTC(),
 	}, nil
+}
+
+// SearchResult is one normalized, bounded search hit. Fields are treated as
+// untrusted text; only title/URL/snippet are used for corroboration matching.
+type SearchResult struct {
+	Title   string
+	URL     string
+	Snippet string
 }
 
 // EvidenceSource is where a suggestion's evidence came from.

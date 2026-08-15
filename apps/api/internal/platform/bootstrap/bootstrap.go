@@ -128,7 +128,7 @@ func NewWithOptions(cfg *config.Config, log *slog.Logger, opts Options) (*App, e
 	runtime := intelapp.RuntimeConfig{LLMEnabled: cfg.LLMEnabled, CodexPath: cfg.LLMCodexPath}
 	intelligenceSvc := intelapp.NewSettingsService(intelRepo, box, runtime)
 	confidenceSvc := intelapp.NewConfidenceService()
-	gateway := intelinfra.NewMCPGateway()
+	gateway := intelinfra.NewSearchService()
 	analysisSvc := intelapp.NewAnalysisService(intelRepo, intelligenceSvc, confidenceSvc, gateway, box != nil && cfg.LLMEnabled)
 
 	return &App{

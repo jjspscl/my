@@ -171,10 +171,12 @@ export function ImportWizard() {
     set({ parsing: true })
     try {
       const buffer = await state.file.arrayBuffer()
-      const [statement, fingerprint] = await Promise.all([
-        parseGcashPdf(buffer, state.password || undefined),
-        sha256Hex(buffer),
-      ])
+      // Hash FIRST: pdf.js transfers ownership of the buffer to its worker
+      // (detaching it), so anything that still needs the bytes must run
+      // before parsing starts. Hashing first also stays correct on insecure
+      // origins where the @noble/hashes fallback loads lazily.
+      const fingerprint = await sha256Hex(buffer)
+      const statement = await parseGcashPdf(buffer, state.password || undefined)
       const drafts = buildDrafts(statement, (wallets ?? []).map((w) => w.name))
       const ending = statement.endingBalanceCents ?? 0
       const opening = ending - netOf(drafts)

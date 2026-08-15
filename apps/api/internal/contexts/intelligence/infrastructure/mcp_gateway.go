@@ -48,10 +48,11 @@ func (g *MCPGateway) Call(ctx context.Context, connector *domain.MCPConnector, c
 		Endpoint: connector.Endpoint,
 		HTTPClient: &http.Client{
 			Timeout: connector.Timeout,
-			Transport: &bearerTransport{
-				base:    http.DefaultTransport,
-				token:   credential,
-				timeout: connector.Timeout,
+			Transport: &authHeaderTransport{
+				base:       http.DefaultTransport,
+				credential: credential,
+				authType:   connector.AuthType,
+				timeout:    connector.Timeout,
 			},
 			CheckRedirect: CheckRedirectFor(false), // connectors are never local
 		},
@@ -93,16 +94,24 @@ func (g *MCPGateway) Call(ctx context.Context, connector *domain.MCPConnector, c
 	return out, nil
 }
 
-// bearerTransport injects the static bearer token into every request.
-type bearerTransport struct {
-	base    http.RoundTripper
-	token   string
-	timeout time.Duration
+// authHeaderTransport injects the connector credential into the header chosen
+// by the connector's auth type (none | bearer | x-api-key). The credential
+// never travels in the URL.
+type authHeaderTransport struct {
+	base       http.RoundTripper
+	credential string
+	authType   string
+	timeout    time.Duration
 }
 
-func (t *bearerTransport) RoundTrip(req *http.Request) (*http.Response, error) {
-	if t.token != "" {
-		req.Header.Set("Authorization", "Bearer "+t.token)
+func (t *authHeaderTransport) RoundTrip(req *http.Request) (*http.Response, error) {
+	if t.credential != "" {
+		switch t.authType {
+		case domain.ConnectorAuthXKey:
+			req.Header.Set("X-Api-Key", t.credential)
+		default: // bearer (also legacy connectors without an explicit auth type)
+			req.Header.Set("Authorization", "Bearer "+t.credential)
+		}
 	}
 	return t.base.RoundTrip(req)
 }

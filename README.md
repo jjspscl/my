@@ -153,7 +153,7 @@ Current workflow:
 Install latest standalone MCP server on macOS or Linux:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/jjspscl/my/v1.3.0/scripts/install-mcp.sh | sh
+curl -fsSL https://raw.githubusercontent.com/jjspscl/my/v1.3.1/scripts/install-mcp.sh | sh
 ```
 
 Installer verifies release checksum and GitHub attestation when `gh` is available. It prints client configuration; it never edits agent config files.

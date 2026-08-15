@@ -1,9 +1,11 @@
 name: E2E
 
 on:
+  # No path filters: branch protection requires E2E on the base branch tip,
+  # and .github/-only changes would otherwise leave main without a passing
+  # required check.
   push:
     branches: [main]
-    paths: ['apps/web/**', 'apps/api/**']
   pull_request:
     branches: [main]
 

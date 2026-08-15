@@ -13,7 +13,10 @@ permissions:
   attestations: write
 
 jobs:
-  build:
+  # Named docker-build (not "build"): Web CI also has a job named build, and
+  # branch protection requires checks by unique context. Two workflows sharing
+  # a job name makes the required-check context ambiguous.
+  docker-build:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4

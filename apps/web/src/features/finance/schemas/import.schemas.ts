@@ -54,7 +54,9 @@ export type ImportRowDraft = z.infer<typeof ImportRowDraftSchema>
 
 // ---- Create import (backend contract) ----
 
-export const CreateImportRowSchema = z.object({
+// Transfers must carry a counter wallet; income/expense must NOT carry one.
+// The API rejects both violations; the contract catches them client-side.
+const CreateImportRowBase = z.object({
   sourceReference: z.string(),
   occurredAt: z.string(),
   amountCents: z.number().int().positive(),
@@ -64,9 +66,27 @@ export const CreateImportRowSchema = z.object({
   counterparty: z.string().optional(),
   counterWalletId: z.string().optional(),
 })
+
+export const CreateImportRowSchema = CreateImportRowBase.superRefine((value, ctx) => {
+  const isTransfer = value.kind === 'transfer_out' || value.kind === 'transfer_in'
+  if (isTransfer && !value.counterWalletId) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'transfer rows require a counter wallet',
+      path: ['counterWalletId'],
+    })
+  }
+  if (!isTransfer && value.counterWalletId) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'non-transfer rows cannot carry a counter wallet',
+      path: ['counterWalletId'],
+    })
+  }
+})
 export type CreateImportRow = z.infer<typeof CreateImportRowSchema>
 
-export const CreateImportSchema = z.object({
+const CreateImportBase = z.object({
   provider: z.literal('gcash_pdf'),
   fileFingerprint: z.string().regex(/^[0-9a-f]{64}$/i, 'Invalid file fingerprint'),
   statementFrom: z.string(),
@@ -82,6 +102,17 @@ export const CreateImportSchema = z.object({
   endingBalanceCents: z.number().int().min(0),
   reconciliation: z.enum(['ok', 'mismatch', 'unknown']),
   rows: z.array(CreateImportRowSchema).max(2000),
+})
+
+// Exactly one target must be selected: an existing wallet or a new one.
+export const CreateImportSchema = CreateImportBase.superRefine((value, ctx) => {
+  if (!value.walletId && !value.createWallet) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      message: 'select a wallet or create a new one',
+      path: ['walletId'],
+    })
+  }
 })
 export type CreateImport = z.infer<typeof CreateImportSchema>
 

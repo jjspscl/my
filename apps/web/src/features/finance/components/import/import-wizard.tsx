@@ -99,16 +99,28 @@ function toRfc3339Local(dateTime: string): string {
   )}:${pad(date.getMinutes())}:00${sign}${pad(Math.floor(abs / 60))}:${pad(abs % 60)}`
 }
 
-function buildDrafts(statement: GcashParsedStatement, walletNames: string[]): ImportRowDraft[] {
+/**
+ * Build review drafts from a parsed statement.
+ *
+ * The statement's source wallet (the wallet the rows will be booked into) is
+ * excluded from owned-wallet matching: "Received GCash from BDO" must not
+ * become a transfer just because the source wallet itself is named GCash.
+ * Transfer claims require a unique match against another owned wallet, and
+ * the matched wallet is preselected as the counter wallet.
+ */
+function buildDrafts(statement: GcashParsedStatement, wallets: Wallet[], sourceWalletName: string): ImportRowDraft[] {
+  const ownedNames = wallets.map((w) => w.name).filter((n) => n && n !== sourceWalletName)
   return statement.rows.map((row) => {
     const debitCents = parseCents(row.debit)
     const creditCents = parseCents(row.credit)
     const amountCents = debitCents ?? creditCents ?? 0
-    const classification = classifyRow(row, walletNames)
+    const classification = classifyRow(row, ownedNames)
 
-    const kind: DraftKind = creditCents !== null && debitCents === null
-      ? (classification.kind === 'income' ? 'income' : 'transfer_in')
-      : (classification.kind === 'transfer_out' ? 'transfer_out' : 'expense')
+    const kind: DraftKind = classification.kind
+    const isTransfer = kind === 'transfer_out' || kind === 'transfer_in'
+    const counterWalletId = isTransfer
+      ? (wallets.find((w) => w.name === classification.transferWalletHint && w.name !== sourceWalletName)?.id ?? '')
+      : ''
 
     return {
       sourceReference: row.referenceNo || `no-ref-${row.dateTime}`,
@@ -118,7 +130,7 @@ function buildDrafts(statement: GcashParsedStatement, walletNames: string[]): Im
       category: classification.category,
       description: row.description || row.dateTime,
       counterparty: classification.counterparty,
-      counterWalletId: '',
+      counterWalletId,
       excluded: false,
       suggestedKind: classification.kind,
       suggestedCategory: classification.category,
@@ -177,7 +189,9 @@ export function ImportWizard() {
       // origins where the @noble/hashes fallback loads lazily.
       const fingerprint = await sha256Hex(buffer)
       const statement = await parseGcashPdf(buffer, state.password || undefined)
-      const drafts = buildDrafts(statement, (wallets ?? []).map((w) => w.name))
+      const sourceWalletName =
+        phpWallets.find((w) => /gcash/i.test(w.name))?.name ?? phpWallets[0]?.name ?? ''
+      const drafts = buildDrafts(statement, wallets ?? [], sourceWalletName)
       const ending = statement.endingBalanceCents ?? 0
       const opening = ending - netOf(drafts)
       set({
@@ -331,6 +345,7 @@ export function ImportWizard() {
         <ReviewStep
           drafts={state.drafts}
           wallets={phpWallets}
+          sourceWalletId={state.walletId}
           statement={state.statement}
           suggestionsByRef={suggestionMap}
           analyzing={state.analyzing}
@@ -584,6 +599,7 @@ function StatCard({ label, value }: { label: string; value: string }) {
 function ReviewStep({
   drafts,
   wallets,
+  sourceWalletId,
   statement,
   suggestionsByRef,
   analyzing,
@@ -595,6 +611,7 @@ function ReviewStep({
 }: {
   drafts: ImportRowDraft[]
   wallets: Wallet[]
+  sourceWalletId: string
   statement: GcashParsedStatement
   suggestionsByRef: Record<string, Suggestion[]>
   analyzing: boolean
@@ -604,12 +621,23 @@ function ReviewStep({
   onImport: () => void
   importing: boolean
 }) {
-  const [filter, setFilter] = useState<'all' | 'transfers' | 'warnings' | 'excluded'>('all')
+  const [filter, setFilter] = useState<'all' | 'transfers' | 'needsMapping' | 'excluded'>('all')
   const hasSuggestions = Object.keys(suggestionsByRef).length > 0
 
   const warningRows = new Set(statement.warnings.map((w) => w.rowIndex))
+
+  // Transfers are invalid without a counter wallet, or when the counter is
+  // the source wallet itself. The API rejects them; the UI must too.
+  const needsMappingRefs = new Set(
+    drafts
+      .filter((d) => !d.excluded && (d.kind === 'transfer_out' || d.kind === 'transfer_in'))
+      .filter((d) => !d.counterWalletId || d.counterWalletId === sourceWalletId)
+      .map((d) => d.sourceReference),
+  )
+
   const visible = drafts.filter((d) => {
     if (filter === 'transfers') return d.kind === 'transfer_out' || d.kind === 'transfer_in'
+    if (filter === 'needsMapping') return needsMappingRefs.has(d.sourceReference)
     if (filter === 'excluded') return d.excluded
     return true
   })
@@ -620,6 +648,7 @@ function ReviewStep({
   }
 
   const selected = drafts.filter((d) => !d.excluded)
+  const counterWallets = wallets.filter((w) => w.id !== sourceWalletId)
 
   return (
     <div className="space-y-4">
@@ -635,6 +664,16 @@ function ReviewStep({
             {f} ({f === 'all' ? drafts.length : f === 'transfers' ? drafts.filter((d) => d.kind.includes('transfer')).length : drafts.filter((d) => d.excluded).length})
           </Button>
         ))}
+        {needsMappingRefs.size > 0 && (
+          <Button
+            size="sm"
+            variant={filter === 'needsMapping' ? 'default' : 'outline'}
+            className="h-7 px-2 text-xs"
+            onClick={() => setFilter('needsMapping')}
+          >
+            Needs mapping ({needsMappingRefs.size})
+          </Button>
+        )}
         <Button
           size="sm"
           variant="outline"
@@ -658,6 +697,20 @@ function ReviewStep({
           AI suggestions are preselect-only: green badges were applied and remain editable; amber badges need your
           review.
         </p>
+      )}
+
+      {needsMappingRefs.size > 0 && (
+        <Alert variant="default" className="border-amber-500/50">
+          <AlertTriangle className="h-4 w-4 text-amber-600" />
+          <AlertTitle className="text-sm">Transfers need a counter wallet</AlertTitle>
+          <AlertDescription className="text-xs space-y-0.5">
+            <p>
+              {needsMappingRefs.size} transfer row{needsMappingRefs.size === 1 ? '' : 's'} must map to another
+              wallet you own — or be reclassified as income/expense / excluded — before importing.
+            </p>
+            <p>Rows that move money between your own wallets are transfers; money to or from other people is not.</p>
+          </AlertDescription>
+        </Alert>
       )}
 
       {statement.warnings.length > 0 && (
@@ -689,6 +742,7 @@ function ReviewStep({
             {visible.map((draft, i) => {
               const originalIndex = drafts.indexOf(draft)
               const isTransfer = draft.kind === 'transfer_out' || draft.kind === 'transfer_in'
+              const hasTransfers = drafts.some((d) => d.kind === 'transfer_out' || d.kind === 'transfer_in')
               return (
                 <TableRow key={`${draft.sourceReference}-${i}`} className={draft.excluded ? 'opacity-50' : ''}>
                   <TableCell>
@@ -739,6 +793,9 @@ function ReviewStep({
                       list="import-categories"
                     />
                   </TableCell>
+                  {hasTransfers && !isTransfer && (
+                    <TableCell className="text-xs text-muted-foreground">—</TableCell>
+                  )}
                   {isTransfer && (
                     <TableCell>
                       <Select
@@ -747,11 +804,19 @@ function ReviewStep({
                       >
                         <SelectTrigger className="h-7 text-xs w-[140px]"><SelectValue placeholder="Map wallet" /></SelectTrigger>
                         <SelectContent>
-                          {wallets.map((w) => (
+                          {counterWallets.map((w) => (
                             <SelectItem key={w.id} value={w.id} className="text-xs">{w.name}</SelectItem>
                           ))}
+                          {counterWallets.length === 0 && (
+                            <p className="px-2 py-1 text-[10px] text-muted-foreground">
+                              No other wallets — reclassify as income/expense.
+                            </p>
+                          )}
                         </SelectContent>
                       </Select>
+                      {(!draft.counterWalletId || draft.counterWalletId === sourceWalletId) && (
+                        <p className="mt-0.5 text-[10px] font-medium text-amber-600">needs mapping</p>
+                      )}
                     </TableCell>
                   )}
                   <TableCell className="text-right text-xs tabular-nums">
@@ -779,9 +844,13 @@ function ReviewStep({
 
       <div className="flex gap-2">
         <Button size="sm" variant="outline" onClick={onBack}>Back</Button>
-        <Button size="sm" onClick={onImport} disabled={importing || selected.length === 0}>
+        <Button size="sm" onClick={onImport} disabled={importing || selected.length === 0 || needsMappingRefs.size > 0}>
           {importing && <Loader2 className="mr-1.5 h-3.5 w-3.5 animate-spin" />}
-          {importing ? 'Importing…' : `Import ${selected.length} row${selected.length === 1 ? '' : 's'}`}
+          {needsMappingRefs.size > 0
+            ? `${needsMappingRefs.size} transfer${needsMappingRefs.size === 1 ? '' : 's'} need mapping`
+            : importing
+              ? 'Importing…'
+              : `Import ${selected.length} row${selected.length === 1 ? '' : 's'}`}
         </Button>
       </div>
     </div>

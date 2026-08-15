@@ -202,6 +202,16 @@ func (s *ImportService) Create(ctx context.Context, userEmail string, input Crea
 					batch.Summary.ExpenseCents += tx.AmountCents
 				}
 			case domain.EntryTransferOut, domain.EntryTransferIn:
+				// The counter wallet must be a real, owned, active wallet in
+				// the same currency — a foreign or archived wallet would
+				// book money into someone else's account.
+				counter, err := ensureUsableWallet(txCtx, s.walletRepo, userEmail, row.CounterWalletID)
+				if err != nil {
+					return fmt.Errorf("row %s: counter wallet: %w", row.SourceReference, err)
+				}
+				if counter.Currency != wallet.Currency {
+					return fmt.Errorf("row %s: counter wallet currency %s does not match import currency %s", row.SourceReference, counter.Currency, wallet.Currency)
+				}
 				fromID, toID := wallet.ID, row.CounterWalletID
 				if row.Kind == domain.EntryTransferIn {
 					fromID, toID = row.CounterWalletID, wallet.ID

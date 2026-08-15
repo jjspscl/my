@@ -266,6 +266,15 @@
   prefers Web Crypto and falls back to lazily-loaded audited @noble/hashes;
   known-vector + insecure-origin regression tests added.
 
+### Release v1.2.2
+- Fix `No GCash statement layout detected` on real GCash exports: PDF.js
+  emits one text item per character, which the parser's whole-word header
+  detection could not see. Parser now reconstructs lines geometrically
+  (segments split by x-gaps), detects columns from reconstructed header
+  text, handles right-aligned amounts, and picks the standalone 13-digit
+  reference instead of a suffix inside a longer description number.
+  Character-level synthetic fixtures + local sample validation (207 rows).
+
 ## Remaining Work
 
 - Phase 6: Offline/sync backend — server sync context (push/pull/status),

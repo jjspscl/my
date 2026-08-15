@@ -11,7 +11,7 @@ End-user agent profile and skills for this server live in `agent/finance/` and `
 macOS/Linux, amd64/arm64:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/jjspscl/my/v1.2.1/scripts/install-mcp.sh | sh
+curl -fsSL https://raw.githubusercontent.com/jjspscl/my/v1.2.2/scripts/install-mcp.sh | sh
 ```
 
 Installer resolves latest GitHub release unless `MY_MCP_VERSION` is set, verifies the archive SHA-256 against `checksums.txt`, verifies the archive's GitHub build provenance when `gh` exists, installs to `~/.local/bin/my-mcp`, and prints configuration. It does not edit client configuration.

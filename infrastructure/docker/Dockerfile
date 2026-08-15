@@ -1,7 +1,11 @@
 # syntax=docker/dockerfile:1
 
 # ---- Stage 1: frontend build -------------------------------------------------
-FROM node:22-alpine AS web
+# The frontend is arch-independent, so build it on the BUILD platform instead
+# of the target platform: running node/pnpm under QEMU emulation (arm64 tag
+# builds on amd64 runners) is flaky and has crashed with SIGILL during
+# pnpm install. Only the Go stage and the runtime image target the platform.
+FROM --platform=$BUILDPLATFORM node:22-alpine AS web
 WORKDIR /src
 
 COPY . .

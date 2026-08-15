@@ -65,14 +65,39 @@ Runs `codex exec --json --output-last-message` with:
 
 Never used as an automatic fallback for API providers.
 
-## Web search connectors
+## Web search providers
 
-Outbound MCP clients (Brave, Exa, …) configured under
-`/api/v1/intelligence/connectors`. Only allowlisted tool names can be called,
-results are treated as untrusted evidence, and queries are redacted (digits —
-references, phones, amounts — stripped) before leaving the device. Search is
-always attempted when a connector is configured, but never raises confidence
-above the per-field ceilings.
+Outbound search for merchant corroboration, configured under
+`/api/v1/intelligence/connectors`. Providers are native HTTP adapters with
+fixed endpoints — no self-hosted MCP sidecars needed:
+
+| kind | endpoint (fixed) | auth header | free tier (2026-08) |
+|---|---|---|---|
+| `tavily` | `https://api.tavily.com/search` | `Authorization: Bearer` | 1,000 credits/month, no card |
+| `brave` | `https://api.search.brave.com/res/v1/web/search` | `X-Subscription-Token` | ~1,000 searches/month via $5 credit; card required |
+| `exa` | `https://api.exa.ai/search` | `x-api-key` (optional — keyless tier) | monthly credits + signup credits |
+| `custom_mcp` | user-provided Streamable HTTP endpoint | none / Bearer / `X-Api-Key` | provider-dependent (advanced) |
+
+Behavior:
+
+- **Query-all**: every enabled provider is queried for each weak merchant
+  claim (max 10 redacted queries per run; results capped at 5 per provider;
+  max 3 providers). One provider failing never fails analysis.
+- **Credentials** are encrypted (AES-256-GCM under `MY_LLM_MASTER_KEY`),
+  write-only, and travel only in headers — never in URLs. Keyless
+  connectors simply omit the header.
+- **Corroboration is evidence-based**: a response only counts as web evidence
+  when a result's title or URL host actually matches a merchant token
+  (snippets and provider relevance scores are ignored). Only matched
+  provider names are persisted as evidence — never queries, snippets, or
+  responses. Brave's storage terms are respected: no snippets are stored.
+- Web confidence ceiling stays `0.85`; transfer ownership never uses web
+  corroboration.
+- Custom MCP endpoints are SSRF-checked at configuration and every resolved
+  IP is re-validated at dial time; redirects are disabled everywhere.
+- Queries are redacted (digits — references, phones, amounts — stripped)
+  before leaving the device, and each query is sent to every enabled
+  provider.
 
 ## Confidence
 
@@ -99,9 +124,9 @@ fields and shows confidence badges for the rest.
 
 ## Schema
 
-Migration `012_intelligence.sql`:
+Migration `012_intelligence.sql` (+ `013_intelligence_search_connectors.sql`):
 `intelligence_provider_profiles`, `intelligence_credentials` (ciphertext
-only), `intelligence_mcp_connectors`, `intelligence_agent_runs`,
+only), `intelligence_mcp_connectors` (kind + auth type), `intelligence_agent_runs`,
 `intelligence_suggestions`.
 
 ## Safety checklist

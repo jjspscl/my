@@ -12,6 +12,8 @@ import (
 	financeinfra "github.com/jjspscl/my/internal/contexts/finance/infrastructure"
 	habitapp "github.com/jjspscl/my/internal/contexts/habits/application"
 	habitinfra "github.com/jjspscl/my/internal/contexts/habits/infrastructure"
+	intelapp "github.com/jjspscl/my/internal/contexts/intelligence/application"
+	intelinfra "github.com/jjspscl/my/internal/contexts/intelligence/infrastructure"
 	"github.com/jjspscl/my/internal/platform/config"
 	"github.com/jjspscl/my/internal/platform/database"
 	"github.com/jjspscl/my/internal/platform/mail"
@@ -41,6 +43,8 @@ type App struct {
 	Analytics        *financeapp.AnalyticsService
 	DerivedAnalytics *financeapp.DerivedAnalyticsService
 	Habit            *habitapp.HabitService
+	Intelligence     *intelapp.SettingsService
+	Analysis         *intelapp.AnalysisService
 
 	closeOnce sync.Once
 	closeErr  error
@@ -115,6 +119,24 @@ func NewWithOptions(cfg *config.Config, log *slog.Logger, opts Options) (*App, e
 	habitRepo := habitinfra.NewHabitRepoLibSQL(db)
 	habitSvc := habitapp.NewHabitService(habitRepo)
 
+	// Intelligence: confidence-gated LLM analysis. Fails closed: without a
+	// master key the encrypted credential store is unusable and analysis is
+	// unavailable.
+	var intelligenceSvc *intelapp.SettingsService
+	var analysisSvc *intelapp.AnalysisService
+	box, boxErr := intelinfra.NewSecretBox(cfg.LLMMasterKey)
+	if boxErr != nil && cfg.LLMEnabled {
+		return nil, boxErr
+	}
+	if box != nil {
+		intelRepo := intelinfra.NewIntelligenceRepoLibSQL(db)
+		runtime := intelapp.RuntimeConfig{LLMEnabled: cfg.LLMEnabled, CodexPath: cfg.LLMCodexPath}
+		intelligenceSvc = intelapp.NewSettingsService(intelRepo, box, runtime)
+		confidenceSvc := intelapp.NewConfidenceService()
+		gateway := intelinfra.NewMCPGateway()
+		analysisSvc = intelapp.NewAnalysisService(intelRepo, intelligenceSvc, confidenceSvc, gateway)
+	}
+
 	return &App{
 		Cfg:              cfg,
 		Log:              log,
@@ -133,6 +155,8 @@ func NewWithOptions(cfg *config.Config, log *slog.Logger, opts Options) (*App, e
 		Analytics:        analyticsSvc,
 		DerivedAnalytics: derivedAnalyticsSvc,
 		Habit:            habitSvc,
+		Intelligence:     intelligenceSvc,
+		Analysis:         analysisSvc,
 	}, nil
 }
 

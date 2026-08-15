@@ -31,6 +31,8 @@ Key runtime categories:
 - SMTP settings
 - default currency
 - MCP-related search/doc API keys
+- intelligence/LLM settings: `MY_LLM_ENABLED`, `MY_LLM_MASTER_KEY`,
+  `MY_LLM_CODEX_PATH` (see `docs/intelligence.md`)
 
 ## Docker
 

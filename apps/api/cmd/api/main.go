@@ -18,6 +18,7 @@ import (
 	accesshttp "github.com/jjspscl/my/internal/contexts/access/interfaces/http"
 	financehttp "github.com/jjspscl/my/internal/contexts/finance/interfaces/http"
 	habithttp "github.com/jjspscl/my/internal/contexts/habits/interfaces/http"
+	intelhttp "github.com/jjspscl/my/internal/contexts/intelligence/interfaces/http"
 	"github.com/jjspscl/my/internal/platform/backup"
 	"github.com/jjspscl/my/internal/platform/bootstrap"
 	"github.com/jjspscl/my/internal/platform/config"
@@ -107,6 +108,10 @@ func main() {
 	transferHandler := financehttp.NewTransferHandler(app.Transfer)
 	categoryHandler := financehttp.NewCategoryHandler(app.Category)
 	importHandler := financehttp.NewImportHandler(app.Import)
+	var intelligenceHandler *intelhttp.IntelligenceHandler
+	if app.Intelligence != nil {
+		intelligenceHandler = intelhttp.NewIntelligenceHandler(app.Intelligence, app.Analysis)
+	}
 	analyticsHandler := financehttp.NewAnalyticsHandler(app.Analytics, timeutil.New(app.Cfg.Location))
 	derivedAnalyticsHandler := financehttp.NewDerivedAnalyticsHandler(app.DerivedAnalytics, timeutil.New(app.Cfg.Location))
 
@@ -129,6 +134,7 @@ func main() {
 		transferHandler:         transferHandler,
 		categoryHandler:         categoryHandler,
 		importHandler:           importHandler,
+		intelligenceHandler:     intelligenceHandler,
 		analyticsHandler:        analyticsHandler,
 		derivedAnalyticsHandler: derivedAnalyticsHandler,
 		habitHandler:            habitHandler,

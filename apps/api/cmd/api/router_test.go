@@ -12,6 +12,7 @@ import (
 	accesshttp "github.com/jjspscl/my/internal/contexts/access/interfaces/http"
 	financehttp "github.com/jjspscl/my/internal/contexts/finance/interfaces/http"
 	habithttp "github.com/jjspscl/my/internal/contexts/habits/interfaces/http"
+	intelhttp "github.com/jjspscl/my/internal/contexts/intelligence/interfaces/http"
 	"github.com/jjspscl/my/internal/platform/backup"
 	"github.com/jjspscl/my/internal/platform/session"
 )
@@ -34,19 +35,20 @@ func testRouter(t *testing.T) http.Handler {
 	t.Helper()
 	authHandler := accesshttp.NewAuthHandler(nil, false, 0)
 	return newRouter(routerDeps{
-		log:             slog.Default(),
-		sessions:        routerTestSessions{},
-		authHandler:     authHandler,
-		backupHandler:   backup.NewHandler(nil),
-		magicLinkRate:   6,
-		financeHandler:  financehttp.NewFinanceHandler(nil, ""),
-		budgetHandler:   financehttp.NewBudgetHandler(nil),
-		billHandler:     financehttp.NewBillHandler(nil),
-		goalHandler:     financehttp.NewGoalHandler(nil),
-		walletHandler:   financehttp.NewWalletHandler(nil),
-		transferHandler: financehttp.NewTransferHandler(nil),
-		importHandler:   financehttp.NewImportHandler(nil),
-		habitHandler:    habithttp.NewHabitHandler(nil),
+		log:                 slog.Default(),
+		sessions:            routerTestSessions{},
+		authHandler:         authHandler,
+		backupHandler:       backup.NewHandler(nil),
+		magicLinkRate:       6,
+		financeHandler:      financehttp.NewFinanceHandler(nil, ""),
+		budgetHandler:       financehttp.NewBudgetHandler(nil),
+		billHandler:         financehttp.NewBillHandler(nil),
+		goalHandler:         financehttp.NewGoalHandler(nil),
+		walletHandler:       financehttp.NewWalletHandler(nil),
+		transferHandler:     financehttp.NewTransferHandler(nil),
+		importHandler:       financehttp.NewImportHandler(nil),
+		intelligenceHandler: intelhttp.NewIntelligenceHandler(nil, nil),
+		habitHandler:        habithttp.NewHabitHandler(nil),
 	})
 }
 

@@ -37,6 +37,9 @@ type Config struct {
 	MCPPort         string
 	MCPReadOnly     bool
 	MagicLinkRate   int
+	LLMEnabled      bool
+	LLMMasterKey    string
+	LLMCodexPath    string
 }
 
 // MCPAddr is the listen address for the dedicated MCP listener. It is separate
@@ -65,6 +68,10 @@ func Load() (*Config, error) {
 		return nil, fmt.Errorf("MY_MCP_TOKEN must be at least 32 characters when MY_MCP_ENABLED=true")
 	}
 	magicLinkRate, err := intEnv("MY_MAGIC_LINK_RATE", 6)
+	if err != nil {
+		return nil, err
+	}
+	llmEnabled, err := boolEnv("MY_LLM_ENABLED", false)
 	if err != nil {
 		return nil, err
 	}
@@ -111,6 +118,9 @@ func Load() (*Config, error) {
 		MCPPort:         defaultEnv("MY_MCP_PORT", "8081"),
 		MCPReadOnly:     mcpReadOnly,
 		MagicLinkRate:   magicLinkRate,
+		LLMEnabled:      llmEnabled,
+		LLMMasterKey:    os.Getenv("MY_LLM_MASTER_KEY"),
+		LLMCodexPath:    defaultEnv("MY_LLM_CODEX_PATH", ""),
 	}, nil
 }
 

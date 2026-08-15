@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { AlertTriangle, CheckCircle2, FileUp, Loader2, ShieldCheck } from 'lucide-react'
+import { AlertTriangle, Bot, CheckCircle2, FileUp, Loader2, ShieldCheck } from 'lucide-react'
 import { toast } from 'sonner'
 
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
@@ -29,9 +29,16 @@ import { classifyRow, type DraftKind } from '../../lib/gcash-classifier'
 import { parseCents } from '../../lib/gcash-text'
 import { useCreateImport, useImports, useRollbackImport } from '../../hooks/use-imports'
 import { useWallets } from '../../hooks/use-wallets'
+import { useRunAnalysis } from '../../hooks/use-intelligence'
 import type { CreateImport, ImportBatch, ImportRowDraft } from '../../schemas/import.schemas'
+import {
+  confidenceBucket,
+  type AnalysisResult,
+  type Suggestion,
+} from '../../schemas/intelligence.schemas'
 import type { Wallet } from '../../schemas/wallet.schemas'
 import { formatCents } from '../../lib/format'
+import { AiSettings } from './ai-settings'
 
 const MAX_FILE_BYTES = 20 * 1024 * 1024
 
@@ -50,6 +57,8 @@ interface WizardState {
   newWalletName: string
   openingBalanceCents: number
   importing: boolean
+  analyzing: boolean
+  analysis: AnalysisResult | null
   result: ImportBatch | null
 }
 
@@ -66,6 +75,8 @@ const initial: WizardState = {
   newWalletName: 'GCash',
   openingBalanceCents: 0,
   importing: false,
+  analyzing: false,
+  analysis: null,
   result: null,
 }
 
@@ -134,6 +145,7 @@ export function ImportWizard() {
   const createImport = useCreateImport()
   const { data: imports } = useImports()
   const rollback = useRollbackImport()
+  const runAnalysis = useRunAnalysis()
 
   const phpWallets = useMemo(
     () => (wallets ?? []).filter((w) => w.currency === 'PHP' && !w.archivedAt),
@@ -230,6 +242,45 @@ export function ImportWizard() {
     }
   }
 
+  /**
+   * Run the confidence-gated AI analysis over the current drafts and apply
+   * suggestions: preselect (>= 0.90) fields are applied directly, everything
+   * else is shown as provenance hints with their confidence scores.
+   */
+  const handleAnalyze = async () => {
+    const rows = state.drafts
+      .filter((d) => !d.excluded)
+      .slice(0, 50)
+      .map((d) => ({
+        sourceReference: d.sourceReference,
+        description: d.description,
+        amountCents: d.amountCents,
+        kind: d.kind,
+      }))
+    if (rows.length === 0) return
+    set({ analyzing: true })
+    try {
+      const result = await runAnalysis.mutateAsync({ scopeId: state.fingerprint, rows })
+      applySuggestions(result, state.drafts, phpWallets, (drafts) => set({ drafts }))
+      set({ analysis: result })
+      toast.success(
+        `${result.suggestions.length} suggestion${result.suggestions.length === 1 ? '' : 's'} ready — high-confidence ones were applied; the rest await your review.`,
+      )
+    } catch {
+      // toast handled by the hook
+    } finally {
+      set({ analyzing: false })
+    }
+  }
+
+  const suggestionMap = useMemo(() => {
+    const map: Record<string, Suggestion[]> = {}
+    for (const s of state.analysis?.suggestions ?? []) {
+      ;(map[s.targetKey] ??= []).push(s)
+    }
+    return map
+  }, [state.analysis])
+
   const reset = () => setState(initial)
 
   return (
@@ -283,6 +334,9 @@ export function ImportWizard() {
           drafts={state.drafts}
           wallets={phpWallets}
           statement={state.statement}
+          suggestionsByRef={suggestionMap}
+          analyzing={state.analyzing}
+          onAnalyze={handleAnalyze}
           onDrafts={(drafts) => set({ drafts })}
           onBack={() => set({ step: 'wallet' })}
           onImport={handleImport}
@@ -295,8 +349,58 @@ export function ImportWizard() {
       )}
 
       <ImportsHistory imports={imports ?? []} onRollback={(id) => rollback.mutate(id)} />
+
+      <AiSettings />
     </div>
   )
+}
+
+/**
+ * Apply analysis suggestions to drafts. Fields with calibrated confidence
+ * >= 0.90 are preselected (applied directly, still editable); lower scores
+ * are recorded as provenance hints shown in the review table.
+ */
+function applySuggestions(
+  result: AnalysisResult,
+  drafts: ImportRowDraft[],
+  wallets: Wallet[],
+  onDrafts: (d: ImportRowDraft[]) => void,
+) {
+  const walletByName = new Map(wallets.map((w) => [w.name.toLowerCase(), w.id]))
+  const next = drafts.map((draft) => {
+    const updated = { ...draft }
+    const suggestions = result.suggestions.filter((s) => s.targetKey === draft.sourceReference)
+
+    for (const s of suggestions) {
+      const preselect = confidenceBucket(s.confidence) === 'preselect'
+      if (s.field === 'category') {
+        if (preselect) {
+          updated.category = s.value
+        } else {
+          updated.suggestedCategory = s.value
+          updated.confidence = s.confidence
+          updated.rationale = s.rationale
+        }
+      } else if (s.field === 'transfer') {
+        const walletId = walletByName.get(s.value.toLowerCase())
+        if (preselect && walletId) {
+          updated.kind = s.value.toLowerCase().includes('wallet') && updated.kind === 'transfer_out'
+            ? 'transfer_out'
+            : updated.kind === 'income' || updated.kind === 'transfer_in'
+              ? 'transfer_in'
+              : 'transfer_out'
+          updated.counterWalletId = walletId
+        } else {
+          updated.confidence = Math.max(updated.confidence ?? 0, s.confidence)
+          updated.rationale = updated.rationale || s.rationale
+        }
+      } else if (s.field === 'merchant' && preselect && s.value) {
+        updated.description = s.value
+      }
+    }
+    return updated
+  })
+  onDrafts(next)
 }
 
 // ---- upload ----
@@ -483,6 +587,9 @@ function ReviewStep({
   drafts,
   wallets,
   statement,
+  suggestionsByRef,
+  analyzing,
+  onAnalyze,
   onDrafts,
   onBack,
   onImport,
@@ -491,12 +598,16 @@ function ReviewStep({
   drafts: ImportRowDraft[]
   wallets: Wallet[]
   statement: GcashParsedStatement
+  suggestionsByRef: Record<string, Suggestion[]>
+  analyzing: boolean
+  onAnalyze: () => void
   onDrafts: (d: ImportRowDraft[]) => void
   onBack: () => void
   onImport: () => void
   importing: boolean
 }) {
   const [filter, setFilter] = useState<'all' | 'transfers' | 'warnings' | 'excluded'>('all')
+  const hasSuggestions = Object.keys(suggestionsByRef).length > 0
 
   const warningRows = new Set(statement.warnings.map((w) => w.rowIndex))
   const visible = drafts.filter((d) => {
@@ -526,11 +637,30 @@ function ReviewStep({
             {f} ({f === 'all' ? drafts.length : f === 'transfers' ? drafts.filter((d) => d.kind.includes('transfer')).length : drafts.filter((d) => d.excluded).length})
           </Button>
         ))}
+        <Button
+          size="sm"
+          variant="outline"
+          className="h-7 px-2 text-xs"
+          onClick={onAnalyze}
+          disabled={analyzing || selected.length === 0}
+          title="Ask the configured LLM provider to suggest categories, merchants, and transfer mappings for the first 50 rows."
+        >
+          {analyzing ? <Loader2 className="mr-1 h-3 w-3 animate-spin" /> : <Bot className="mr-1 h-3 w-3" />}
+          {analyzing ? 'Analyzing…' : hasSuggestions ? 'Re-analyze' : 'Analyze with AI'}
+        </Button>
         <span className="ml-auto text-xs text-muted-foreground">
           {selected.length} of {drafts.length} rows will import ·{' '}
           {formatCents(selected.reduce((s, d) => s + (d.kind === 'expense' || d.kind === 'transfer_out' ? -d.amountCents : d.amountCents), 0))}
         </span>
       </div>
+
+      {hasSuggestions && (
+        <p className="text-xs text-muted-foreground">
+          <Bot className="mr-1 inline h-3 w-3" />
+          AI suggestions are preselect-only: green badges were applied and remain editable; amber badges need your
+          review.
+        </p>
+      )}
 
       {statement.warnings.length > 0 && (
         <Alert variant="default" className="border-amber-500/50">
@@ -583,6 +713,12 @@ function ReviewStep({
                         suggested: {KIND_LABELS[draft.suggestedKind]}
                       </p>
                     )}
+                    {draft.suggestedCategory && draft.suggestedCategory !== draft.category && (
+                      <p className="mt-0.5 text-[10px] text-muted-foreground">
+                        suggested: {draft.suggestedCategory}
+                      </p>
+                    )}
+                    <SuggestionBadges suggestions={suggestionsByRef[draft.sourceReference] ?? []} />
                   </TableCell>
                   <TableCell>
                     <Select
@@ -733,6 +869,32 @@ function ImportsHistory({ imports, onRollback }: { imports: ImportBatch[]; onRol
           </TableBody>
         </Table>
       </div>
+    </div>
+  )
+}
+
+function SuggestionBadges({ suggestions }: { suggestions: Suggestion[] }) {
+  if (suggestions.length === 0) return null
+  return (
+    <div className="mt-0.5 flex flex-wrap gap-1">
+      {suggestions.map((s) => {
+        const bucket = confidenceBucket(s.confidence)
+        const cls =
+          bucket === 'preselect'
+            ? 'border-green-600/40 text-green-700'
+            : bucket === 'review'
+              ? 'border-amber-500/50 text-amber-700'
+              : 'border-muted text-muted-foreground'
+        return (
+          <span
+            key={s.id}
+            title={`${s.field}: ${s.value} — ${s.rationale ?? ''} (${s.evidence.map((e) => e.source).join(', ')})`}
+            className={`rounded border px-1 py-px text-[10px] ${cls}`}
+          >
+            {s.field === 'transfer' ? '↔' : s.field === 'merchant' ? '◈' : '#'} {s.value} · {Math.round(s.confidence * 100)}%
+          </span>
+        )
+      })}
     </div>
   )
 }

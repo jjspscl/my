@@ -113,9 +113,9 @@ func (r *IntelligenceRepoLibSQL) DeleteCredential(ctx context.Context, subjectTy
 func (r *IntelligenceRepoLibSQL) SaveConnector(ctx context.Context, c *domain.MCPConnector) error {
 	allowlist, _ := json.Marshal(c.Allowlist)
 	_, err := executor(ctx, r.db).ExecContext(ctx,
-		`INSERT INTO intelligence_mcp_connectors (id, user_email, name, endpoint, enabled, allowlist_json, timeout_ms, created_at, updated_at)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-		c.ID, c.UserEmail, c.Name, c.Endpoint, boolInt(c.Enabled), string(allowlist),
+		`INSERT INTO intelligence_mcp_connectors (id, user_email, name, endpoint, connector_kind, auth_type, enabled, allowlist_json, timeout_ms, created_at, updated_at)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+		c.ID, c.UserEmail, c.Name, c.Endpoint, c.Kind, c.AuthType, boolInt(c.Enabled), string(allowlist),
 		int(c.Timeout.Milliseconds()), c.CreatedAt.Format(time.RFC3339), c.UpdatedAt.Format(time.RFC3339))
 	if err != nil {
 		return fmt.Errorf("save connector: %w", err)
@@ -125,14 +125,14 @@ func (r *IntelligenceRepoLibSQL) SaveConnector(ctx context.Context, c *domain.MC
 
 func (r *IntelligenceRepoLibSQL) FindConnector(ctx context.Context, id, userEmail string) (*domain.MCPConnector, error) {
 	row := executor(ctx, r.db).QueryRowContext(ctx,
-		`SELECT id, user_email, name, endpoint, enabled, allowlist_json, timeout_ms, created_at, updated_at
+		`SELECT id, user_email, name, endpoint, connector_kind, auth_type, enabled, allowlist_json, timeout_ms, created_at, updated_at
 		 FROM intelligence_mcp_connectors WHERE id = ? AND user_email = ?`, id, userEmail)
 	return scanConnector(row)
 }
 
 func (r *IntelligenceRepoLibSQL) ListConnectors(ctx context.Context, userEmail string) ([]*domain.MCPConnector, error) {
 	rows, err := executor(ctx, r.db).QueryContext(ctx,
-		`SELECT id, user_email, name, endpoint, enabled, allowlist_json, timeout_ms, created_at, updated_at
+		`SELECT id, user_email, name, endpoint, connector_kind, auth_type, enabled, allowlist_json, timeout_ms, created_at, updated_at
 		 FROM intelligence_mcp_connectors WHERE user_email = ? ORDER BY name`, userEmail)
 	if err != nil {
 		return nil, fmt.Errorf("list connectors: %w", err)
@@ -152,9 +152,9 @@ func (r *IntelligenceRepoLibSQL) ListConnectors(ctx context.Context, userEmail s
 func (r *IntelligenceRepoLibSQL) UpdateConnector(ctx context.Context, c *domain.MCPConnector) error {
 	allowlist, _ := json.Marshal(c.Allowlist)
 	_, err := executor(ctx, r.db).ExecContext(ctx,
-		`UPDATE intelligence_mcp_connectors SET name=?, endpoint=?, enabled=?, allowlist_json=?, timeout_ms=?, updated_at=?
+		`UPDATE intelligence_mcp_connectors SET name=?, endpoint=?, connector_kind=?, auth_type=?, enabled=?, allowlist_json=?, timeout_ms=?, updated_at=?
 		 WHERE id = ? AND user_email = ?`,
-		c.Name, c.Endpoint, boolInt(c.Enabled), string(allowlist), int(c.Timeout.Milliseconds()),
+		c.Name, c.Endpoint, c.Kind, c.AuthType, boolInt(c.Enabled), string(allowlist), int(c.Timeout.Milliseconds()),
 		c.UpdatedAt.Format(time.RFC3339), c.ID, c.UserEmail)
 	if err != nil {
 		return fmt.Errorf("update connector: %w", err)
@@ -333,7 +333,7 @@ func scanCredential(row scanner) (*domain.Credential, error) {
 	if err := row.Scan(&c.ID, &c.UserEmail, &c.SubjectType, &c.SubjectID, &c.KeyVersion,
 		&c.Ciphertext, &createdAtStr, &updatedAtStr); err != nil {
 		if err == sql.ErrNoRows {
-			return nil, fmt.Errorf("credential not found")
+			return nil, nil // absent credential == keyless connector/provider
 		}
 		return nil, fmt.Errorf("scan credential: %w", err)
 	}
@@ -351,7 +351,7 @@ func scanConnector(row scanner) (*domain.MCPConnector, error) {
 	var c domain.MCPConnector
 	var allowlist, createdAtStr, updatedAtStr string
 	var enabled, timeoutMS int
-	if err := row.Scan(&c.ID, &c.UserEmail, &c.Name, &c.Endpoint, &enabled, &allowlist,
+	if err := row.Scan(&c.ID, &c.UserEmail, &c.Name, &c.Endpoint, &c.Kind, &c.AuthType, &enabled, &allowlist,
 		&timeoutMS, &createdAtStr, &updatedAtStr); err != nil {
 		if err == sql.ErrNoRows {
 			return nil, fmt.Errorf("connector not found")

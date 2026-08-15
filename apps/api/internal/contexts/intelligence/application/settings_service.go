@@ -166,20 +166,34 @@ func (s *SettingsService) TestProvider(ctx context.Context, userEmail, id string
 
 type CreateConnectorInput struct {
 	Name      string
-	Endpoint  string
+	Kind      string // tavily | brave | exa | custom_mcp
+	Endpoint  string // custom_mcp only
+	AuthType  string // none | bearer | x-api-key (custom_mcp)
 	Allowlist []string
 	TimeoutMS int
-	Token     string // optional
+	Token     string // optional; keyless connectors may omit it
 }
 
 func (s *SettingsService) CreateConnector(ctx context.Context, userEmail string, in CreateConnectorInput) (*domain.MCPConnector, error) {
 	timeout := ms(in.TimeoutMS, 15000)
-	c, err := domain.NewMCPConnector(uuid.New().String(), userEmail, in.Name, in.Endpoint, in.Allowlist, timeout)
+	kind := in.Kind
+	if kind == "" {
+		kind = domain.ConnectorKindCustomMCP
+	}
+	authType := in.AuthType
+	if authType == "" {
+		authType = domain.ConnectorAuthBearer
+	}
+	c, err := domain.NewMCPConnector(uuid.New().String(), userEmail, in.Name, kind, in.Endpoint, authType, in.Allowlist, timeout)
 	if err != nil {
 		return nil, err
 	}
-	if err := infrastructure.ValidateEndpoint(c.Endpoint, false); err != nil {
-		return nil, fmt.Errorf("endpoint: %w", err)
+	// Native providers use fixed endpoints; only custom MCP endpoints are
+	// user-controlled and need the SSRF policy.
+	if kind == domain.ConnectorKindCustomMCP {
+		if err := infrastructure.ValidateEndpoint(c.Endpoint, false); err != nil {
+			return nil, fmt.Errorf("endpoint: %w", err)
+		}
 	}
 	if err := s.repo.SaveConnector(ctx, c); err != nil {
 		return nil, err
@@ -199,7 +213,9 @@ func (s *SettingsService) ListConnectors(ctx context.Context, userEmail string) 
 type UpdateConnectorInput struct {
 	ID        string
 	Name      string
+	Kind      string
 	Endpoint  string
+	AuthType  string
 	Allowlist []string
 	TimeoutMS int
 	Enabled   bool
@@ -211,12 +227,22 @@ func (s *SettingsService) UpdateConnector(ctx context.Context, userEmail string,
 		return nil, err
 	}
 	timeout := ms(in.TimeoutMS, int(existing.Timeout.Milliseconds()))
-	c, err := domain.NewMCPConnector(existing.ID, userEmail, in.Name, in.Endpoint, in.Allowlist, timeout)
+	kind := in.Kind
+	if kind == "" {
+		kind = existing.Kind
+	}
+	authType := in.AuthType
+	if authType == "" {
+		authType = existing.AuthType
+	}
+	c, err := domain.NewMCPConnector(existing.ID, userEmail, in.Name, kind, in.Endpoint, authType, in.Allowlist, timeout)
 	if err != nil {
 		return nil, err
 	}
-	if err := infrastructure.ValidateEndpoint(c.Endpoint, false); err != nil {
-		return nil, fmt.Errorf("endpoint: %w", err)
+	if kind == domain.ConnectorKindCustomMCP {
+		if err := infrastructure.ValidateEndpoint(c.Endpoint, false); err != nil {
+			return nil, fmt.Errorf("endpoint: %w", err)
+		}
 	}
 	c.Enabled = in.Enabled
 	c.CreatedAt = existing.CreatedAt
@@ -233,6 +259,37 @@ func (s *SettingsService) DeleteConnector(ctx context.Context, userEmail, id str
 	return s.repo.DeleteCredential(ctx, "connector", id)
 }
 
+// ActiveConnector pairs a connector with its decrypted credential. Connectors
+// without a stored credential (keyless free tiers) yield an empty credential,
+// not an error; connectors that cannot be decrypted (missing master key) are
+// skipped.
+type ActiveConnector struct {
+	Connector  *domain.MCPConnector
+	Credential string
+}
+
+// ActiveConnectors lists enabled, allowlisted connectors with their
+// credentials for web corroboration.
+func (s *SettingsService) ActiveConnectors(ctx context.Context, userEmail string) []ActiveConnector {
+	connectors, err := s.repo.ListConnectors(ctx, userEmail)
+	if err != nil {
+		return nil
+	}
+	var out []ActiveConnector
+	for i := range connectors {
+		c := connectors[i]
+		if !c.Enabled || len(c.Allowlist) == 0 {
+			continue // an allowlist-less connector can never be used safely
+		}
+		cred, err := s.decryptCredential(ctx, "connector", c.ID)
+		if err != nil {
+			continue
+		}
+		out = append(out, ActiveConnector{Connector: c, Credential: cred})
+	}
+	return out
+}
+
 // TestConnector dials the connector and invokes the first allowlisted tool
 // (read-only probe).
 func (s *SettingsService) TestConnector(ctx context.Context, userEmail, id string) error {
@@ -247,11 +304,8 @@ func (s *SettingsService) TestConnector(ctx context.Context, userEmail, id strin
 	if err != nil {
 		return fmt.Errorf("credential: %w", err)
 	}
-	gateway := infrastructure.NewMCPGateway()
-	_, err = gateway.Call(ctx, c, cred, infrastructure.ToolCall{
-		Name:      c.Allowlist[0],
-		Arguments: map[string]any{"query": "test"},
-	})
+	gateway := infrastructure.NewSearchService()
+	_, err = gateway.Search(ctx, c, cred, "test")
 	return err
 }
 
@@ -268,6 +322,9 @@ func (s *SettingsService) decryptCredential(ctx context.Context, subjectType, su
 	cred, err := s.repo.FindCredential(ctx, subjectType, subjectID)
 	if err != nil {
 		return "", err
+	}
+	if cred == nil {
+		return "", nil // keyless connector (no stored credential)
 	}
 	return s.box.Decrypt(cred.Ciphertext)
 }

@@ -239,7 +239,9 @@ func (h *IntelligenceHandler) TestProvider(w http.ResponseWriter, r *http.Reques
 type connectorResponse struct {
 	ID        string   `json:"id"`
 	Name      string   `json:"name"`
+	Kind      string   `json:"kind"`
 	Endpoint  string   `json:"endpoint"`
+	AuthType  string   `json:"authType"`
 	Enabled   bool     `json:"enabled"`
 	Allowlist []string `json:"allowlist"`
 	TimeoutMS int      `json:"timeoutMs"`
@@ -250,7 +252,9 @@ type connectorResponse struct {
 
 type createConnectorRequest struct {
 	Name      string   `json:"name"`
+	Kind      string   `json:"kind"`
 	Endpoint  string   `json:"endpoint"`
+	AuthType  string   `json:"authType"`
 	Allowlist []string `json:"allowlist"`
 	TimeoutMS int      `json:"timeoutMs,omitempty"`
 	Token     string   `json:"token,omitempty"`
@@ -258,7 +262,9 @@ type createConnectorRequest struct {
 
 type updateConnectorRequest struct {
 	Name      string   `json:"name"`
+	Kind      string   `json:"kind"`
 	Endpoint  string   `json:"endpoint"`
+	AuthType  string   `json:"authType"`
 	Allowlist []string `json:"allowlist"`
 	TimeoutMS int      `json:"timeoutMs,omitempty"`
 	Enabled   bool     `json:"enabled"`
@@ -275,9 +281,9 @@ func (h *IntelligenceHandler) ListConnectors(w http.ResponseWriter, r *http.Requ
 	for _, c := range connectors {
 		hasToken := h.settings.HasCredential(r.Context(), "connector", c.ID)
 		resp = append(resp, connectorResponse{
-			ID: c.ID, Name: c.Name, Endpoint: c.Endpoint, Enabled: c.Enabled,
-			Allowlist: c.Allowlist, TimeoutMS: int(c.Timeout.Milliseconds()), HasToken: hasToken,
-			CreatedAt: c.CreatedAt.Format(time.RFC3339), UpdatedAt: c.UpdatedAt.Format(time.RFC3339),
+			ID: c.ID, Name: c.Name, Kind: c.Kind, Endpoint: c.Endpoint, AuthType: c.AuthType,
+			Enabled: c.Enabled, Allowlist: c.Allowlist, TimeoutMS: int(c.Timeout.Milliseconds()),
+			HasToken: hasToken, CreatedAt: c.CreatedAt.Format(time.RFC3339), UpdatedAt: c.UpdatedAt.Format(time.RFC3339),
 		})
 	}
 	response.WriteJSON(w, http.StatusOK, apiResp{Data: resp})
@@ -291,7 +297,8 @@ func (h *IntelligenceHandler) CreateConnector(w http.ResponseWriter, r *http.Req
 		return
 	}
 	c, err := h.settings.CreateConnector(r.Context(), email, application.CreateConnectorInput{
-		Name: req.Name, Endpoint: req.Endpoint, Allowlist: req.Allowlist, TimeoutMS: req.TimeoutMS, Token: req.Token,
+		Name: req.Name, Kind: req.Kind, Endpoint: req.Endpoint, AuthType: req.AuthType,
+		Allowlist: req.Allowlist, TimeoutMS: req.TimeoutMS, Token: req.Token,
 	})
 	if err != nil {
 		response.WriteError(w, r, http.StatusBadRequest, err.Error(), err)
@@ -309,7 +316,8 @@ func (h *IntelligenceHandler) UpdateConnector(w http.ResponseWriter, r *http.Req
 		return
 	}
 	c, err := h.settings.UpdateConnector(r.Context(), email, application.UpdateConnectorInput{
-		ID: id, Name: req.Name, Endpoint: req.Endpoint, Allowlist: req.Allowlist, TimeoutMS: req.TimeoutMS, Enabled: req.Enabled,
+		ID: id, Name: req.Name, Kind: req.Kind, Endpoint: req.Endpoint, AuthType: req.AuthType,
+		Allowlist: req.Allowlist, TimeoutMS: req.TimeoutMS, Enabled: req.Enabled,
 	})
 	if err != nil {
 		response.WriteError(w, r, http.StatusBadRequest, err.Error(), err)

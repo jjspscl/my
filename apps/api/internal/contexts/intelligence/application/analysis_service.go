@@ -4,8 +4,11 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"net/url"
 	"regexp"
+	"sort"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/google/uuid"
@@ -24,12 +27,12 @@ type AnalysisService struct {
 	repo       domain.IntelligenceRepository
 	settings   *SettingsService
 	confidence *ConfidenceService
-	gateway    *infrastructure.MCPGateway
+	search     infrastructure.SearchGateway
 	enabled    bool // MY_LLM_ENABLED && master key configured
 }
 
-func NewAnalysisService(repo domain.IntelligenceRepository, settings *SettingsService, confidence *ConfidenceService, gateway *infrastructure.MCPGateway, enabled bool) *AnalysisService {
-	return &AnalysisService{repo: repo, settings: settings, confidence: confidence, gateway: gateway, enabled: enabled}
+func NewAnalysisService(repo domain.IntelligenceRepository, settings *SettingsService, confidence *ConfidenceService, search infrastructure.SearchGateway, enabled bool) *AnalysisService {
+	return &AnalysisService{repo: repo, settings: settings, confidence: confidence, search: search, enabled: enabled}
 }
 
 // Enabled reports whether analysis is available at runtime.
@@ -91,22 +94,10 @@ func (s *AnalysisService) AnalyzeImport(ctx context.Context, userEmail, scopeID 
 	}
 	started := time.Now()
 
-	// Search connectors are consulted opportunistically when configured.
-	connectors, _ := s.repo.ListConnectors(ctx, userEmail)
-	var activeConnector *domain.MCPConnector
-	var connectorCred string
-	for i := range connectors {
-		if !connectors[i].Enabled || len(connectors[i].Allowlist) == 0 {
-			continue // an allowlist-less connector can never be used safely
-		}
-		cred, err := s.settings.decryptCredential(ctx, "connector", connectors[i].ID)
-		if err != nil {
-			continue
-		}
-		activeConnector = connectors[i]
-		connectorCred = cred
-		break
-	}
+	// Search connectors are consulted for every enabled provider (query-all);
+	// each connector carries its own encrypted credential, or none for
+	// keyless tiers.
+	conns := s.settings.ActiveConnectors(ctx, userEmail)
 
 	// Persist as running so interrupted runs are visible as such. The input
 	// summary holds ONLY counts and hints — never the raw descriptions or
@@ -161,12 +152,14 @@ func (s *AnalysisService) AnalyzeImport(ctx context.Context, userEmail, scopeID 
 	}
 
 	// Web corroboration for weak merchant claims (redacted queries only).
-	// The decision is based on the CALIBRATED score (model evidence only at
-	// this point), never the model's self-rated confidence.
-	if activeConnector != nil {
-		searches := 0
+	// Every enabled provider is queried concurrently for each claim; the
+	// decision is based on the CALIBRATED score (model evidence only at this
+	// point), never the model's self-rated confidence. A successful call that
+	// returns no matching results is NOT evidence.
+	if len(conns) > 0 {
+		queries := 0
 		for i := range parsed {
-			if parsed[i].merchant == "" || searches >= MaxSearchesPerRun {
+			if parsed[i].merchant == "" || queries >= MaxSearchesPerRun {
 				continue
 			}
 			modelOnly := s.confidence.Calibrate(domain.FieldMerchant, []domain.Evidence{
@@ -179,14 +172,14 @@ func (s *AnalysisService) AnalyzeImport(ctx context.Context, userEmail, scopeID 
 			if query == "" {
 				continue
 			}
-			tool := activeConnector.Allowlist[0]
-			if _, err := s.gateway.Call(ctx, activeConnector, connectorCred, infrastructure.ToolCall{
-				Name:      tool,
-				Arguments: map[string]any{"query": query},
-			}); err == nil {
-				parsed[i].evidence = append(parsed[i].evidence, domain.Evidence{Source: domain.EvidenceWeb, Detail: "search result for " + query})
+			queries++
+			matched := s.corroborate(ctx, conns, query)
+			if len(matched) > 0 {
+				parsed[i].evidence = append(parsed[i].evidence, domain.Evidence{
+					Source: domain.EvidenceWeb,
+					Detail: "web corroboration: " + strings.Join(matched, ", "),
+				})
 				searchedKeys = append(searchedKeys, query)
-				searches++
 			}
 		}
 	}
@@ -395,6 +388,102 @@ func redactQuery(merchant string) string {
 		q = q[:60]
 	}
 	return q
+}
+
+// corroborate queries every enabled connector concurrently and returns the
+// names of the connectors whose results actually match the merchant tokens.
+// Provider failures are swallowed: one provider must never fail analysis,
+// and a response that merely exists is not corroboration.
+func (s *AnalysisService) corroborate(ctx context.Context, conns []ActiveConnector, query string) []string {
+	tokens := merchantTokens(query)
+	if len(tokens) == 0 {
+		return nil
+	}
+	var mu sync.Mutex
+	matched := map[string]bool{}
+	var wg sync.WaitGroup
+	for _, ac := range conns {
+		wg.Add(1)
+		go func(ac ActiveConnector) {
+			defer wg.Done()
+			res, err := s.search.Search(ctx, ac.Connector, ac.Credential, query)
+			if err != nil {
+				return
+			}
+			if hitsMerchant(tokens, res) {
+				mu.Lock()
+				matched[ac.Connector.Name] = true
+				mu.Unlock()
+			}
+		}(ac)
+	}
+	wg.Wait()
+	names := make([]string, 0, len(matched))
+	for name := range matched {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	return names
+}
+
+var merchantTokenRe = regexp.MustCompile(`[^a-z0-9]+`)
+
+// merchantStopwords are words too generic to corroborate a merchant claim.
+var merchantStopwords = map[string]bool{
+	"the": true, "and": true, "for": true, "with": true, "via": true, "pay": true,
+	"payment": true, "you": true, "your": true, "from": true, "this": true,
+	"transaction": true, "ref": true, "bank": true, "transfer": true, "fee": true,
+}
+
+// merchantTokens normalizes a redacted query into distinct, meaningful tokens.
+// Digit-only tokens are dropped (defense in depth: redaction already strips
+// digits, but a token must never look like an identifier).
+func merchantTokens(query string) []string {
+	words := merchantTokenRe.Split(strings.ToLower(query), -1)
+	var out []string
+	seen := map[string]bool{}
+	for _, w := range words {
+		if len(w) < 3 || merchantStopwords[w] || seen[w] || isDigits(w) {
+			continue
+		}
+		seen[w] = true
+		out = append(out, w)
+	}
+	return out
+}
+
+func isDigits(s string) bool {
+	for _, r := range s {
+		if r < '0' || r > '9' {
+			return false
+		}
+	}
+	return true
+}
+
+// hitsMerchant reports whether any result's title or URL host contains a
+// merchant token. Snippets are deliberately not used for the match decision
+// — they are too noisy — and provider-reported relevance is ignored entirely
+// (it never raises calibrated confidence by itself).
+func hitsMerchant(tokens []string, results []domain.SearchResult) bool {
+	for _, r := range results {
+		title := strings.ToLower(r.Title)
+		host := hostnameOf(r.URL)
+		for _, t := range tokens {
+			if strings.Contains(title, t) || strings.Contains(host, t) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+func hostnameOf(raw string) string {
+	u, err := url.Parse(raw)
+	if err != nil {
+		return ""
+	}
+	return strings.ToLower(u.Hostname())
 }
 
 // walletHints surfaces owned-wallet names when they appear in descriptions so

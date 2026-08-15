@@ -72,7 +72,7 @@ func TestAnalysisEndToEndWithRealProvider(t *testing.T) {
 	box, err := infra.NewSecretBox("test-master-key-32-bytes-minimum!")
 	require.NoError(t, err)
 	settings := NewSettingsService(repo, box, RuntimeConfig{LLMEnabled: true})
-	analysis := NewAnalysisService(repo, settings, NewConfidenceService(), infra.NewMCPGateway(), true)
+	analysis := NewAnalysisService(repo, settings, NewConfidenceService(), infra.NewSearchService(), true)
 
 	// Configure a provider + credential (the fake endpoint is loopback, so
 	// AllowLocal must be true).
@@ -141,7 +141,7 @@ func TestAnalysisRejectsUnknownReferences(t *testing.T) {
 	repo := newIntelDB(t)
 	box, _ := infra.NewSecretBox("test-master-key-32-bytes-minimum!")
 	settings := NewSettingsService(repo, box, RuntimeConfig{LLMEnabled: true})
-	analysis := NewAnalysisService(repo, settings, NewConfidenceService(), infra.NewMCPGateway(), true)
+	analysis := NewAnalysisService(repo, settings, NewConfidenceService(), infra.NewSearchService(), true)
 
 	_, err := settings.CreateProvider(ctx, "you@example.com", CreateProviderInput{
 		Name: "Fake", ProviderType: domain.ProviderOpenAICompatible, BaseURL: srv.URL,
@@ -163,13 +163,55 @@ func TestAnalysisFailsClosedWithoutProvider(t *testing.T) {
 	repo := newIntelDB(t)
 	box, _ := infra.NewSecretBox("test-master-key-32-bytes-minimum!")
 	settings := NewSettingsService(repo, box, RuntimeConfig{LLMEnabled: true})
-	analysis := NewAnalysisService(repo, settings, NewConfidenceService(), infra.NewMCPGateway(), true)
+	analysis := NewAnalysisService(repo, settings, NewConfidenceService(), infra.NewSearchService(), true)
 
 	_, err := analysis.AnalyzeImport(ctx, "you@example.com", "fingerprint-3", []AnalysisRow{
 		{SourceReference: "REF1", Description: "x", AmountCents: 1},
 	})
 	require.Error(t, err)
 	assert.Contains(t, err.Error(), "no enabled provider")
+}
+
+func TestConnectorKindsAndKeylessActiveConnectors(t *testing.T) {
+	ctx := context.Background()
+	repo := newIntelDB(t)
+	box, _ := infra.NewSecretBox("test-master-key-32-bytes-minimum!")
+	settings := NewSettingsService(repo, box, RuntimeConfig{LLMEnabled: true})
+
+	// Native connector: no endpoint needed, credential optional but stored.
+	_, err := settings.CreateConnector(ctx, "you@example.com", CreateConnectorInput{
+		Name: "Tavily", Kind: domain.ConnectorKindTavily, Allowlist: []string{"tavily-search"}, Token: "tvly-secret",
+	})
+	require.NoError(t, err)
+
+	// Keyless native connector (Exa free tier): credential may be absent.
+	_, err = settings.CreateConnector(ctx, "you@example.com", CreateConnectorInput{
+		Name: "Exa", Kind: domain.ConnectorKindExa, Allowlist: []string{"web_search_exa"},
+	})
+	require.NoError(t, err)
+
+	// Custom MCP requires a validated endpoint (loopback rejected).
+	_, err = settings.CreateConnector(ctx, "you@example.com", CreateConnectorInput{
+		Name: "Local MCP", Kind: domain.ConnectorKindCustomMCP, Endpoint: "http://127.0.0.1:9999/mcp",
+		Allowlist: []string{"brave_web_search"},
+	})
+	require.Error(t, err)
+
+	// Unknown kind rejected.
+	_, err = settings.CreateConnector(ctx, "you@example.com", CreateConnectorInput{
+		Name: "Weird", Kind: "weird", Allowlist: []string{"x"},
+	})
+	require.Error(t, err)
+
+	// ActiveConnectors: both natives listed; keyless one carries "".
+	act := settings.ActiveConnectors(ctx, "you@example.com")
+	require.Len(t, act, 2)
+	creds := map[string]string{}
+	for _, a := range act {
+		creds[a.Connector.Name] = a.Credential
+	}
+	assert.Equal(t, "tvly-secret", creds["Tavily"])
+	assert.Equal(t, "", creds["Exa"])
 }
 
 func findSuggestion(list []*domain.Suggestion, target, field string) *domain.Suggestion {

@@ -43,10 +43,18 @@ export const UpdateProviderSchema = z.object({
 })
 export type UpdateProvider = z.infer<typeof UpdateProviderSchema>
 
+export const ConnectorKindSchema = z.enum(['tavily', 'brave', 'exa', 'custom_mcp'])
+export type ConnectorKind = z.infer<typeof ConnectorKindSchema>
+
+export const ConnectorAuthSchema = z.enum(['none', 'bearer', 'x-api-key'])
+export type ConnectorAuth = z.infer<typeof ConnectorAuthSchema>
+
 export const ConnectorSchema = z.object({
   id: z.string(),
   name: z.string(),
+  kind: ConnectorKindSchema,
   endpoint: z.string(),
+  authType: ConnectorAuthSchema,
   enabled: z.boolean(),
   allowlist: z.array(z.string()),
   timeoutMs: z.number().int(),
@@ -58,7 +66,9 @@ export type Connector = z.infer<typeof ConnectorSchema>
 
 export const CreateConnectorSchema = z.object({
   name: z.string().min(1),
-  endpoint: z.string().url(),
+  kind: ConnectorKindSchema,
+  endpoint: z.string().optional(),
+  authType: ConnectorAuthSchema.optional(),
   allowlist: z.array(z.string()).min(1),
   timeoutMs: z.number().int().optional(),
   token: z.string().optional(),
@@ -67,7 +77,9 @@ export type CreateConnector = z.infer<typeof CreateConnectorSchema>
 
 export const UpdateConnectorSchema = z.object({
   name: z.string().min(1),
-  endpoint: z.string().url(),
+  kind: ConnectorKindSchema,
+  endpoint: z.string().optional(),
+  authType: ConnectorAuthSchema.optional(),
   allowlist: z.array(z.string()).min(1),
   timeoutMs: z.number().int().optional(),
   enabled: z.boolean(),

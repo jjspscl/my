@@ -36,7 +36,7 @@ import {
   useTestConnector,
   useTestProvider,
 } from '../hooks/use-intelligence'
-import type { Connector, ProviderProfile } from '../schemas/intelligence.schemas'
+import type { Connector, ConnectorAuth, ConnectorKind, ProviderProfile } from '../schemas/intelligence.schemas'
 
 const PROVIDER_TYPES = [
   { value: 'openai', label: 'OpenAI (Responses / Codex models)' },
@@ -58,7 +58,7 @@ export function AiSettings() {
         <AlertDescription className="text-xs space-y-1">
           <p>• Suggestions are preselect-only: the agent never writes to your finances; you confirm the import.</p>
           <p>• Credentials are encrypted (AES-256-GCM) and never returned by the API.</p>
-          <p>• Web search connectors (Brave/Exa MCP) are used with redacted queries (no references, phones, amounts).</p>
+          <p>• Web search providers (Tavily/Brave/Exa/Custom MCP) are used with redacted queries (no references, phones, amounts); each query goes to every enabled provider.</p>
           <p>• Codex CLI runs in a read-only sandbox with MCP, hooks, memory, and web search disabled.</p>
         </AlertDescription>
       </Alert>
@@ -250,6 +250,20 @@ function ProviderRow({
 
 // ---- connectors ----
 
+const CONNECTOR_KINDS = [
+  { value: 'tavily', label: 'Tavily (recommended)', note: '1,000 free credits/month, no card — bearer key' },
+  { value: 'brave', label: 'Brave Search', note: '$5 free credits/month; card required — X-Subscription-Token' },
+  { value: 'exa', label: 'Exa', note: 'free monthly credits; key optional (keyless tier)' },
+  { value: 'custom_mcp', label: 'Custom MCP (advanced)', note: 'self-hosted or any Streamable HTTP MCP endpoint' },
+]
+
+const CONNECTOR_TOOLS = {
+  tavily: 'tavily-search',
+  brave: 'brave_web_search',
+  exa: 'web_search_exa',
+  custom_mcp: 'brave_web_search',
+} as const
+
 function ConnectorsSection() {
   const { data: connectors } = useConnectors()
   const createConnector = useCreateConnector()
@@ -258,18 +272,24 @@ function ConnectorsSection() {
   const testConnector = useTestConnector()
 
   const [showForm, setShowForm] = useState(false)
+  const [kind, setKind] = useState<ConnectorKind>('tavily')
   const [name, setName] = useState('')
   const [endpoint, setEndpoint] = useState('')
-  const [allowlist, setAllowlist] = useState('brave_web_search')
+  const [authType, setAuthType] = useState<ConnectorAuth>('bearer')
+  const [allowlist, setAllowlist] = useState<string>(CONNECTOR_TOOLS.tavily)
   const [token, setToken] = useState('')
   const [saving, setSaving] = useState(false)
+
+  const isNative = kind !== 'custom_mcp'
 
   const handleCreate = async () => {
     setSaving(true)
     try {
       await createConnector.mutateAsync({
         name,
-        endpoint,
+        kind,
+        endpoint: isNative ? undefined : endpoint,
+        authType: isNative ? undefined : authType,
         allowlist: allowlist.split(',').map((s) => s.trim()).filter(Boolean),
         token: token || undefined,
       })
@@ -285,39 +305,89 @@ function ConnectorsSection() {
     }
   }
 
+  const selectedKind = CONNECTOR_KINDS.find((k) => k.value === kind)
+
   return (
     <div className="space-y-3">
       <div className="flex items-center justify-between">
         <h4 className="text-xs font-medium uppercase tracking-wide text-muted-foreground">
-          Web search connectors (MCP)
+          Web search providers
         </h4>
         <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => setShowForm((v) => !v)}>
-          <Plus className="mr-1 h-3 w-3" /> Add connector
+          <Plus className="mr-1 h-3 w-3" /> Add provider
         </Button>
       </div>
+
+      <p className="text-xs text-muted-foreground">
+        Every enabled provider is queried for weak merchant claims. Each redacted query (no references,
+        phones, or amounts) is sent to every enabled provider — results never raise confidence above the
+        web ceiling and are never persisted.
+      </p>
 
       {showForm && (
         <div className="space-y-3 rounded-md border p-3">
           <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
             <div className="space-y-1">
+              <Label className="text-xs">Provider</Label>
+              <Select value={kind} onValueChange={(v) => { const k = v as ConnectorKind; setKind(k); setAllowlist(CONNECTOR_TOOLS[k]) }}>
+                <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {CONNECTOR_KINDS.map((k) => (
+                    <SelectItem key={k.value} value={k.value} className="text-xs">{k.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              {selectedKind?.note && (
+                <p className="text-[10px] text-muted-foreground">{selectedKind.note}</p>
+              )}
+            </div>
+            <div className="space-y-1">
               <Label className="text-xs">Name</Label>
-              <Input value={name} onChange={(e) => setName(e.target.value)} className="h-8 text-xs" placeholder="Brave Search" />
-            </div>
-            <div className="space-y-1">
-              <Label className="text-xs">Endpoint (https)</Label>
-              <Input value={endpoint} onChange={(e) => setEndpoint(e.target.value)} className="h-8 text-xs" placeholder="https://…/mcp" />
-            </div>
-            <div className="space-y-1">
-              <Label className="text-xs">Allowlisted tools (comma separated)</Label>
-              <Input value={allowlist} onChange={(e) => setAllowlist(e.target.value)} className="h-8 text-xs" />
-            </div>
-            <div className="space-y-1">
-              <Label className="text-xs">Bearer token</Label>
-              <Input type="password" value={token} onChange={(e) => setToken(e.target.value)} className="h-8 text-xs" placeholder="mcp token" />
+              <Input value={name} onChange={(e) => setName(e.target.value)} className="h-8 text-xs" placeholder={CONNECTOR_KINDS.find((k) => k.value === kind)?.label} />
             </div>
           </div>
+
+          {isNative ? (
+            <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+              <div className="space-y-1">
+                <Label className="text-xs">API key (optional for Exa keyless)</Label>
+                <Input type="password" value={token} onChange={(e) => setToken(e.target.value)} className="h-8 text-xs" placeholder="provider key" />
+              </div>
+            </div>
+          ) : (
+            <>
+              <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
+                <div className="space-y-1">
+                  <Label className="text-xs">Endpoint (https)</Label>
+                  <Input value={endpoint} onChange={(e) => setEndpoint(e.target.value)} className="h-8 text-xs" placeholder="https://…/mcp" />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">Auth</Label>
+                  <Select value={authType} onValueChange={(v) => setAuthType(v as ConnectorAuth)}>
+                    <SelectTrigger className="h-8 text-xs"><SelectValue /></SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="bearer" className="text-xs">Bearer token</SelectItem>
+                      <SelectItem value="x-api-key" className="text-xs">X-Api-Key header</SelectItem>
+                      <SelectItem value="none" className="text-xs">No auth</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs">Allowlisted tools (comma separated)</Label>
+                  <Input value={allowlist} onChange={(e) => setAllowlist(e.target.value)} className="h-8 text-xs" />
+                </div>
+                {authType !== 'none' && (
+                  <div className="space-y-1">
+                    <Label className="text-xs">Credential</Label>
+                    <Input type="password" value={token} onChange={(e) => setToken(e.target.value)} className="h-8 text-xs" placeholder="mcp token" />
+                  </div>
+                )}
+              </div>
+            </>
+          )}
+
           <div className="flex gap-2">
-            <Button size="sm" className="h-7 text-xs" onClick={handleCreate} disabled={saving || !name || !endpoint}>
+            <Button size="sm" className="h-7 text-xs" onClick={handleCreate} disabled={saving || !name || (!isNative && !endpoint)}>
               {saving && <Loader2 className="mr-1 h-3 w-3 animate-spin" />} Save
             </Button>
             <Button size="sm" variant="outline" className="h-7 text-xs" onClick={() => setShowForm(false)}>Cancel</Button>
@@ -330,7 +400,7 @@ function ConnectorsSection() {
           <TableHeader>
             <TableRow>
               <TableHead className="text-xs">Name</TableHead>
-              <TableHead className="text-xs">Endpoint</TableHead>
+              <TableHead className="text-xs">Provider</TableHead>
               <TableHead className="text-xs">Tools</TableHead>
               <TableHead className="text-xs">Status</TableHead>
               <TableHead className="w-28 text-right"></TableHead>
@@ -343,7 +413,7 @@ function ConnectorsSection() {
             {(connectors ?? []).length === 0 && (
               <TableRow>
                 <TableCell colSpan={5} className="text-center text-xs text-muted-foreground">
-                  No connectors — merchant lookup stays model-only.
+                  No providers — merchant lookup stays model-only.
                 </TableCell>
               </TableRow>
             )}
@@ -370,7 +440,12 @@ function ConnectorRow({
   return (
     <TableRow>
       <TableCell className="text-xs">{connector.name}</TableCell>
-      <TableCell className="max-w-[220px] truncate text-xs text-muted-foreground">{connector.endpoint}</TableCell>
+      <TableCell className="text-xs text-muted-foreground">
+        {connector.kind}
+        {connector.kind === 'custom_mcp' && connector.endpoint && (
+          <span className="block max-w-[220px] truncate text-[10px]">{connector.endpoint}</span>
+        )}
+      </TableCell>
       <TableCell className="text-xs text-muted-foreground">{connector.allowlist.join(', ')}</TableCell>
       <TableCell>
         <Badge variant={connector.enabled ? 'default' : 'outline'} className="text-[10px]">

@@ -226,3 +226,80 @@ func TestFinanceDelete_WithoutRevision_StillWorks(t *testing.T) {
 	rec := doFinance(t, h, http.MethodDelete, "/transactions/tx-1", "", nil)
 	assert.Equal(t, http.StatusOK, rec.Code)
 }
+
+func TestFinanceBulkUpdate_AppliesPatch(t *testing.T) {
+	repo := &fakeTxRepoHTTP{
+		txns: []*domain.Transaction{financeSeedTx(), func() *domain.Transaction {
+			tx := financeSeedTx()
+			tx.ID = "tx-2"
+			tx.Description = "second"
+			return tx
+		}()},
+	}
+	h := newFinanceRouter(repo)
+
+	rec := doFinance(t, h, http.MethodPost, "/transactions/bulk",
+		`{"items":[{"id":"tx-1","revision":1},{"id":"tx-2","revision":1}],"patch":{"category":"groceries","type":"income"}}`, nil)
+	require.Equal(t, http.StatusOK, rec.Code)
+
+	var resp struct {
+		Data struct {
+			Updated int `json:"updated"`
+		} `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+	assert.Equal(t, 2, resp.Data.Updated)
+}
+
+func TestFinanceBulkUpdate_StaleRevision_Returns412(t *testing.T) {
+	repo := &fakeTxRepoHTTP{txns: []*domain.Transaction{financeSeedTx()}}
+	h := newFinanceRouter(repo)
+
+	rec := doFinance(t, h, http.MethodPost, "/transactions/bulk",
+		`{"items":[{"id":"tx-1","revision":9}],"patch":{"category":"groceries"}}`, nil)
+	assert.Equal(t, http.StatusPreconditionFailed, rec.Code)
+}
+
+func TestFinanceBulkUpdate_EmptyPatch_Rejected(t *testing.T) {
+	repo := &fakeTxRepoHTTP{txns: []*domain.Transaction{financeSeedTx()}}
+	h := newFinanceRouter(repo)
+
+	rec := doFinance(t, h, http.MethodPost, "/transactions/bulk",
+		`{"items":[{"id":"tx-1","revision":1}],"patch":{}}`, nil)
+	assert.Equal(t, http.StatusBadRequest, rec.Code)
+}
+
+func TestFinanceBulkUpdate_UnknownField_Rejected(t *testing.T) {
+	repo := &fakeTxRepoHTTP{txns: []*domain.Transaction{financeSeedTx()}}
+	h := newFinanceRouter(repo)
+
+	rec := doFinance(t, h, http.MethodPost, "/transactions/bulk",
+		`{"items":[{"id":"tx-1","revision":1}],"patch":{"amountCents":5}}`, nil)
+	assert.Equal(t, http.StatusBadRequest, rec.Code)
+}
+
+func TestFinanceBulkDelete_RemovesItems(t *testing.T) {
+	repo := &fakeTxRepoHTTP{txns: []*domain.Transaction{financeSeedTx()}}
+	h := newFinanceRouter(repo)
+
+	rec := doFinance(t, h, http.MethodPost, "/transactions/bulk-delete",
+		`{"items":[{"id":"tx-1","revision":1}]}`, nil)
+	require.Equal(t, http.StatusOK, rec.Code)
+
+	var resp struct {
+		Data struct {
+			Deleted int `json:"deleted"`
+		} `json:"data"`
+	}
+	require.NoError(t, json.Unmarshal(rec.Body.Bytes(), &resp))
+	assert.Equal(t, 1, resp.Data.Deleted)
+}
+
+func TestFinanceBulkDelete_StaleRevision_Returns412(t *testing.T) {
+	repo := &fakeTxRepoHTTP{txns: []*domain.Transaction{financeSeedTx()}}
+	h := newFinanceRouter(repo)
+
+	rec := doFinance(t, h, http.MethodPost, "/transactions/bulk-delete",
+		`{"items":[{"id":"tx-1","revision":5}]}`, nil)
+	assert.Equal(t, http.StatusPreconditionFailed, rec.Code)
+}

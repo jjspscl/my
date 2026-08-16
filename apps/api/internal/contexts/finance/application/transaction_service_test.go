@@ -3,6 +3,7 @@ package application
 import (
 	"context"
 	"errors"
+	"fmt"
 	"testing"
 	"time"
 
@@ -644,3 +645,167 @@ func TestDeleteAtRevision_StaleRevision_ReturnsStaleError(t *testing.T) {
 }
 
 func strPtr(s string) *string { return &s }
+
+// ---- bulk edit/delete tests ----
+
+// rollbackCoordinator mimics the infrastructure Coordinator: fn runs inside a
+// logical transaction that restores the in-memory repo state when it fails.
+type rollbackCoordinator struct{ repo *mockTransactionRepo }
+
+func (c rollbackCoordinator) WithTx(ctx context.Context, fn func(ctx context.Context) error) error {
+	snapshot := make([]*domain.Transaction, len(c.repo.transactions))
+	copy(snapshot, c.repo.transactions)
+	if err := fn(ctx); err != nil {
+		c.repo.transactions = snapshot
+		return err
+	}
+	return nil
+}
+
+func bulkService() (*TransactionService, *mockTransactionRepo, *fakeBillLinkRepo, *fakeProvenanceMarker) {
+	repo := &mockTransactionRepo{}
+	for i := 1; i <= 3; i++ {
+		repo.transactions = append(repo.transactions, &domain.Transaction{
+			ID: fmt.Sprintf("tx-%d", i), UserEmail: "user@test.com", AmountCents: int64(1000 * i),
+			Currency: "PHP", Category: "food", Description: "item",
+			Type: domain.TransactionExpense, WalletID: "w-default",
+			TransactionDate: time.Date(2026, 8, 1, 0, 0, 0, 0, time.UTC),
+			CreatedAt:       time.Date(2026, 8, 1, 0, 0, 0, 0, time.UTC),
+			Revision:        1,
+		})
+	}
+	walletRepo := &mockWalletRepo{
+		wallets: []*domain.Wallet{
+			{ID: "w-default", UserEmail: "user@test.com", Name: "Cash", Currency: "PHP", IsDefault: true},
+		},
+	}
+	svc := NewTransactionService(repo, walletRepo, timeutil.New(time.UTC))
+	links := &fakeBillLinkRepo{}
+	marker := &fakeProvenanceMarker{}
+	svc.WithBillLinkRepo(links).WithImportProvenanceMarker(marker)
+	svc.WithCoordinator(rollbackCoordinator{repo: repo})
+	return svc, repo, links, marker
+}
+
+func bulkItems() []BulkItem {
+	return []BulkItem{{ID: "tx-1", Revision: 1}, {ID: "tx-2", Revision: 1}, {ID: "tx-3", Revision: 1}}
+}
+
+func TestUpdateMany_AppliesPatchToAllItems(t *testing.T) {
+	svc, repo, _, _ := bulkService()
+	ctx := context.Background()
+
+	cat := "groceries"
+	updated, err := svc.UpdateMany(ctx, "user@test.com", bulkItems(), BulkPatch{Category: &cat})
+	require.NoError(t, err)
+	require.Len(t, updated, 3)
+	for i, tx := range updated {
+		assert.Equal(t, "groceries", tx.Category)
+		assert.Equal(t, 2, tx.Revision)
+		// Stored rows moved on too.
+		stored := repo.transactions[i]
+		assert.Equal(t, "groceries", stored.Category)
+		assert.Equal(t, 2, stored.Revision)
+	}
+}
+
+func TestUpdateMany_AllOrNothingOnStaleRevision(t *testing.T) {
+	svc, repo, _, _ := bulkService()
+	ctx := context.Background()
+
+	// tx-2 has moved on (revision 2).
+	repo.transactions[1].Revision = 2
+	cat := "groceries"
+	_, err := svc.UpdateMany(ctx, "user@test.com", bulkItems(), BulkPatch{Category: &cat})
+	assert.ErrorIs(t, err, domain.ErrStaleRevision)
+
+	// Nothing applied: tx-1 and tx-3 still at revision 1 with original values.
+	assert.Equal(t, "food", repo.transactions[0].Category)
+	assert.Equal(t, 1, repo.transactions[0].Revision)
+	assert.Equal(t, 1, repo.transactions[2].Revision)
+}
+
+func TestUpdateMany_RejectsEmptyPatchAndOversizeAndDuplicates(t *testing.T) {
+	svc, _, _, _ := bulkService()
+	ctx := context.Background()
+
+	_, err := svc.UpdateMany(ctx, "user@test.com", bulkItems(), BulkPatch{})
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "empty bulk update")
+
+	items := make([]BulkItem, 0, MaxBulkTransactionItems+1)
+	for i := 0; i < MaxBulkTransactionItems+1; i++ {
+		items = append(items, BulkItem{ID: fmt.Sprintf("tx-%d", i), Revision: 1})
+	}
+	_, err = svc.UpdateMany(ctx, "user@test.com", items, BulkPatch{Category: strPtr("x")})
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "limit")
+
+	_, err = svc.UpdateMany(ctx, "user@test.com",
+		[]BulkItem{{ID: "tx-1", Revision: 1}, {ID: "tx-1", Revision: 1}},
+		BulkPatch{Category: strPtr("x")})
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "duplicate")
+}
+
+func TestUpdateMany_MarksProvenanceForImportedItems(t *testing.T) {
+	svc, repo, _, marker := bulkService()
+	repo.transactions[0].Imported = true
+	repo.transactions[2].Imported = true
+	ctx := context.Background()
+
+	cat := "groceries"
+	_, err := svc.UpdateMany(ctx, "user@test.com", bulkItems(), BulkPatch{Category: &cat})
+	require.NoError(t, err)
+	require.Len(t, marker.calls, 2)
+	assert.Equal(t, "tx-1", marker.calls[0].txID)
+	assert.Equal(t, "tx-3", marker.calls[1].txID)
+}
+
+func TestUpdateMany_ReconcilesAutoBillLinks(t *testing.T) {
+	svc, _, links, _ := bulkService()
+	autoID := "pay-auto-1"
+	links.payments = []*domain.BillPayment{
+		{ID: autoID, TransactionID: strPtr("tx-1"), TransactionLinkSource: domain.PaymentLinkAuto},
+		{ID: "pay-manual-1", TransactionID: strPtr("tx-1"), TransactionLinkSource: domain.PaymentLinkManual},
+	}
+	ctx := context.Background()
+
+	cat := "groceries"
+	_, err := svc.UpdateMany(ctx, "user@test.com", bulkItems(), BulkPatch{Category: &cat})
+	require.NoError(t, err)
+	assert.Equal(t, []string{autoID}, links.deleted)
+}
+
+func TestDeleteMany_RemovesAllAndCounts(t *testing.T) {
+	svc, repo, _, marker := bulkService()
+	repo.transactions[1].Imported = true
+
+	deleted, err := svc.DeleteMany(context.Background(), "user@test.com", bulkItems())
+	require.NoError(t, err)
+	assert.Equal(t, 3, deleted)
+	assert.Len(t, repo.transactions, 0)
+	require.Len(t, marker.calls, 1)
+	assert.Equal(t, domain.EntityStatusDeleted, marker.calls[0].status)
+}
+
+func TestDeleteMany_AllOrNothingOnStaleRevision(t *testing.T) {
+	svc, repo, _, _ := bulkService()
+	repo.transactions[2].Revision = 9
+
+	_, err := svc.DeleteMany(context.Background(), "user@test.com", bulkItems())
+	assert.ErrorIs(t, err, domain.ErrStaleRevision)
+	assert.Len(t, repo.transactions, 3)
+}
+
+func TestDeleteMany_RejectsEmptyAndDuplicates(t *testing.T) {
+	svc, _, _, _ := bulkService()
+
+	_, err := svc.DeleteMany(context.Background(), "user@test.com", nil)
+	assert.Error(t, err)
+
+	_, err = svc.DeleteMany(context.Background(), "user@test.com",
+		[]BulkItem{{ID: "tx-1", Revision: 1}, {ID: "tx-1", Revision: 1}})
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "duplicate")
+}

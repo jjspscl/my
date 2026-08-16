@@ -30,6 +30,8 @@ func (h *FinanceHandler) Routes(r chi.Router) {
 	r.Get("/transactions", h.List)
 	r.Post("/transactions", h.Create)
 	r.Patch("/transactions/{id}", h.Update)
+	r.Post("/transactions/bulk", h.BulkUpdate)
+	r.Post("/transactions/bulk-delete", h.BulkDelete)
 	r.Get("/transactions/today-total", h.TodayTotal)
 	r.Delete("/transactions/{id}", h.Delete)
 }
@@ -51,6 +53,26 @@ type updateTransactionRequest struct {
 	Type            *string `json:"type"`
 	WalletID        *string `json:"walletId"`
 	TransactionDate *string `json:"transactionDate"`
+}
+
+type bulkTransactionItemRequest struct {
+	ID       string `json:"id"`
+	Revision int    `json:"revision"`
+}
+
+// bulkUpdateRequest is the collection patch: one shared patch applied to many
+// transactions, each with its own revision precondition.
+type bulkUpdateRequest struct {
+	Items []bulkTransactionItemRequest `json:"items"`
+	Patch struct {
+		Category *string `json:"category"`
+		Type     *string `json:"type"`
+		WalletID *string `json:"walletId"`
+	} `json:"patch"`
+}
+
+type bulkDeleteRequest struct {
+	Items []bulkTransactionItemRequest `json:"items"`
 }
 
 type transactionResponse struct {
@@ -268,6 +290,89 @@ func (h *FinanceHandler) Update(w http.ResponseWriter, r *http.Request) {
 	}
 
 	response.WriteJSON(w, http.StatusOK, apiResponse{OK: true, Data: toTransactionResponse(tx)})
+}
+
+// BulkUpdate handles POST /transactions/bulk: applies one category/type/wallet
+// patch to many transactions atomically. Collection ops use POST because
+// If-Match cannot express per-row preconditions.
+func (h *FinanceHandler) BulkUpdate(w http.ResponseWriter, r *http.Request) {
+	email := middleware.GetEmailFromContext(r.Context())
+
+	var req bulkUpdateRequest
+	dec := json.NewDecoder(r.Body)
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(&req); err != nil {
+		response.WriteError(w, r, http.StatusBadRequest, "invalid request body", err)
+		return
+	}
+
+	items := make([]application.BulkItem, 0, len(req.Items))
+	for _, it := range req.Items {
+		items = append(items, application.BulkItem{ID: it.ID, Revision: it.Revision})
+	}
+
+	patch := application.BulkPatch{Category: req.Patch.Category, WalletID: req.Patch.WalletID}
+	if req.Patch.Type != nil {
+		t := domain.TransactionType(*req.Patch.Type)
+		patch.Type = &t
+	}
+
+	txs, err := h.svc.UpdateMany(r.Context(), email, items, patch)
+	if err != nil {
+		writeBulkError(w, r, err)
+		return
+	}
+
+	resp := make([]transactionResponse, 0, len(txs))
+	for _, tx := range txs {
+		resp = append(resp, toTransactionResponse(tx))
+	}
+	response.WriteJSON(w, http.StatusOK, apiResponse{
+		OK:   true,
+		Data: map[string]any{"updated": len(resp), "transactions": resp},
+	})
+}
+
+// BulkDelete handles POST /transactions/bulk-delete: removes many transactions
+// atomically with per-row revision preconditions.
+func (h *FinanceHandler) BulkDelete(w http.ResponseWriter, r *http.Request) {
+	email := middleware.GetEmailFromContext(r.Context())
+
+	var req bulkDeleteRequest
+	dec := json.NewDecoder(r.Body)
+	dec.DisallowUnknownFields()
+	if err := dec.Decode(&req); err != nil {
+		response.WriteError(w, r, http.StatusBadRequest, "invalid request body", err)
+		return
+	}
+
+	items := make([]application.BulkItem, 0, len(req.Items))
+	for _, it := range req.Items {
+		items = append(items, application.BulkItem{ID: it.ID, Revision: it.Revision})
+	}
+
+	deleted, err := h.svc.DeleteMany(r.Context(), email, items)
+	if err != nil {
+		writeBulkError(w, r, err)
+		return
+	}
+
+	response.WriteJSON(w, http.StatusOK, apiResponse{
+		OK:   true,
+		Data: map[string]any{"deleted": deleted},
+	})
+}
+
+// writeBulkError maps bulk operation failures onto HTTP status codes.
+func writeBulkError(w http.ResponseWriter, r *http.Request, err error) {
+	switch {
+	case errors.Is(err, domain.ErrStaleRevision):
+		response.WriteError(w, r, http.StatusPreconditionFailed, "one or more transactions changed elsewhere; reload and retry", err)
+	case err.Error() == "transaction not found":
+		response.WriteError(w, r, http.StatusNotFound, "transaction not found", err)
+	default:
+		response.WriteError(w, r, http.StatusBadRequest, err.Error(), err)
+	}
 }
 
 func (h *FinanceHandler) Delete(w http.ResponseWriter, r *http.Request) {

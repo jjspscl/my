@@ -109,3 +109,8 @@ describe('EditTransactionSheet', () => {
     expect(screen.queryByText(/original statement entry/i)).not.toBeInTheDocument()
   })
 })
+
+Element.prototype.scrollIntoView = Element.prototype.scrollIntoView ?? (() => {})
+Element.prototype.hasPointerCapture = Element.prototype.hasPointerCapture ?? (() => false)
+Element.prototype.releasePointerCapture = Element.prototype.releasePointerCapture ?? (() => {})
+

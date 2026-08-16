@@ -243,6 +243,30 @@ func (s *TransactionService) Update(ctx context.Context, userEmail, id string, i
 		return nil, fmt.Errorf("empty update: no fields provided")
 	}
 
+	var updated *domain.Transaction
+	run := func(txCtx context.Context) error {
+		tx, err := s.updateOne(txCtx, userEmail, id, input)
+		if err != nil {
+			return err
+		}
+		updated = tx
+		return nil
+	}
+
+	if s.coordinator != nil {
+		if err := s.coordinator.WithTx(ctx, run); err != nil {
+			return nil, err
+		}
+	} else if err := run(ctx); err != nil {
+		return nil, err
+	}
+	return updated, nil
+}
+
+// updateOne performs the edit against ctx (which may or may not already carry
+// a transaction from the coordinator). Shared by Update and UpdateMany; the
+// caller owns transaction boundaries.
+func (s *TransactionService) updateOne(ctx context.Context, userEmail, id string, input UpdateTransactionInput) (*domain.Transaction, error) {
 	existing, err := s.repo.FindByID(ctx, id)
 	if err != nil {
 		return nil, err
@@ -298,22 +322,90 @@ func (s *TransactionService) Update(ctx context.Context, userEmail, id string, i
 	tx.ImportProvider = existing.ImportProvider
 	tx.UpdatedAt = s.clock.Now()
 
+	if err := s.reconcileAutoBillLinks(ctx, tx, existing); err != nil {
+		return nil, err
+	}
+	if err := s.repo.Update(ctx, tx, tx.Revision); err != nil {
+		return nil, err
+	}
+	if tx.Imported && s.importMarker != nil {
+		if err := s.importMarker.MarkTransactionProvenance(ctx, tx.ID, domain.EntityStatusModified, s.clock.Now()); err != nil {
+			return nil, fmt.Errorf("mark import entry modified: %w", err)
+		}
+	}
+	// Re-evaluate auto-match against the new values; it only creates a
+	// payment when the updated transaction still matches a bill.
+	if s.billMatcher != nil && txType == domain.TransactionExpense {
+		s.billMatcher.TryAutoMatch(ctx, tx)
+	}
+
+	tx.Revision++
+	return tx, nil
+}
+
+// MaxBulkTransactionItems caps how many transactions one bulk request may
+// touch, bounding the time a single transaction stays open.
+const MaxBulkTransactionItems = 200
+
+// BulkItem identifies one transaction in a bulk request together with the
+// revision the client last saw (per-row optimistic concurrency).
+type BulkItem struct {
+	ID       string
+	Revision int
+}
+
+// BulkPatch is the shared partial edit applied to every item. Only fields
+// that are safe to set uniformly across many rows are allowed: amount, date,
+// and description are deliberately excluded because mass-applying them to
+// unrelated rows is almost always a mistake.
+type BulkPatch struct {
+	Category *string
+	Type     *domain.TransactionType
+	WalletID *string
+}
+
+func (p BulkPatch) empty() bool {
+	return p.Category == nil && p.Type == nil && p.WalletID == nil
+}
+
+// UpdateMany applies one patch to many transactions atomically: all items
+// succeed or none do. Per-row revision preconditions and every per-item side
+// effect (bill-link reconciliation, import provenance) behave exactly like
+// single edits.
+func (s *TransactionService) UpdateMany(ctx context.Context, userEmail string, items []BulkItem, patch BulkPatch) ([]*domain.Transaction, error) {
+	if len(items) == 0 {
+		return nil, fmt.Errorf("empty bulk update: no items")
+	}
+	if len(items) > MaxBulkTransactionItems {
+		return nil, fmt.Errorf("bulk update exceeds limit of %d transactions", MaxBulkTransactionItems)
+	}
+	if patch.empty() {
+		return nil, fmt.Errorf("empty bulk update: no fields provided")
+	}
+	seen := make(map[string]struct{}, len(items))
+	for _, it := range items {
+		if it.ID == "" {
+			return nil, fmt.Errorf("bulk update item missing id")
+		}
+		if _, dup := seen[it.ID]; dup {
+			return nil, fmt.Errorf("bulk update contains duplicate transaction %s", it.ID)
+		}
+		seen[it.ID] = struct{}{}
+	}
+
+	var updated []*domain.Transaction
 	run := func(txCtx context.Context) error {
-		if err := s.reconcileAutoBillLinks(txCtx, tx, existing); err != nil {
-			return err
-		}
-		if err := s.repo.Update(txCtx, tx, tx.Revision); err != nil {
-			return err
-		}
-		if tx.Imported && s.importMarker != nil {
-			if err := s.importMarker.MarkTransactionProvenance(txCtx, tx.ID, domain.EntityStatusModified, s.clock.Now()); err != nil {
-				return fmt.Errorf("mark import entry modified: %w", err)
+		for _, it := range items {
+			tx, err := s.updateOne(txCtx, userEmail, it.ID, UpdateTransactionInput{
+				Category:         patch.Category,
+				Type:             patch.Type,
+				WalletID:         patch.WalletID,
+				ExpectedRevision: it.Revision,
+			})
+			if err != nil {
+				return err
 			}
-		}
-		// Re-evaluate auto-match against the new values; it only creates a
-		// payment when the updated transaction still matches a bill.
-		if s.billMatcher != nil && txType == domain.TransactionExpense {
-			s.billMatcher.TryAutoMatch(txCtx, tx)
+			updated = append(updated, tx)
 		}
 		return nil
 	}
@@ -325,9 +417,49 @@ func (s *TransactionService) Update(ctx context.Context, userEmail, id string, i
 	} else if err := run(ctx); err != nil {
 		return nil, err
 	}
+	return updated, nil
+}
 
-	tx.Revision++
-	return tx, nil
+// DeleteMany removes many transactions atomically. Revision preconditions and
+// side-effect reconciliation behave like single deletes; returns the count of
+// removed transactions.
+func (s *TransactionService) DeleteMany(ctx context.Context, userEmail string, items []BulkItem) (int, error) {
+	if len(items) == 0 {
+		return 0, fmt.Errorf("empty bulk delete: no items")
+	}
+	if len(items) > MaxBulkTransactionItems {
+		return 0, fmt.Errorf("bulk delete exceeds limit of %d transactions", MaxBulkTransactionItems)
+	}
+	seen := make(map[string]struct{}, len(items))
+	for _, it := range items {
+		if it.ID == "" {
+			return 0, fmt.Errorf("bulk delete item missing id")
+		}
+		if _, dup := seen[it.ID]; dup {
+			return 0, fmt.Errorf("bulk delete contains duplicate transaction %s", it.ID)
+		}
+		seen[it.ID] = struct{}{}
+	}
+
+	deleted := 0
+	run := func(txCtx context.Context) error {
+		for _, it := range items {
+			if err := s.deleteOne(txCtx, it.ID, userEmail, it.Revision, it.Revision > 0); err != nil {
+				return err
+			}
+			deleted++
+		}
+		return nil
+	}
+
+	if s.coordinator != nil {
+		if err := s.coordinator.WithTx(ctx, run); err != nil {
+			return 0, err
+		}
+	} else if err := run(ctx); err != nil {
+		return 0, err
+	}
+	return deleted, nil
 }
 
 // matchAffecting reports whether a change could invalidate an auto-matched
@@ -370,20 +502,32 @@ func (s *TransactionService) removeAutoBillLinks(ctx context.Context, txID strin
 }
 
 func (s *TransactionService) Delete(ctx context.Context, id, userEmail string) error {
-	return s.deleteTx(ctx, id, userEmail, 0, false)
+	return s.deleteOneWrapped(ctx, id, userEmail, 0, false)
 }
 
 // DeleteAtRevision deletes only when the client's revision still matches the
 // stored one, returning domain.ErrStaleRevision otherwise.
 func (s *TransactionService) DeleteAtRevision(ctx context.Context, id, userEmail string, revision int) error {
-	return s.deleteTx(ctx, id, userEmail, revision, true)
+	return s.deleteOneWrapped(ctx, id, userEmail, revision, true)
 }
 
-// deleteTx removes a transaction and its side effects atomically: auto-matched
-// bill payments are deleted (explicit links stay paid via FK SET NULL), and
-// imported entries are marked deleted so rollback and reconciliation stay
-// accurate.
-func (s *TransactionService) deleteTx(ctx context.Context, id, userEmail string, revision int, enforceRevision bool) error {
+// deleteOneWrapped is the single-item public delete path: one transaction
+// boundary around deleteOne.
+func (s *TransactionService) deleteOneWrapped(ctx context.Context, id, userEmail string, revision int, enforceRevision bool) error {
+	run := func(txCtx context.Context) error {
+		return s.deleteOne(txCtx, id, userEmail, revision, enforceRevision)
+	}
+	if s.coordinator != nil {
+		return s.coordinator.WithTx(ctx, run)
+	}
+	return run(ctx)
+}
+
+// deleteOne removes one transaction and its side effects against ctx (which
+// may already carry a coordinator transaction): auto-matched bill payments
+// are deleted (explicit links stay paid via FK SET NULL), and imported
+// entries are marked deleted so rollback and reconciliation stay accurate.
+func (s *TransactionService) deleteOne(ctx context.Context, id, userEmail string, revision int, enforceRevision bool) error {
 	existing, err := s.repo.FindByID(ctx, id)
 	if err != nil {
 		return err
@@ -395,23 +539,16 @@ func (s *TransactionService) deleteTx(ctx context.Context, id, userEmail string,
 		return domain.ErrStaleRevision
 	}
 
-	run := func(txCtx context.Context) error {
-		if err := s.removeAutoBillLinks(txCtx, id); err != nil {
-			return err
-		}
-		if existing.Imported && s.importMarker != nil {
-			if err := s.importMarker.MarkTransactionProvenance(txCtx, id, domain.EntityStatusDeleted, s.clock.Now()); err != nil {
-				return fmt.Errorf("mark import entry deleted: %w", err)
-			}
-		}
-		if enforceRevision {
-			return s.repo.DeleteAtRevision(txCtx, id, userEmail, revision)
-		}
-		return s.repo.Delete(txCtx, id, userEmail)
+	if err := s.removeAutoBillLinks(ctx, id); err != nil {
+		return err
 	}
-
-	if s.coordinator != nil {
-		return s.coordinator.WithTx(ctx, run)
+	if existing.Imported && s.importMarker != nil {
+		if err := s.importMarker.MarkTransactionProvenance(ctx, id, domain.EntityStatusDeleted, s.clock.Now()); err != nil {
+			return fmt.Errorf("mark import entry deleted: %w", err)
+		}
 	}
-	return run(ctx)
+	if enforceRevision {
+		return s.repo.DeleteAtRevision(ctx, id, userEmail, revision)
+	}
+	return s.repo.Delete(ctx, id, userEmail)
 }

@@ -2,6 +2,12 @@ import { apiClient } from '@/shared/api/client'
 import { randomUUID } from '@/shared/lib/uuid'
 import {
   ApiOKResponseSchema,
+  type BulkDeleteRequest,
+  BulkDeleteRequestSchema,
+  type BulkUpdateRequest,
+  BulkUpdateRequestSchema,
+  type BulkUpdateResponse,
+  BulkUpdateResponseSchema,
   type CreateTransaction,
   CreateTransactionSchema,
   DailyTotalSchema,
@@ -64,4 +70,29 @@ export function deleteTransaction(id: string, revision?: number) {
     method: 'DELETE',
     ...(revision ? { headers: { 'If-Match': `"${revision}"` } } : {}),
   })
+}
+
+// bulkUpdateTransactions applies one patch to many transactions atomically;
+// the server answers 412 when any item's revision is stale and nothing is
+// applied. Online-only (no conflict protocol in the offline queue).
+export async function bulkUpdateTransactions(
+  data: BulkUpdateRequest,
+): Promise<BulkUpdateResponse['data']> {
+  const parsed = BulkUpdateRequestSchema.parse(data)
+  const res = await apiClient('/api/v1/finance/transactions/bulk', BulkUpdateResponseSchema, {
+    method: 'POST',
+    body: JSON.stringify(parsed),
+  })
+  return res.data
+}
+
+// bulkDeleteTransactions removes many transactions atomically.
+export async function bulkDeleteTransactions(data: BulkDeleteRequest): Promise<number> {
+  const parsed = BulkDeleteRequestSchema.parse(data)
+  const res = await apiClient(
+    '/api/v1/finance/transactions/bulk-delete',
+    z.object({ data: z.object({ deleted: z.number().int() }) }),
+    { method: 'POST', body: JSON.stringify(parsed) },
+  )
+  return res.data.deleted
 }

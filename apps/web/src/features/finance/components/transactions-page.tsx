@@ -1,9 +1,10 @@
 import { useState } from 'react'
 import { AnimatePresence, motion } from 'motion/react'
-import { Loader2, MoreHorizontal, Pencil, Trash2 } from 'lucide-react'
+import { Loader2, MoreHorizontal, Pencil, Trash2, X } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { Checkbox } from '@/components/ui/checkbox'
 import {
   Table,
   TableBody,
@@ -29,10 +30,12 @@ import {
   AlertDialogTitle,
 } from '@/components/ui/alert-dialog'
 import {
+  useBulkDeleteTransactions,
   useDeleteTransaction,
   useTransactions,
 } from '@/features/finance/hooks/use-transactions'
 import { EditTransactionSheet } from './edit-transaction-sheet'
+import { BulkEditSheet } from './bulk-edit-sheet'
 import { formatCents } from '@/features/finance/lib/format'
 import { toLocalDateStr, todayLocalStr } from '@/shared/lib/utils'
 import { useNetworkStatus } from '@/shared/sync/network-status'
@@ -50,12 +53,50 @@ export function TransactionsPage() {
 
   const { data, isLoading, isError } = useTransactions(from, to)
   const deleteTx = useDeleteTransaction()
+  const bulkDelete = useBulkDeleteTransactions()
   const [deleting, setDeleting] = useState<Transaction | null>(null)
+  const [bulkDeleting, setBulkDeleting] = useState(false)
   const [editing, setEditing] = useState<Transaction | null>(null)
+  const [bulkEditing, setBulkEditing] = useState(false)
+  // Selection is transient UI state: keyed by id, resolved to rows below.
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
   const isOnline = useNetworkStatus((s) => s.isOnline)
   const preset = useMotionPreset()
 
   const transactions = data ?? []
+  const selected = transactions.filter((tx) => selectedIds.has(tx.id))
+  const allVisibleSelected = transactions.length > 0 && selected.length === transactions.length
+  const someVisibleSelected = selected.length > 0 && !allVisibleSelected
+
+  const toggleSelectAll = () => {
+    setSelectedIds(allVisibleSelected ? new Set() : new Set(transactions.map((tx) => tx.id)))
+  }
+
+  const toggleSelect = (id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) {
+        next.delete(id)
+      } else {
+        next.add(id)
+      }
+      return next
+    })
+  }
+
+  const handleBulkDelete = () => {
+    if (selected.length === 0) return
+    bulkDelete.mutate(
+      { items: selected.map((tx) => ({ id: tx.id, revision: tx.revision })) },
+      {
+        onSuccess: () => {
+          setBulkDeleting(false)
+          setSelectedIds(new Set())
+        },
+        onSettled: () => setBulkDeleting(false),
+      },
+    )
+  }
 
   const handleDelete = () => {
     if (!deleting) return
@@ -114,6 +155,14 @@ export function TransactionsPage() {
           <Table>
             <TableHeader>
               <TableRow>
+                <TableHead className="w-8">
+                  <Checkbox
+                    aria-label="Select all visible transactions"
+                    checked={allVisibleSelected ? true : someVisibleSelected ? 'indeterminate' : false}
+                    onCheckedChange={toggleSelectAll}
+                    disabled={transactions.length === 0}
+                  />
+                </TableHead>
                 <TableHead className="text-xs">Date</TableHead>
                 <TableHead className="text-xs">Category</TableHead>
                 <TableHead className="text-xs">Description</TableHead>
@@ -131,6 +180,13 @@ export function TransactionsPage() {
                     transition={{ duration: 0.15 }}
                     className="border-b transition-colors hover:bg-muted/50 has-aria-expanded:bg-muted/50 data-[state=selected]:bg-muted"
                   >
+                    <TableCell className="w-8">
+                      <Checkbox
+                        aria-label={`Select ${tx.description || tx.category} on ${tx.transactionDate}`}
+                        checked={selectedIds.has(tx.id)}
+                        onCheckedChange={() => toggleSelect(tx.id)}
+                      />
+                    </TableCell>
                     <TableCell className="text-xs tabular-nums text-muted-foreground">
                       {tx.transactionDate}
                     </TableCell>
@@ -200,6 +256,53 @@ export function TransactionsPage() {
         </p>
       )}
 
+      {/* Bulk action bar */}
+      <AnimatePresence>
+        {selected.length > 0 && (
+          <motion.div
+            initial={{ opacity: 0, y: 12 }}
+            animate={{ opacity: 1, y: 0 }}
+            exit={{ opacity: 0, y: 12 }}
+            className="fixed inset-x-0 bottom-4 z-40 flex justify-center px-4"
+          >
+            <div className="flex items-center gap-2 rounded-lg border bg-background px-3 py-2 shadow-lg">
+              <span className="text-xs font-medium tabular-nums">
+                {selected.length} selected
+              </span>
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-8 text-xs"
+                disabled={!isOnline}
+                onClick={() => setBulkEditing(true)}
+              >
+                <Pencil className="h-3 w-3" />
+                Edit
+              </Button>
+              <Button
+                size="sm"
+                variant="destructive"
+                className="h-8 text-xs"
+                disabled={!isOnline || bulkDelete.isPending}
+                onClick={() => setBulkDeleting(true)}
+              >
+                <Trash2 className="h-3 w-3" />
+                Delete
+              </Button>
+              <Button
+                size="icon"
+                variant="ghost"
+                className="h-8 w-8"
+                aria-label="Clear selection"
+                onClick={() => setSelectedIds(new Set())}
+              >
+                <X className="h-3.5 w-3.5" />
+              </Button>
+            </div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* Edit sheet */}
       <EditTransactionSheet
         transaction={editing}
@@ -208,6 +311,51 @@ export function TransactionsPage() {
           if (!open) setEditing(null)
         }}
       />
+
+      {/* Bulk edit sheet */}
+      <BulkEditSheet
+        selected={selected}
+        open={bulkEditing}
+        onOpenChange={(open) => {
+          if (!open) {
+            setBulkEditing(false)
+            setSelectedIds(new Set())
+          }
+        }}
+      />
+
+      {/* Bulk delete confirmation */}
+      <AlertDialog open={bulkDeleting} onOpenChange={(open) => !open && setBulkDeleting(false)}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>Delete {selected.length} transactions?</AlertDialogTitle>
+            <AlertDialogDescription>
+              {selected.some((tx) => tx.imported) ? (
+                <span>
+                  This selection includes imported transactions. Deleting removes the booked
+                  transactions; their original statement entries stay, and the affected imports
+                  are marked as modified.
+                </span>
+              ) : (
+                <span>This permanently removes all selected transactions. This cannot be undone.</span>
+              )}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel disabled={bulkDelete.isPending}>Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={(e) => {
+                e.preventDefault()
+                handleBulkDelete()
+              }}
+              disabled={bulkDelete.isPending}
+              className="bg-destructive text-white hover:bg-destructive/90"
+            >
+              {bulkDelete.isPending ? 'Deleting...' : `Delete ${selected.length} transaction${selected.length === 1 ? '' : 's'}`}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
 
       {/* Delete confirmation */}
       <AlertDialog open={deleting !== null} onOpenChange={(open) => !open && setDeleting(null)}>

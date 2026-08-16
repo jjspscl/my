@@ -2,6 +2,8 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { toast } from 'sonner'
 import { financeKeys } from '../api/finance.keys'
 import {
+  bulkDeleteTransactions as bulkDeleteTransactionsApi,
+  bulkUpdateTransactions as bulkUpdateTransactionsApi,
   createTransaction as createTransactionApi,
   deleteTransaction as deleteTransactionApi,
   getTodayTotal as getTodayTotalApi,
@@ -9,6 +11,9 @@ import {
   updateTransaction as updateTransactionApi,
 } from '../api/finance.api'
 import type {
+  BulkDeleteRequest,
+  BulkUpdatePatch,
+  BulkUpdateRequest,
   CreateTransaction,
   Transaction,
   UpdateTransaction,
@@ -147,4 +152,69 @@ export function useUpdateTransaction() {
       queryClient.invalidateQueries({ queryKey: financeKeys.transactions() })
     },
   })
+}
+
+// useBulkUpdateTransactions applies one patch to many transactions. No
+// optimistic update: partial failure would be too easy to misrepresent, so
+// the cache is invalidated on settle and the result read from the server.
+export function useBulkUpdateTransactions() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: (data: BulkUpdateRequest) => bulkUpdateTransactionsApi(data),
+    onSuccess: (_data, vars) => {
+      toast.success(`Updated ${vars.items.length} transaction${vars.items.length === 1 ? '' : 's'}.`)
+      queryClient.invalidateQueries({ queryKey: financeKeys.all })
+    },
+    onError: (err) => {
+      if (err instanceof ApiError && err.status === 412) {
+        toast.error('Some transactions changed elsewhere. Reloaded the latest list — review and try again.')
+        return
+      }
+      toast.error(err instanceof Error ? err.message : 'Could not update the transactions.')
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: financeKeys.all })
+    },
+  })
+}
+
+// useBulkDeleteTransactions removes many transactions atomically.
+export function useBulkDeleteTransactions() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: (data: BulkDeleteRequest) => bulkDeleteTransactionsApi(data),
+    onSuccess: (_deleted, vars) => {
+      toast.success(`Deleted ${vars.items.length} transaction${vars.items.length === 1 ? '' : 's'}.`)
+      queryClient.invalidateQueries({ queryKey: financeKeys.all })
+    },
+    onError: (err) => {
+      if (err instanceof ApiError && err.status === 412) {
+        toast.error('Some transactions changed elsewhere. Reloaded the latest list — review and try again.')
+        return
+      }
+      toast.error(err instanceof Error ? err.message : 'Could not delete the transactions.')
+    },
+    onSettled: () => {
+      queryClient.invalidateQueries({ queryKey: financeKeys.all })
+    },
+  })
+}
+
+// bulkItem converts a Transaction into a bulk request item (id + revision).
+export function bulkItem(tx: Transaction): BulkUpdateRequest['items'][number] {
+  return { id: tx.id, revision: tx.revision }
+}
+
+// buildBulkPatch builds the request for the selected items from the toggled
+// patch fields; untouched fields are omitted so the server leaves them alone.
+export function buildBulkRequest(
+  selected: Transaction[],
+  patch: BulkUpdatePatch,
+): BulkUpdateRequest {
+  return {
+    items: selected.map(bulkItem),
+    patch,
+  }
 }

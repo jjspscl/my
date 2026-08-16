@@ -5,6 +5,7 @@ import {
   DailyTotalSchema,
   TransactionTypeSchema,
   UpdateTransactionSchema,
+  BulkUpdateRequestSchema,
 } from './transaction.schemas'
 
 describe('TransactionTypeSchema', () => {
@@ -284,5 +285,45 @@ describe('TransactionSchema revision/provenance', () => {
     expect(tx.revision).toBe(3)
     expect(tx.imported).toBe(true)
     expect(tx.importProvider).toBe('gcash_pdf')
+  })
+})
+
+describe('BulkUpdateRequestSchema', () => {
+  it('accepts items with revisions and a patch', () => {
+    const req = BulkUpdateRequestSchema.parse({
+      items: [
+        { id: 'tx-1', revision: 2 },
+        { id: 'tx-2', revision: 3 },
+      ],
+      patch: { category: 'groceries', type: 'income' },
+    })
+    expect(req.items).toHaveLength(2)
+    expect(req.items[0]).toEqual({ id: 'tx-1', revision: 2 })
+    expect(req.patch.type).toBe('income')
+  })
+
+  it('rejects an empty patch', () => {
+    const result = BulkUpdateRequestSchema.safeParse({
+      items: [{ id: 'tx-1', revision: 1 }],
+      patch: {},
+    })
+    expect(result.success).toBe(false)
+  })
+
+  it('rejects items without a positive revision', () => {
+    const result = BulkUpdateRequestSchema.safeParse({
+      items: [{ id: 'tx-1', revision: 0 }],
+      patch: { category: 'x' },
+    })
+    expect(result.success).toBe(false)
+  })
+
+  it('rejects amount in the bulk patch (not bulk-editable)', () => {
+    const result = BulkUpdateRequestSchema.safeParse({
+      items: [{ id: 'tx-1', revision: 1 }],
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      patch: { amountCents: 100 } as any,
+    })
+    expect(result.success).toBe(false)
   })
 })

@@ -61,6 +61,47 @@ export const TransactionListSchema = z.object({
 })
 export type TransactionList = z.infer<typeof TransactionListSchema>
 
+// Bulk ops: one shared patch applied to many transactions, each carrying the
+// revision the client last saw (per-row optimistic concurrency).
+export const BulkTransactionItemSchema = z.object({
+  id: z.string(),
+  revision: z.number().int().positive(),
+})
+export type BulkTransactionItem = z.infer<typeof BulkTransactionItemSchema>
+
+// Only category/type/wallet are bulk-editable: amount, date, and description
+// are intentionally excluded because mass-applying them is almost always a
+// mistake. At least one field is required.
+export const BulkUpdatePatchSchema = z
+  .object({
+    category: CategorySchema.optional(),
+    type: TransactionTypeSchema.optional(),
+    walletId: z.string().optional(),
+  })
+  .refine((v) => Object.values(v).some((x) => x !== undefined), {
+    message: 'At least one field is required',
+  })
+export type BulkUpdatePatch = z.infer<typeof BulkUpdatePatchSchema>
+
+export const BulkUpdateRequestSchema = z.object({
+  items: z.array(BulkTransactionItemSchema).min(1),
+  patch: BulkUpdatePatchSchema,
+})
+export type BulkUpdateRequest = z.infer<typeof BulkUpdateRequestSchema>
+
+export const BulkDeleteRequestSchema = z.object({
+  items: z.array(BulkTransactionItemSchema).min(1),
+})
+export type BulkDeleteRequest = z.infer<typeof BulkDeleteRequestSchema>
+
+export const BulkUpdateResponseSchema = z.object({
+  data: z.object({
+    updated: z.number().int(),
+    transactions: z.array(TransactionSchema),
+  }),
+})
+export type BulkUpdateResponse = z.infer<typeof BulkUpdateResponseSchema>
+
 export const DailyTotalSchema = z.object({
   date: z.string(),
   totalCents: z.number().int(),

@@ -27,7 +27,14 @@ type TransactionRepository interface {
 	FindByID(ctx context.Context, id string) (*Transaction, error)
 	FindByIdempotencyKey(ctx context.Context, userEmail, key string) (*Transaction, error)
 	ListByUserAndDateRange(ctx context.Context, userEmail string, from, to time.Time, limit, offset int) ([]*Transaction, error)
+	// Update writes the transaction, incrementing revision, only when the
+	// stored revision still equals expectedRevision. Returns ErrStaleRevision
+	// when the row was modified concurrently.
+	Update(ctx context.Context, tx *Transaction, expectedRevision int) error
 	Delete(ctx context.Context, id, userEmail string) error
+	// DeleteAtRevision deletes only when the stored revision still equals the
+	// expected one; returns ErrStaleRevision on mismatch.
+	DeleteAtRevision(ctx context.Context, id, userEmail string, expectedRevision int) error
 	GetTodayTotals(ctx context.Context, userEmail string, date time.Time) ([]CurrencyTotal, error)
 }
 
@@ -51,6 +58,12 @@ type BillRepository interface {
 	ListPaymentsByBills(ctx context.Context, billIDs []string, from, to time.Time) ([]*BillPayment, error)
 	ListUpcomingBills(ctx context.Context, userEmail string, limit int) ([]*BillWithPayment, error)
 	FindTransactionByMatch(ctx context.Context, userEmail, category string, amountCents int64, date string, pattern string) (*Transaction, error)
+	// FindPaymentsByTransaction returns every bill payment linked to the
+	// transaction, including its link source.
+	FindPaymentsByTransaction(ctx context.Context, txID string) ([]*BillPayment, error)
+	// DeletePayment removes a bill payment row (used when an auto-matched link
+	// becomes invalid after the transaction changed).
+	DeletePayment(ctx context.Context, paymentID string) error
 }
 
 type GoalRepository interface {

@@ -311,6 +311,7 @@ func (s *BillService) markPaid(ctx context.Context, userEmail string, bill *doma
 	// marking paid without a transaction ID must not null an existing link.
 	if transactionID != nil {
 		payment.TransactionID = transactionID
+		payment.TransactionLinkSource = domain.PaymentLinkManual
 	}
 
 	if err := s.billRepo.SavePayment(ctx, payment); err != nil {
@@ -443,6 +444,7 @@ func (s *BillService) TryAutoMatch(ctx context.Context, tx *domain.Transaction) 
 			payment.Status = domain.OccurrencePaid
 			payment.PaidDate = &tx.TransactionDate
 			payment.TransactionID = &tx.ID
+			payment.TransactionLinkSource = domain.PaymentLinkAuto
 
 			_ = s.billRepo.SavePayment(ctx, payment)
 			return // only match first qualifying bill

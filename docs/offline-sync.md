@@ -68,6 +68,13 @@ These are **not** currently implemented end to end:
 - conflict-resolution protocol between client/server revisions
 - universal adoption of queue-backed mutations across all features
 
+Transaction **edit** (`PATCH /api/v1/finance/transactions/{id}`) and **delete**
+are deliberately online-only: both carry an `If-Match` revision precondition
+(412 on stale), and the queue has no conflict protocol or header replay, so
+queuing them could overwrite newer server state. The UI disables those row
+actions while offline. Transaction creation remains queue-backed via
+idempotency keys.
+
 `offlineMutate()` currently exists as infrastructure; feature hooks wired
 through it so far: transactions, transfers, goal contributions, and habit
 check-in (explicit set-state). Everything else calls the API directly.

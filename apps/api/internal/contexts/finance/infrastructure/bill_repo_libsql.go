@@ -119,11 +119,15 @@ func (r *BillRepoLibSQL) ListBills(ctx context.Context, userEmail string) ([]*do
 }
 
 func (r *BillRepoLibSQL) SavePayment(ctx context.Context, payment *domain.BillPayment) error {
+	linkSource := payment.TransactionLinkSource
+	if linkSource == "" {
+		linkSource = domain.PaymentLinkLegacy
+	}
 	_, err := executor(ctx, r.db).ExecContext(ctx, `
-		INSERT INTO bill_payments (id, bill_id, transaction_id, due_date, paid_date, amount_cents, status, created_at)
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-		ON CONFLICT(bill_id, due_date) DO UPDATE SET status = ?, paid_date = ?, transaction_id = ?
-	`, payment.ID, payment.BillID, payment.TransactionID, payment.DueDate.Format("2006-01-02"), nullableTime(payment.PaidDate), payment.AmountCents, string(payment.Status), payment.CreatedAt.Format(time.RFC3339), string(payment.Status), nullableTime(payment.PaidDate), payment.TransactionID)
+		INSERT INTO bill_payments (id, bill_id, transaction_id, due_date, paid_date, amount_cents, status, transaction_link_source, created_at)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT(bill_id, due_date) DO UPDATE SET status = ?, paid_date = ?, transaction_id = ?, transaction_link_source = ?
+	`, payment.ID, payment.BillID, payment.TransactionID, payment.DueDate.Format("2006-01-02"), nullableTime(payment.PaidDate), payment.AmountCents, string(payment.Status), linkSource, payment.CreatedAt.Format(time.RFC3339), string(payment.Status), nullableTime(payment.PaidDate), payment.TransactionID, linkSource)
 	if err != nil {
 		return fmt.Errorf("save payment: %w", err)
 	}
@@ -132,7 +136,7 @@ func (r *BillRepoLibSQL) SavePayment(ctx context.Context, payment *domain.BillPa
 
 func (r *BillRepoLibSQL) FindPayment(ctx context.Context, billID, dueDate string) (*domain.BillPayment, error) {
 	row := executor(ctx, r.db).QueryRowContext(ctx, `
-		SELECT id, bill_id, transaction_id, due_date, paid_date, amount_cents, status, created_at
+		SELECT id, bill_id, transaction_id, due_date, paid_date, amount_cents, status, transaction_link_source, created_at
 		FROM bill_payments WHERE bill_id = ? AND due_date = ?
 	`, billID, dueDate)
 	return scanPayment(row)
@@ -140,7 +144,7 @@ func (r *BillRepoLibSQL) FindPayment(ctx context.Context, billID, dueDate string
 
 func (r *BillRepoLibSQL) ListPaymentsByBill(ctx context.Context, billID string) ([]*domain.BillPayment, error) {
 	rows, err := executor(ctx, r.db).QueryContext(ctx, `
-		SELECT id, bill_id, transaction_id, due_date, paid_date, amount_cents, status, created_at
+		SELECT id, bill_id, transaction_id, due_date, paid_date, amount_cents, status, transaction_link_source, created_at
 		FROM bill_payments WHERE bill_id = ? ORDER BY due_date DESC
 	`, billID)
 	if err != nil {
@@ -175,7 +179,7 @@ func (r *BillRepoLibSQL) ListPaymentsByBills(ctx context.Context, billIDs []stri
 	args = append(args, from.Format("2006-01-02"), to.Format("2006-01-02"))
 
 	rows, err := executor(ctx, r.db).QueryContext(ctx, `
-		SELECT id, bill_id, transaction_id, due_date, paid_date, amount_cents, status, created_at
+		SELECT id, bill_id, transaction_id, due_date, paid_date, amount_cents, status, transaction_link_source, created_at
 		FROM bill_payments
 		WHERE bill_id IN (`+placeholders+`)
 		  AND due_date >= ?
@@ -198,6 +202,44 @@ func (r *BillRepoLibSQL) ListPaymentsByBills(ctx context.Context, billIDs []stri
 	return payments, rows.Err()
 }
 
+// FindPaymentsByTransaction returns every bill payment linked to a
+// transaction, with its link source so the caller can decide how to
+// reconcile when the transaction changes.
+func (r *BillRepoLibSQL) FindPaymentsByTransaction(ctx context.Context, txID string) ([]*domain.BillPayment, error) {
+	rows, err := executor(ctx, r.db).QueryContext(ctx, `
+		SELECT id, bill_id, transaction_id, due_date, paid_date, amount_cents, status, transaction_link_source, created_at
+		FROM bill_payments WHERE transaction_id = ?
+		ORDER BY due_date ASC
+	`, txID)
+	if err != nil {
+		return nil, fmt.Errorf("find payments by transaction: %w", err)
+	}
+	defer rows.Close()
+
+	var payments []*domain.BillPayment
+	for rows.Next() {
+		p, err := scanPayment(rows)
+		if err != nil {
+			return nil, err
+		}
+		payments = append(payments, p)
+	}
+	return payments, rows.Err()
+}
+
+func (r *BillRepoLibSQL) DeletePayment(ctx context.Context, paymentID string) error {
+	result, err := executor(ctx, r.db).ExecContext(ctx,
+		"DELETE FROM bill_payments WHERE id = ?", paymentID)
+	if err != nil {
+		return fmt.Errorf("delete payment: %w", err)
+	}
+	n, _ := result.RowsAffected()
+	if n == 0 {
+		return fmt.Errorf("payment not found")
+	}
+	return nil
+}
+
 // ListUpcomingBills returns bills with their most recent payment info (if any).
 // It joins recurring_bills with bill_payments to find upcoming/overdue occurrences.
 // limit controls how many bills to return.
@@ -209,7 +251,7 @@ func (r *BillRepoLibSQL) ListUpcomingBills(ctx context.Context, userEmail string
 			p.id, p.bill_id, p.transaction_id, p.due_date, p.paid_date, p.amount_cents, p.status, p.created_at
 		FROM recurring_bills b
 		LEFT JOIN (
-			SELECT bill_id, id, transaction_id, due_date, paid_date, amount_cents, status, created_at
+			SELECT bill_id, id, transaction_id, due_date, paid_date, amount_cents, status, transaction_link_source, created_at
 			FROM bill_payments
 			WHERE (bill_id, due_date) IN (
 				SELECT bill_id, MAX(due_date) FROM bill_payments GROUP BY bill_id
@@ -232,7 +274,7 @@ func (r *BillRepoLibSQL) ListUpcomingBills(ctx context.Context, userEmail string
 		var endDate *string
 		var createdAt, updatedAt string
 		var payID, payBillID, payDueDate, payCreatedAt sql.NullString
-		var payTransactionID, payPaidDate, payStatus sql.NullString
+		var payTransactionID, payPaidDate, payStatus, payLinkSource sql.NullString
 		var payAmountCents sql.NullInt64
 		autoMatch := 0
 		matchPattern := (*string)(nil)
@@ -242,7 +284,7 @@ func (r *BillRepoLibSQL) ListUpcomingBills(ctx context.Context, userEmail string
 			&b.DayOfMonth, &startDate, &endDate, &autoMatch, &matchPattern,
 			&createdAt, &updatedAt,
 			&payID, &payBillID, &payTransactionID, &payDueDate, &payPaidDate,
-			&payAmountCents, &payStatus, &payCreatedAt,
+			&payAmountCents, &payStatus, &payLinkSource, &payCreatedAt,
 		)
 		if err != nil {
 			return nil, fmt.Errorf("scan upcoming bill: %w", err)
@@ -278,6 +320,11 @@ func (r *BillRepoLibSQL) ListUpcomingBills(ctx context.Context, userEmail string
 			if payStatus.Valid {
 				p.Status = domain.OccurrenceStatus(payStatus.String)
 			}
+			if payLinkSource.Valid {
+				p.TransactionLinkSource = payLinkSource.String
+			} else {
+				p.TransactionLinkSource = domain.PaymentLinkLegacy
+			}
 			if payCreatedAt.Valid {
 				p.CreatedAt, _ = time.Parse(time.RFC3339, payCreatedAt.String)
 			}
@@ -304,15 +351,19 @@ func (r *BillRepoLibSQL) FindTransactionByMatch(ctx context.Context, userEmail, 
 	args = append(args, userEmail, category, minAmount, maxAmount, date)
 
 	row := executor(ctx, r.db).QueryRowContext(ctx, fmt.Sprintf(`
-		SELECT id, user_email, amount_cents, currency, category, description, type, transaction_date, created_at
-		FROM transactions
-		WHERE user_email = ?
-		  AND type = 'expense'
-		  AND category = ?
-		  AND amount_cents BETWEEN ? AND ?
-		  AND transaction_date BETWEEN date(?, '-5 days') AND date(?, '+5 days')
+		SELECT t.id, t.user_email, t.amount_cents, t.currency, t.category, t.description, t.type, t.wallet_id, '' as wallet_name, t.transaction_date, t.created_at, t.revision, t.updated_at,
+		       CASE WHEN e.id IS NOT NULL THEN 1 ELSE 0 END as imported,
+		       COALESCE(fi.provider, '') as import_provider
+		FROM transactions t
+		LEFT JOIN finance_import_entries e ON e.entity_type = 'transaction' AND e.entity_id = t.id
+		LEFT JOIN finance_imports fi ON fi.id = e.import_id
+		WHERE t.user_email = ?
+		  AND t.type = 'expense'
+		  AND t.category = ?
+		  AND t.amount_cents BETWEEN ? AND ?
+		  AND t.transaction_date BETWEEN date(?, '-5 days') AND date(?, '+5 days')
 		  %s
-		ORDER BY transaction_date DESC
+		ORDER BY t.transaction_date DESC
 		LIMIT 1
 	`, descFilter), append(args, date)...)
 
@@ -358,9 +409,9 @@ func scanPayment(row scannable) (*domain.BillPayment, error) {
 	var p domain.BillPayment
 	var dueDate, createdAt string
 	var paidDate *string
-	var transactionID *string
+	var transactionID, linkSource *string
 
-	err := row.Scan(&p.ID, &p.BillID, &transactionID, &dueDate, &paidDate, &p.AmountCents, (*string)(&p.Status), &createdAt)
+	err := row.Scan(&p.ID, &p.BillID, &transactionID, &dueDate, &paidDate, &p.AmountCents, (*string)(&p.Status), &linkSource, &createdAt)
 	if err == sql.ErrNoRows {
 		return nil, fmt.Errorf("payment not found")
 	}
@@ -369,6 +420,10 @@ func scanPayment(row scannable) (*domain.BillPayment, error) {
 	}
 
 	p.TransactionID = transactionID
+	p.TransactionLinkSource = domain.PaymentLinkLegacy
+	if linkSource != nil && *linkSource != "" {
+		p.TransactionLinkSource = *linkSource
+	}
 	p.DueDate, _ = time.Parse("2006-01-02", dueDate)
 	if paidDate != nil && *paidDate != "" {
 		parsed, _ := time.Parse("2006-01-02", *paidDate)

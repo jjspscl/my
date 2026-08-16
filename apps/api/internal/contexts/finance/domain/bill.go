@@ -29,6 +29,19 @@ const (
 	OccurrenceSkipped OccurrenceStatus = "skipped"
 )
 
+// Payment link sources — how a bill payment came to reference a transaction.
+const (
+	// PaymentLinkAuto means the link was inferred by bill auto-match; editing
+	// or deleting the transaction may safely remove the payment record.
+	PaymentLinkAuto = "auto"
+	// PaymentLinkManual means the user explicitly linked the payment to the
+	// transaction; deleting the transaction keeps the paid occurrence
+	// (transaction_id becomes NULL via FK).
+	PaymentLinkManual = "manual"
+	// PaymentLinkLegacy covers rows created before link sources existed.
+	PaymentLinkLegacy = "legacy"
+)
+
 type RecurringBill struct {
 	ID           string
 	UserEmail    string
@@ -47,14 +60,15 @@ type RecurringBill struct {
 }
 
 type BillPayment struct {
-	ID            string
-	BillID        string
-	TransactionID *string
-	DueDate       time.Time
-	PaidDate      *time.Time
-	AmountCents   int64
-	Status        OccurrenceStatus
-	CreatedAt     time.Time
+	ID                    string
+	BillID                string
+	TransactionID         *string
+	TransactionLinkSource string
+	DueDate               time.Time
+	PaidDate              *time.Time
+	AmountCents           int64
+	Status                OccurrenceStatus
+	CreatedAt             time.Time
 }
 
 type BillWithPayment struct {

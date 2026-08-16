@@ -66,6 +66,7 @@ type mockTransactionRepo struct {
 	findByIDFn    func(ctx context.Context, id string) (*domain.Transaction, error)
 	listFn        func(ctx context.Context, userEmail string, from, to time.Time, limit, offset int) ([]*domain.Transaction, error)
 	deleteFn      func(ctx context.Context, id, userEmail string) error
+	updateFn      func(ctx context.Context, tx *domain.Transaction, expectedRevision int) error
 	todayTotalsFn func(ctx context.Context, userEmail string, date time.Time) ([]domain.CurrencyTotal, error)
 }
 
@@ -113,6 +114,40 @@ func (m *mockTransactionRepo) ListByUserAndDateRange(ctx context.Context, userEm
 		result = result[:limit]
 	}
 	return result, nil
+}
+
+func (m *mockTransactionRepo) Update(ctx context.Context, tx *domain.Transaction, expectedRevision int) error {
+	if m.updateFn != nil {
+		return m.updateFn(ctx, tx, expectedRevision)
+	}
+	for i, stored := range m.transactions {
+		if stored.ID == tx.ID && stored.UserEmail == tx.UserEmail {
+			if stored.Revision != expectedRevision {
+				return domain.ErrStaleRevision
+			}
+			// The real repo bumps the stored revision in SQL and leaves the
+			// caller's pointer at the old value; mirror that so the service's
+			// own increment produces the correct new revision.
+			next := *tx
+			next.Revision = stored.Revision + 1
+			m.transactions[i] = &next
+			return nil
+		}
+	}
+	return errors.New("transaction not found")
+}
+
+func (m *mockTransactionRepo) DeleteAtRevision(ctx context.Context, id, userEmail string, expectedRevision int) error {
+	for i, tx := range m.transactions {
+		if tx.ID == id && tx.UserEmail == userEmail {
+			if tx.Revision != expectedRevision {
+				return domain.ErrStaleRevision
+			}
+			m.transactions = append(m.transactions[:i], m.transactions[i+1:]...)
+			return nil
+		}
+	}
+	return errors.New("transaction not found")
 }
 
 func (m *mockTransactionRepo) Delete(ctx context.Context, id, userEmail string) error {
@@ -381,3 +416,231 @@ func TestGetTodayTotal_EmptyDateRange_ReturnsNilDefault(t *testing.T) {
 	assert.Equal(t, int64(0), total.TotalCents)
 	assert.Equal(t, "PHP", total.Currency)
 }
+
+// ---- edit/delete fakes ----
+
+type fakeBillLinkRepo struct {
+	payments []*domain.BillPayment
+	deleted  []string
+}
+
+func (f *fakeBillLinkRepo) FindPaymentsByTransaction(ctx context.Context, txID string) ([]*domain.BillPayment, error) {
+	var out []*domain.BillPayment
+	for _, p := range f.payments {
+		if p.TransactionID != nil && *p.TransactionID == txID {
+			out = append(out, p)
+		}
+	}
+	return out, nil
+}
+
+func (f *fakeBillLinkRepo) DeletePayment(ctx context.Context, paymentID string) error {
+	f.deleted = append(f.deleted, paymentID)
+	return nil
+}
+
+type fakeProvenanceMarker struct {
+	calls []struct {
+		txID   string
+		status string
+	}
+}
+
+func (f *fakeProvenanceMarker) MarkTransactionProvenance(ctx context.Context, txID, status string, at time.Time) error {
+	f.calls = append(f.calls, struct {
+		txID   string
+		status string
+	}{txID, status})
+	return nil
+}
+
+func editTestService() (*TransactionService, *mockTransactionRepo, *mockWalletRepo) {
+	repo := &mockTransactionRepo{
+		transactions: []*domain.Transaction{
+			{
+				ID: "tx-1", UserEmail: "user@test.com", AmountCents: 1000,
+				Currency: "PHP", Category: "food", Description: "lunch",
+				Type: domain.TransactionExpense, WalletID: "w-default",
+				TransactionDate: time.Date(2026, 8, 1, 0, 0, 0, 0, time.UTC),
+				CreatedAt:       time.Date(2026, 8, 1, 0, 0, 0, 0, time.UTC),
+				Revision:        1,
+			},
+		},
+	}
+	walletRepo := &mockWalletRepo{
+		wallets: []*domain.Wallet{
+			{ID: "w-default", UserEmail: "user@test.com", Name: "Cash", Currency: "PHP", IsDefault: true},
+			{ID: "w-usd", UserEmail: "user@test.com", Name: "Dollar", Currency: "USD"},
+		},
+	}
+	return NewTransactionService(repo, walletRepo, timeutil.New(time.UTC)), repo, walletRepo
+}
+
+// ---- edit/delete tests ----
+
+func TestUpdate_PartialEdit_PreservesOmittedFields(t *testing.T) {
+	svc, _, _ := editTestService()
+	ctx := context.Background()
+
+	cat := "groceries"
+	tx, err := svc.Update(ctx, "user@test.com", "tx-1", UpdateTransactionInput{
+		Category:         &cat,
+		ExpectedRevision: 1,
+	})
+	require.NoError(t, err)
+	assert.Equal(t, "groceries", tx.Category)
+	assert.Equal(t, int64(1000), tx.AmountCents)
+	assert.Equal(t, "lunch", tx.Description)
+	assert.Equal(t, domain.TransactionExpense, tx.Type)
+	assert.Equal(t, "PHP", tx.Currency)
+	assert.Equal(t, 2, tx.Revision)
+}
+
+func TestUpdate_EmptyPatch_ReturnsError(t *testing.T) {
+	svc, _, _ := editTestService()
+
+	_, err := svc.Update(context.Background(), "user@test.com", "tx-1", UpdateTransactionInput{})
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "empty update")
+}
+
+func TestUpdate_StaleRevision_ReturnsStaleError(t *testing.T) {
+	svc, _, _ := editTestService()
+
+	cat := "food"
+	_, err := svc.Update(context.Background(), "user@test.com", "tx-1", UpdateTransactionInput{
+		Category:         &cat,
+		ExpectedRevision: 99,
+	})
+	assert.ErrorIs(t, err, domain.ErrStaleRevision)
+}
+
+func TestUpdate_InvalidValues_ReturnsError(t *testing.T) {
+	svc, _, _ := editTestService()
+
+	neg := int64(-5)
+	_, err := svc.Update(context.Background(), "user@test.com", "tx-1", UpdateTransactionInput{
+		AmountCents:      &neg,
+		ExpectedRevision: 1,
+	})
+	assert.Error(t, err)
+	assert.Contains(t, err.Error(), "positive")
+}
+
+func TestUpdate_WalletChange_RederivesCurrency(t *testing.T) {
+	svc, _, _ := editTestService()
+	ctx := context.Background()
+
+	walletID := "w-usd"
+	tx, err := svc.Update(ctx, "user@test.com", "tx-1", UpdateTransactionInput{
+		WalletID:         &walletID,
+		ExpectedRevision: 1,
+	})
+	require.NoError(t, err)
+	assert.Equal(t, "w-usd", tx.WalletID)
+	assert.Equal(t, "USD", tx.Currency)
+}
+
+func TestUpdate_ImportedTransaction_MarksProvenanceModified(t *testing.T) {
+	svc, repo, _ := editTestService()
+	repo.transactions[0].Imported = true
+	marker := &fakeProvenanceMarker{}
+	svc.WithImportProvenanceMarker(marker)
+	ctx := context.Background()
+
+	cat := "groceries"
+	_, err := svc.Update(ctx, "user@test.com", "tx-1", UpdateTransactionInput{
+		Category:         &cat,
+		ExpectedRevision: 1,
+	})
+	require.NoError(t, err)
+	require.Len(t, marker.calls, 1)
+	assert.Equal(t, "tx-1", marker.calls[0].txID)
+	assert.Equal(t, domain.EntityStatusModified, marker.calls[0].status)
+}
+
+func TestUpdate_ManualTransaction_SkipsProvenance(t *testing.T) {
+	svc, _, _ := editTestService()
+	marker := &fakeProvenanceMarker{}
+	svc.WithImportProvenanceMarker(marker)
+	ctx := context.Background()
+
+	cat := "groceries"
+	_, err := svc.Update(ctx, "user@test.com", "tx-1", UpdateTransactionInput{
+		Category:         &cat,
+		ExpectedRevision: 1,
+	})
+	require.NoError(t, err)
+	assert.Empty(t, marker.calls)
+}
+
+func TestUpdate_AutoBillLinkRemoved_ManualKept(t *testing.T) {
+	svc, _, _ := editTestService()
+	autoID := "pay-auto"
+	links := &fakeBillLinkRepo{payments: []*domain.BillPayment{
+		{ID: autoID, TransactionID: strPtr("tx-1"), TransactionLinkSource: domain.PaymentLinkAuto},
+		{ID: "pay-manual", TransactionID: strPtr("tx-1"), TransactionLinkSource: domain.PaymentLinkManual},
+	}}
+	svc.WithBillLinkRepo(links)
+	ctx := context.Background()
+
+	amount := int64(2000)
+	_, err := svc.Update(ctx, "user@test.com", "tx-1", UpdateTransactionInput{
+		AmountCents:      &amount,
+		ExpectedRevision: 1,
+	})
+	require.NoError(t, err)
+	assert.Equal(t, []string{autoID}, links.deleted)
+}
+
+func TestUpdate_NonMatchAffectingChange_KeepsAutoLink(t *testing.T) {
+	svc, _, _ := editTestService()
+	links := &fakeBillLinkRepo{payments: []*domain.BillPayment{
+		{ID: "pay-auto", TransactionID: strPtr("tx-1"), TransactionLinkSource: domain.PaymentLinkAuto},
+	}}
+	svc.WithBillLinkRepo(links)
+	ctx := context.Background()
+
+	desc := "edited note"
+	_, err := svc.Update(ctx, "user@test.com", "tx-1", UpdateTransactionInput{
+		Description:      &desc,
+		ExpectedRevision: 1,
+	})
+	require.NoError(t, err)
+	assert.Empty(t, links.deleted)
+}
+
+func TestDelete_ImportedTransaction_MarksProvenanceDeleted(t *testing.T) {
+	svc, repo, _ := editTestService()
+	repo.transactions[0].Imported = true
+	marker := &fakeProvenanceMarker{}
+	svc.WithImportProvenanceMarker(marker)
+
+	err := svc.Delete(context.Background(), "tx-1", "user@test.com")
+	require.NoError(t, err)
+	require.Len(t, marker.calls, 1)
+	assert.Equal(t, domain.EntityStatusDeleted, marker.calls[0].status)
+}
+
+func TestDelete_RemovesAutoBillLinks_KeepsManual(t *testing.T) {
+	svc, _, _ := editTestService()
+	autoID := "pay-auto"
+	links := &fakeBillLinkRepo{payments: []*domain.BillPayment{
+		{ID: autoID, TransactionID: strPtr("tx-1"), TransactionLinkSource: domain.PaymentLinkAuto},
+		{ID: "pay-manual", TransactionID: strPtr("tx-1"), TransactionLinkSource: domain.PaymentLinkManual},
+	}}
+	svc.WithBillLinkRepo(links)
+
+	err := svc.Delete(context.Background(), "tx-1", "user@test.com")
+	require.NoError(t, err)
+	assert.Equal(t, []string{autoID}, links.deleted)
+}
+
+func TestDeleteAtRevision_StaleRevision_ReturnsStaleError(t *testing.T) {
+	svc, _, _ := editTestService()
+
+	err := svc.DeleteAtRevision(context.Background(), "tx-1", "user@test.com", 99)
+	assert.ErrorIs(t, err, domain.ErrStaleRevision)
+}
+
+func strPtr(s string) *string { return &s }

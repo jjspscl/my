@@ -56,7 +56,22 @@ func (f *fakeTransactionRepo) FindByIdempotencyKey(_ context.Context, userEmail,
 func (f *fakeTransactionRepo) ListByUserAndDateRange(_ context.Context, _ string, _, _ time.Time, _, _ int) ([]*domain.Transaction, error) {
 	return nil, f.fail()
 }
+func (f *fakeTransactionRepo) Update(_ context.Context, tx *domain.Transaction, _ int) error {
+	if f.err != nil {
+		return f.err
+	}
+	for i, stored := range f.txns {
+		if stored.ID == tx.ID {
+			f.txns[i] = tx
+			return nil
+		}
+	}
+	return errors.New("transaction not found")
+}
 func (f *fakeTransactionRepo) Delete(_ context.Context, _, _ string) error { return f.fail() }
+func (f *fakeTransactionRepo) DeleteAtRevision(_ context.Context, _, _ string, _ int) error {
+	return f.fail()
+}
 func (f *fakeTransactionRepo) GetTodayTotals(_ context.Context, _ string, _ time.Time) ([]domain.CurrencyTotal, error) {
 	return nil, f.fail()
 }
@@ -86,7 +101,7 @@ func (f *fakeWalletRepo) ListByUser(_ context.Context, _ string) ([]*domain.Wall
 	return f.wallets, f.fail()
 }
 func (f *fakeWalletRepo) Update(_ context.Context, _ *domain.Wallet) error { return f.fail() }
-func (f *fakeWalletRepo) Archive(_ context.Context, _, _ string) error    { return f.fail() }
+func (f *fakeWalletRepo) Archive(_ context.Context, _, _ string) error     { return f.fail() }
 func (f *fakeWalletRepo) FindDefault(_ context.Context, _ string) (*domain.Wallet, error) {
 	for _, w := range f.wallets {
 		if w.IsDefault {

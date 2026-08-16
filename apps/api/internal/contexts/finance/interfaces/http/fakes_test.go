@@ -168,7 +168,7 @@ func (f *fakeWalletRepo) ListByUser(_ context.Context, _ string) ([]*domain.Wall
 	return nil, f.fail()
 }
 func (f *fakeWalletRepo) Update(_ context.Context, _ *domain.Wallet) error { return f.fail() }
-func (f *fakeWalletRepo) Archive(_ context.Context, _, _ string) error    { return f.fail() }
+func (f *fakeWalletRepo) Archive(_ context.Context, _, _ string) error     { return f.fail() }
 func (f *fakeWalletRepo) FindDefault(_ context.Context, _ string) (*domain.Wallet, error) {
 	return nil, f.fail()
 }
@@ -218,6 +218,10 @@ func (f *fakeBillRepo) ListUpcomingBills(_ context.Context, _ string, _ int) ([]
 func (f *fakeBillRepo) FindTransactionByMatch(_ context.Context, _, _ string, _ int64, _ string, _ string) (*domain.Transaction, error) {
 	return nil, f.fail()
 }
+func (f *fakeBillRepo) FindPaymentsByTransaction(_ context.Context, _ string) ([]*domain.BillPayment, error) {
+	return nil, f.fail()
+}
+func (f *fakeBillRepo) DeletePayment(_ context.Context, _ string) error { return f.fail() }
 
 // --- helpers ---
 

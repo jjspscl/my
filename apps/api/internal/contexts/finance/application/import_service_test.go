@@ -75,9 +75,13 @@ func (f *fakeImportRepo) MarkRolledBack(ctx context.Context, id string, t time.T
 	return nil
 }
 
-func (f *fakeImportRepo) DeleteTransactionEntity(ctx context.Context, entityType, entityID, email string) error {
-	f.deleted = append(f.deleted, entityType+":"+entityID)
+func (f *fakeImportRepo) MarkTransactionProvenance(ctx context.Context, txID, status string, at time.Time) error {
 	return nil
+}
+
+func (f *fakeImportRepo) DeleteTransactionEntity(ctx context.Context, entityType, entityID, email string) (bool, error) {
+	f.deleted = append(f.deleted, entityType+":"+entityID)
+	return true, nil
 }
 
 func (f *fakeImportRepo) DeleteWallet(ctx context.Context, id, email string) error {
@@ -132,6 +136,12 @@ func (f *fakeTxRepo) ListByUserAndDateRange(ctx context.Context, email string, f
 }
 
 func (f *fakeTxRepo) Delete(ctx context.Context, id, email string) error { return nil }
+func (f *fakeTxRepo) DeleteAtRevision(ctx context.Context, id, email string, rev int) error {
+	return nil
+}
+func (f *fakeTxRepo) Update(ctx context.Context, tx *domain.Transaction, rev int) error {
+	return nil
+}
 
 func (f *fakeTxRepo) GetTodayTotals(ctx context.Context, email string, date time.Time) ([]domain.CurrencyTotal, error) {
 	return nil, nil

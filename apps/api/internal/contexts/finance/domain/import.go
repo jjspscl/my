@@ -13,24 +13,24 @@ const (
 
 // Reconciliation states for a statement import.
 const (
-	ReconciliationOK      = "ok"
+	ReconciliationOK       = "ok"
 	ReconciliationMismatch = "mismatch"
 	ReconciliationUnknown  = "unknown"
 )
 
 // Import statuses.
 const (
-	ImportStatusCompleted   = "completed"
-	ImportStatusRolledBack  = "rolled_back"
+	ImportStatusCompleted  = "completed"
+	ImportStatusRolledBack = "rolled_back"
 )
 
 // Entry kinds — how a statement row is booked.
 const (
-	EntryExpense       = "expense"
-	EntryIncome        = "income"
-	EntryTransferOut   = "transfer_out" // money left the imported wallet
-	EntryTransferIn    = "transfer_in"  // money arrived in the imported wallet
-	EntrySkipped       = "skipped"
+	EntryExpense     = "expense"
+	EntryIncome      = "income"
+	EntryTransferOut = "transfer_out" // money left the imported wallet
+	EntryTransferIn  = "transfer_in"  // money arrived in the imported wallet
+	EntrySkipped     = "skipped"
 )
 
 // Entry outcomes.
@@ -39,6 +39,21 @@ const (
 	EntryOutcomeDuplicate = "duplicate"
 	EntryOutcomeExcluded  = "excluded"
 	EntryOutcomeError     = "error"
+)
+
+// Entry entity lifecycle — how the booked entity currently relates to the
+// immutable statement entry that created it.
+const (
+	EntityStatusActive   = "active"   // unchanged since import
+	EntityStatusModified = "modified" // edited after import
+	EntityStatusDeleted  = "deleted"  // deleted after import
+)
+
+// Batch integrity — whether any entity of a batch was edited or deleted
+// after import.
+const (
+	BatchIntegrityIntact   = "intact"
+	BatchIntegrityModified = "modified"
 )
 
 // Limits for validated import payloads.
@@ -63,6 +78,7 @@ type ImportBatch struct {
 	EndingBalanceCents  int64
 	Reconciliation      string
 	Status              string
+	Integrity           string
 	Summary             ImportSummary
 	CreatedAt           time.Time
 	RolledBackAt        *time.Time
@@ -82,21 +98,26 @@ type ImportSummary struct {
 }
 
 // ImportEntry is one statement row as booked. Kind and outcome are set by the
-// client's review step; the server validates them before committing.
+// client's review step; the server validates them before committing. The entry
+// itself is immutable audit data; when the booked entity is later edited or
+// deleted the lifecycle fields record that without altering the entry.
 type ImportEntry struct {
-	ID              string
-	ImportID        string
-	SourceReference string
-	OccurredAt      time.Time
-	AmountCents     int64
-	Kind            string
-	Category        string
-	Description     string
-	Counterparty    string
-	CounterWalletID string
-	Outcome         string
-	EntityType      string
-	EntityID        string
+	ID               string
+	ImportID         string
+	SourceReference  string
+	OccurredAt       time.Time
+	AmountCents      int64
+	Kind             string
+	Category         string
+	Description      string
+	Counterparty     string
+	CounterWalletID  string
+	Outcome          string
+	EntityType       string
+	EntityID         string
+	EntityStatus     string
+	EntityModifiedAt *time.Time
+	EntityDeletedAt  *time.Time
 }
 
 // NewImportBatch validates batch-level invariants.
@@ -134,6 +155,7 @@ func NewImportBatch(id, userEmail, provider, fileFingerprint string, statementFr
 		EndingBalanceCents:  endingBalanceCents,
 		Reconciliation:      ReconciliationUnknown,
 		Status:              ImportStatusCompleted,
+		Integrity:           BatchIntegrityIntact,
 		CreatedAt:           time.Now().UTC(),
 	}, nil
 }
@@ -190,6 +212,7 @@ func NewImportEntry(id, importID, sourceReference string, occurredAt time.Time, 
 		Counterparty:    counterparty,
 		CounterWalletID: counterWalletID,
 		Outcome:         EntryOutcomeImported,
+		EntityStatus:    EntityStatusActive,
 	}, nil
 }
 
@@ -203,7 +226,14 @@ type ImportRepository interface {
 	ListByUser(ctx context.Context, userEmail string, limit, offset int) ([]*ImportBatch, error)
 	ListEntries(ctx context.Context, importID string) ([]*ImportEntry, error)
 	MarkRolledBack(ctx context.Context, id string, rolledBackAt time.Time) error
-	DeleteTransactionEntity(ctx context.Context, entityType, entityID, userEmail string) error
+	// MarkTransactionProvenance records that a transaction created by an
+	// import was edited or deleted: the statement entry keeps its immutable
+	// values and gains the lifecycle status, and the owning batch is flagged
+	// as no longer intact. No-op when the transaction has no import entry.
+	MarkTransactionProvenance(ctx context.Context, txID, status string, at time.Time) error
+	// DeleteTransactionEntity removes the booked entity of an import entry,
+	// reporting whether a row was actually deleted (it may already be gone).
+	DeleteTransactionEntity(ctx context.Context, entityType, entityID, userEmail string) (bool, error)
 	DeleteWallet(ctx context.Context, id, userEmail string) error
 	CountTransactionsForWallet(ctx context.Context, walletID string) (int, error)
 	CountTransfersForWallet(ctx context.Context, walletID string) (int, error)

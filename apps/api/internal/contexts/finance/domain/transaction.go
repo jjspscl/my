@@ -1,9 +1,14 @@
 package domain
 
 import (
+	"errors"
 	"fmt"
 	"time"
 )
+
+// ErrStaleRevision is returned when a conditional update/delete targets a
+// revision that no longer matches the stored row (optimistic concurrency).
+var ErrStaleRevision = errors.New("transaction revision mismatch")
 
 type TransactionType string
 
@@ -28,7 +33,13 @@ type Transaction struct {
 	WalletName      string
 	TransactionDate time.Time
 	CreatedAt       time.Time
+	UpdatedAt       time.Time
+	Revision        int
 	IdempotencyKey  string
+	// Imported reports whether this transaction was booked from a statement
+	// import (used to warn before destructive edits).
+	Imported       bool
+	ImportProvider string
 }
 
 type DailyTotal struct {
@@ -77,5 +88,6 @@ func NewTransaction(id, userEmail, currency, category, description string, amoun
 		Type:            txType,
 		TransactionDate: txDate,
 		CreatedAt:       time.Now().UTC(),
+		Revision:        1,
 	}, nil
 }

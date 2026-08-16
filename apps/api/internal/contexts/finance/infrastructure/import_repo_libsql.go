@@ -27,13 +27,13 @@ func (r *ImportRepoLibSQL) SaveBatch(ctx context.Context, batch *domain.ImportBa
 		`INSERT INTO finance_imports
 			(id, user_email, provider, file_fingerprint, statement_from, statement_to,
 			 wallet_id, created_wallet_id, opening_balance_cents, ending_balance_cents,
-			 reconciliation, status, summary_json, created_at)
-		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+			 reconciliation, status, integrity_status, summary_json, created_at)
+		 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 		batch.ID, batch.UserEmail, batch.Provider, batch.FileFingerprint,
 		batch.StatementFrom.Format("2006-01-02"), batch.StatementTo.Format("2006-01-02"),
 		batch.WalletID, nullableString(optionalString(batch.CreatedWalletID)),
 		batch.OpeningBalanceCents, batch.EndingBalanceCents,
-		batch.Reconciliation, batch.Status, string(summary),
+		batch.Reconciliation, batch.Status, batch.Integrity, string(summary),
 		batch.CreatedAt.Format(time.RFC3339),
 	)
 	if err != nil {
@@ -49,14 +49,15 @@ func (r *ImportRepoLibSQL) SaveEntries(ctx context.Context, entries []*domain.Im
 			`INSERT INTO finance_import_entries
 				(id, import_id, source_reference, occurred_at, amount_cents, kind,
 				 category, description, counterparty, counter_wallet_id, outcome,
-				 entity_type, entity_id)
-			 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+				 entity_type, entity_id, entity_status)
+			 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
 			e.ID, e.ImportID, e.SourceReference, e.OccurredAt.Format(time.RFC3339),
 			e.AmountCents, e.Kind, e.Category, e.Description,
 			nullableString(optionalString(e.Counterparty)),
 			nullableString(optionalString(e.CounterWalletID)),
 			e.Outcome, nullableString(optionalString(e.EntityType)),
 			nullableString(optionalString(e.EntityID)),
+			entityStatusOrActive(e.EntityStatus),
 		)
 		if err != nil {
 			return fmt.Errorf("save import entry: %w", err)
@@ -69,7 +70,7 @@ func (r *ImportRepoLibSQL) FindByFingerprint(ctx context.Context, userEmail, fin
 	row := executor(ctx, r.db).QueryRowContext(ctx,
 		`SELECT id, user_email, provider, file_fingerprint, statement_from, statement_to,
 		        wallet_id, created_wallet_id, opening_balance_cents, ending_balance_cents,
-		        reconciliation, status, summary_json, created_at, rolled_back_at
+		        reconciliation, status, integrity_status, summary_json, created_at, rolled_back_at
 		 FROM finance_imports
 		 WHERE user_email = ? AND file_fingerprint = ?`, userEmail, fingerprint)
 	batch, err := scanImportBatch(row)
@@ -83,7 +84,7 @@ func (r *ImportRepoLibSQL) FindBatchByID(ctx context.Context, id, userEmail stri
 	row := executor(ctx, r.db).QueryRowContext(ctx,
 		`SELECT id, user_email, provider, file_fingerprint, statement_from, statement_to,
 		        wallet_id, created_wallet_id, opening_balance_cents, ending_balance_cents,
-		        reconciliation, status, summary_json, created_at, rolled_back_at
+		        reconciliation, status, integrity_status, summary_json, created_at, rolled_back_at
 		 FROM finance_imports
 		 WHERE id = ? AND user_email = ?`, id, userEmail)
 	return scanImportBatch(row)
@@ -93,7 +94,7 @@ func (r *ImportRepoLibSQL) ListByUser(ctx context.Context, userEmail string, lim
 	rows, err := executor(ctx, r.db).QueryContext(ctx,
 		`SELECT id, user_email, provider, file_fingerprint, statement_from, statement_to,
 		        wallet_id, created_wallet_id, opening_balance_cents, ending_balance_cents,
-		        reconciliation, status, summary_json, created_at, rolled_back_at
+		        reconciliation, status, integrity_status, summary_json, created_at, rolled_back_at
 		 FROM finance_imports
 		 WHERE user_email = ?
 		 ORDER BY created_at DESC
@@ -118,7 +119,7 @@ func (r *ImportRepoLibSQL) ListEntries(ctx context.Context, importID string) ([]
 	rows, err := executor(ctx, r.db).QueryContext(ctx,
 		`SELECT id, import_id, source_reference, occurred_at, amount_cents, kind,
 		        category, description, counterparty, counter_wallet_id, outcome,
-		        entity_type, entity_id
+		        entity_type, entity_id, entity_status, entity_modified_at, entity_deleted_at
 		 FROM finance_import_entries
 		 WHERE import_id = ?
 		 ORDER BY occurred_at`, importID)
@@ -148,25 +149,64 @@ func (r *ImportRepoLibSQL) MarkRolledBack(ctx context.Context, id string, rolled
 	return nil
 }
 
-func (r *ImportRepoLibSQL) DeleteTransactionEntity(ctx context.Context, entityType, entityID, userEmail string) error {
-	if entityType == "" || entityID == "" {
-		return nil
+// MarkTransactionProvenance records an edit/delete of a transaction that an
+// import created: the immutable statement entry gains the lifecycle status,
+// and the owning batch is flagged as modified. No-ops when the transaction is
+// not backed by an import entry.
+func (r *ImportRepoLibSQL) MarkTransactionProvenance(ctx context.Context, txID, status string, at time.Time) error {
+	var column string
+	switch status {
+	case domain.EntityStatusModified:
+		column = "entity_modified_at"
+	case domain.EntityStatusDeleted:
+		column = "entity_deleted_at"
+	default:
+		return fmt.Errorf("invalid entity lifecycle status: %s", status)
 	}
+	atStr := at.Format(time.RFC3339)
+
+	if _, err := executor(ctx, r.db).ExecContext(ctx,
+		`UPDATE finance_import_entries
+		 SET entity_status = ?, `+column+` = ?
+		 WHERE entity_type = 'transaction' AND entity_id = ?`,
+		status, atStr, txID); err != nil {
+		return fmt.Errorf("mark import entry lifecycle: %w", err)
+	}
+
+	if _, err := executor(ctx, r.db).ExecContext(ctx,
+		`UPDATE finance_imports
+		 SET integrity_status = ?
+		 WHERE id IN (
+		   SELECT import_id FROM finance_import_entries
+		   WHERE entity_type = 'transaction' AND entity_id = ?
+		 )`,
+		domain.BatchIntegrityModified, txID); err != nil {
+		return fmt.Errorf("mark import batch modified: %w", err)
+	}
+	return nil
+}
+
+func (r *ImportRepoLibSQL) DeleteTransactionEntity(ctx context.Context, entityType, entityID, userEmail string) (bool, error) {
+	if entityType == "" || entityID == "" {
+		return false, nil
+	}
+	var result sql.Result
 	var err error
 	switch entityType {
 	case "transaction":
-		_, err = executor(ctx, r.db).ExecContext(ctx,
+		result, err = executor(ctx, r.db).ExecContext(ctx,
 			"DELETE FROM transactions WHERE id = ? AND user_email = ?", entityID, userEmail)
 	case "transfer":
-		_, err = executor(ctx, r.db).ExecContext(ctx,
+		result, err = executor(ctx, r.db).ExecContext(ctx,
 			"DELETE FROM wallet_transfers WHERE id = ? AND user_email = ?", entityID, userEmail)
 	default:
-		return fmt.Errorf("unknown entity type: %s", entityType)
+		return false, fmt.Errorf("unknown entity type: %s", entityType)
 	}
 	if err != nil {
-		return fmt.Errorf("delete import entity: %w", err)
+		return false, fmt.Errorf("delete import entity: %w", err)
 	}
-	return nil
+	n, _ := result.RowsAffected()
+	return n > 0, nil
 }
 
 func (r *ImportRepoLibSQL) DeleteWallet(ctx context.Context, id, userEmail string) error {
@@ -209,7 +249,7 @@ func scanImportBatch(row importBatchScanner) (*domain.ImportBatch, error) {
 	var walletID, createdWalletID, rolledBackAtStr *string
 	if err := row.Scan(&b.ID, &b.UserEmail, &b.Provider, &b.FileFingerprint,
 		&fromStr, &toStr, &walletID, &createdWalletID, &b.OpeningBalanceCents,
-		&b.EndingBalanceCents, &b.Reconciliation, &b.Status, &summaryStr,
+		&b.EndingBalanceCents, &b.Reconciliation, &b.Status, &b.Integrity, &summaryStr,
 		&createdAtStr, &rolledBackAtStr); err != nil {
 		if err == sql.ErrNoRows {
 			return nil, fmt.Errorf("import batch not found")
@@ -256,10 +296,11 @@ type importEntryScanner interface {
 func scanImportEntry(row importEntryScanner) (*domain.ImportEntry, error) {
 	var e domain.ImportEntry
 	var occurredAtStr string
-	var counterparty, counterWalletID, entityType, entityID *string
+	var counterparty, counterWalletID, entityType, entityID, modifiedAtStr, deletedAtStr *string
 	if err := row.Scan(&e.ID, &e.ImportID, &e.SourceReference, &occurredAtStr,
 		&e.AmountCents, &e.Kind, &e.Category, &e.Description, &counterparty,
-		&counterWalletID, &e.Outcome, &entityType, &entityID); err != nil {
+		&counterWalletID, &e.Outcome, &entityType, &entityID,
+		&e.EntityStatus, &modifiedAtStr, &deletedAtStr); err != nil {
 		return nil, fmt.Errorf("scan import entry: %w", err)
 	}
 	occurredAt, err := parseDatetime(occurredAtStr)
@@ -278,6 +319,31 @@ func scanImportEntry(row importEntryScanner) (*domain.ImportEntry, error) {
 	if entityID != nil {
 		e.EntityID = *entityID
 	}
+	if e.EntityStatus == "" {
+		e.EntityStatus = domain.EntityStatusActive
+	}
+	if modifiedAtStr != nil && *modifiedAtStr != "" {
+		t, err := parseDatetime(*modifiedAtStr)
+		if err != nil {
+			return nil, fmt.Errorf("parse entity_modified_at: %w", err)
+		}
+		e.EntityModifiedAt = &t
+	}
+	if deletedAtStr != nil && *deletedAtStr != "" {
+		t, err := parseDatetime(*deletedAtStr)
+		if err != nil {
+			return nil, fmt.Errorf("parse entity_deleted_at: %w", err)
+		}
+		e.EntityDeletedAt = &t
+	}
 	e.OccurredAt = occurredAt
 	return &e, nil
+}
+
+// entityStatusOrActive normalizes an empty lifecycle status to active.
+func entityStatusOrActive(s string) string {
+	if s == "" {
+		return domain.EntityStatusActive
+	}
+	return s
 }

@@ -29,8 +29,32 @@ export const TransactionSchema = z.object({
   walletName: z.string().optional(),
   transactionDate: z.string(),
   createdAt: z.string(),
+  updatedAt: z.string().optional(),
+  // Optimistic concurrency: the server rejects stale edits/deletes unless the
+  // client sends this revision in If-Match.
+  revision: z.number().int().default(1),
+  // True when the transaction was booked from a statement import; the
+  // original statement entry stays immutable.
+  imported: z.boolean().default(false),
+  importProvider: z.string().optional(),
 })
 export type Transaction = z.infer<typeof TransactionSchema>
+
+// Partial edit payload: every field optional, at least one required. Fields
+// are the same shape as CreateTransactionSchema minus idempotencyKey.
+export const UpdateTransactionSchema = z
+  .object({
+    amountCents: z.number().int().positive('Amount must be positive').optional(),
+    category: CategorySchema.optional(),
+    description: z.string().optional(),
+    type: TransactionTypeSchema.optional(),
+    walletId: z.string().optional(),
+    transactionDate: z.string().optional(),
+  })
+  .refine((v) => Object.values(v).some((x) => x !== undefined), {
+    message: 'At least one field is required',
+  })
+export type UpdateTransaction = z.infer<typeof UpdateTransactionSchema>
 
 export const TransactionListSchema = z.object({
   data: z.array(TransactionSchema),

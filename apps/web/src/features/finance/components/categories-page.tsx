@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { motion } from 'motion/react'
 import { Loader2 } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
@@ -20,6 +21,7 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { useCategories, useUpdateCategory } from '../hooks/use-categories'
+import { useMotionPreset } from '@/shared/lib/motion'
 import type { Category, Classification } from '../schemas/category.schemas'
 
 const CLASSIFICATION_LABELS: Record<Classification, string> = {
@@ -47,6 +49,7 @@ function CategoryRow({ category }: { category: Category }) {
   const [classification, setClassification] = useState<Classification>(category.classification)
   const [essential, setEssential] = useState(category.essential)
   const [active, setActive] = useState(category.active)
+  const preset = useMotionPreset()
 
   const dirty =
     classification !== category.classification ||
@@ -61,7 +64,11 @@ function CategoryRow({ category }: { category: Category }) {
   }
 
   return (
-    <TableRow>
+    <motion.tr
+      initial={preset.item.initial}
+      animate={preset.item.animate}
+      className="border-b transition-colors hover:bg-muted/50 has-aria-expanded:bg-muted/50 data-[state=selected]:bg-muted"
+    >
       <TableCell className="font-medium">{category.name}</TableCell>
       <TableCell>
         <Select value={classification} onValueChange={(v) => setClassification(v as Classification)}>
@@ -99,7 +106,7 @@ function CategoryRow({ category }: { category: Category }) {
           {update.isPending ? 'Saving…' : 'Save'}
         </Button>
       </TableCell>
-    </TableRow>
+    </motion.tr>
   )
 }
 

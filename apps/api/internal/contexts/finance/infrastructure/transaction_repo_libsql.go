@@ -17,6 +17,22 @@ func NewTransactionRepoLibSQL(db *sql.DB) *TransactionRepoLibSQL {
 	return &TransactionRepoLibSQL{db: db}
 }
 
+// transactionColumns is the canonical read projection for a transaction row.
+// It includes the wallet name, revision, last-update time, and import
+// provenance (whether the row was booked from a statement import and by
+// which provider).
+const transactionColumns = `t.id, t.user_email, t.amount_cents, t.currency, t.category, t.description,
+	t.type, t.wallet_id, COALESCE(w.name, '') as wallet_name, t.transaction_date,
+	t.created_at, t.revision, t.updated_at,
+	CASE WHEN e.id IS NOT NULL THEN 1 ELSE 0 END as imported,
+	COALESCE(fi.provider, '') as import_provider`
+
+// transactionFromClause joins the wallet and the import provenance chain.
+const transactionFromClause = `FROM transactions t
+	LEFT JOIN wallets w ON t.wallet_id = w.id
+	LEFT JOIN finance_import_entries e ON e.entity_type = 'transaction' AND e.entity_id = t.id
+	LEFT JOIN finance_imports fi ON fi.id = e.import_id`
+
 func (r *TransactionRepoLibSQL) Save(ctx context.Context, tx *domain.Transaction) error {
 	_, err := executor(ctx, r.db).ExecContext(ctx,
 		`INSERT INTO transactions (id, user_email, amount_cents, currency, category, description, type, wallet_id, transaction_date, created_at, idempotency_key)
@@ -33,9 +49,8 @@ func (r *TransactionRepoLibSQL) Save(ctx context.Context, tx *domain.Transaction
 
 func (r *TransactionRepoLibSQL) FindByID(ctx context.Context, id string) (*domain.Transaction, error) {
 	row := executor(ctx, r.db).QueryRowContext(ctx,
-		`SELECT t.id, t.user_email, t.amount_cents, t.currency, t.category, t.description, t.type, t.wallet_id, COALESCE(w.name, '') as wallet_name, t.transaction_date, t.created_at
-		 FROM transactions t
-		 LEFT JOIN wallets w ON t.wallet_id = w.id
+		`SELECT `+transactionColumns+`
+		 `+transactionFromClause+`
 		 WHERE t.id = ?`, id,
 	)
 
@@ -44,9 +59,8 @@ func (r *TransactionRepoLibSQL) FindByID(ctx context.Context, id string) (*domai
 
 func (r *TransactionRepoLibSQL) FindByIdempotencyKey(ctx context.Context, userEmail, key string) (*domain.Transaction, error) {
 	row := r.db.QueryRowContext(ctx,
-		`SELECT t.id, t.user_email, t.amount_cents, t.currency, t.category, t.description, t.type, t.wallet_id, COALESCE(w.name, '') as wallet_name, t.transaction_date, t.created_at
-		 FROM transactions t
-		 LEFT JOIN wallets w ON t.wallet_id = w.id
+		`SELECT `+transactionColumns+`
+		 `+transactionFromClause+`
 		 WHERE t.user_email = ? AND t.idempotency_key = ?`, userEmail, key,
 	)
 
@@ -59,9 +73,8 @@ func (r *TransactionRepoLibSQL) FindByIdempotencyKey(ctx context.Context, userEm
 
 func (r *TransactionRepoLibSQL) ListByUserAndDateRange(ctx context.Context, userEmail string, from, to time.Time, limit, offset int) ([]*domain.Transaction, error) {
 	rows, err := executor(ctx, r.db).QueryContext(ctx,
-		`SELECT t.id, t.user_email, t.amount_cents, t.currency, t.category, t.description, t.type, t.wallet_id, COALESCE(w.name, '') as wallet_name, t.transaction_date, t.created_at
-		 FROM transactions t
-		 LEFT JOIN wallets w ON t.wallet_id = w.id
+		`SELECT `+transactionColumns+`
+		 `+transactionFromClause+`
 		 WHERE t.user_email = ? AND t.transaction_date >= ? AND t.transaction_date <= ?
 		 ORDER BY t.transaction_date DESC, t.created_at DESC
 		 LIMIT ? OFFSET ?`,
@@ -84,6 +97,31 @@ func (r *TransactionRepoLibSQL) ListByUserAndDateRange(ctx context.Context, user
 	return txs, rows.Err()
 }
 
+// Update writes the transaction and bumps revision, but only when the stored
+// revision still equals expectedRevision. Zero affected rows means either the
+// row is gone or it was modified concurrently; the caller resolves which.
+func (r *TransactionRepoLibSQL) Update(ctx context.Context, tx *domain.Transaction, expectedRevision int) error {
+	result, err := executor(ctx, r.db).ExecContext(ctx,
+		`UPDATE transactions
+		 SET amount_cents = ?, currency = ?, category = ?, description = ?, type = ?,
+		     wallet_id = ?, transaction_date = ?, revision = revision + 1, updated_at = ?
+		 WHERE id = ? AND user_email = ? AND revision = ?`,
+		tx.AmountCents, tx.Currency, tx.Category, tx.Description, string(tx.Type),
+		tx.WalletID, tx.TransactionDate.Format("2006-01-02"),
+		tx.UpdatedAt.Format(time.RFC3339),
+		tx.ID, tx.UserEmail, expectedRevision,
+	)
+	if err != nil {
+		return fmt.Errorf("update transaction: %w", err)
+	}
+
+	n, _ := result.RowsAffected()
+	if n == 0 {
+		return domain.ErrStaleRevision
+	}
+	return nil
+}
+
 func (r *TransactionRepoLibSQL) Delete(ctx context.Context, id, userEmail string) error {
 	result, err := executor(ctx, r.db).ExecContext(ctx,
 		"DELETE FROM transactions WHERE id = ? AND user_email = ?", id, userEmail,
@@ -97,6 +135,24 @@ func (r *TransactionRepoLibSQL) Delete(ctx context.Context, id, userEmail string
 		return fmt.Errorf("transaction not found")
 	}
 
+	return nil
+}
+
+// DeleteAtRevision deletes only when the stored revision matches, guarding
+// against removing a row that was edited in another tab/device.
+func (r *TransactionRepoLibSQL) DeleteAtRevision(ctx context.Context, id, userEmail string, expectedRevision int) error {
+	result, err := executor(ctx, r.db).ExecContext(ctx,
+		"DELETE FROM transactions WHERE id = ? AND user_email = ? AND revision = ?",
+		id, userEmail, expectedRevision,
+	)
+	if err != nil {
+		return fmt.Errorf("delete transaction: %w", err)
+	}
+
+	n, _ := result.RowsAffected()
+	if n == 0 {
+		return domain.ErrStaleRevision
+	}
 	return nil
 }
 
@@ -141,10 +197,13 @@ func scanTransaction(row scannable) (*domain.Transaction, error) {
 	var t domain.Transaction
 	var dateStr string
 	var createdAtStr string
+	var updatedAtStr *string
 	var walletID *string
+	imported := 0
 
 	if err := row.Scan(&t.ID, &t.UserEmail, &t.AmountCents, &t.Currency,
-		&t.Category, &t.Description, &t.Type, &walletID, &t.WalletName, &dateStr, &createdAtStr); err != nil {
+		&t.Category, &t.Description, &t.Type, &walletID, &t.WalletName, &dateStr,
+		&createdAtStr, &t.Revision, &updatedAtStr, &imported, &t.ImportProvider); err != nil {
 		if err == sql.ErrNoRows {
 			return nil, fmt.Errorf("transaction not found")
 		}
@@ -154,6 +213,7 @@ func scanTransaction(row scannable) (*domain.Transaction, error) {
 	if walletID != nil {
 		t.WalletID = *walletID
 	}
+	t.Imported = imported == 1
 
 	parsed, err := parseDatetime(dateStr)
 	if err != nil {
@@ -166,6 +226,14 @@ func scanTransaction(row scannable) (*domain.Transaction, error) {
 		return nil, fmt.Errorf("parse created_at: %w", err)
 	}
 	t.CreatedAt = createdAt
+
+	if updatedAtStr != nil && *updatedAtStr != "" {
+		updatedAt, err := parseDatetime(*updatedAtStr)
+		if err != nil {
+			return nil, fmt.Errorf("parse updated_at: %w", err)
+		}
+		t.UpdatedAt = updatedAt
+	}
 
 	return &t, nil
 }

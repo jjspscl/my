@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { motion } from 'motion/react'
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -6,6 +7,7 @@ import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { useAddContribution } from '../hooks/use-goals'
 import { useWallets } from '../hooks/use-wallets'
+import { useMotionPreset } from '@/shared/lib/motion'
 import type { GoalSummary } from '../schemas/goal.schemas'
 import type { Wallet } from '../schemas/wallet.schemas'
 import { todayLocalStr } from '@/shared/lib/utils'
@@ -29,6 +31,7 @@ export function GoalContributionDialog({ goal, open, onOpenChange }: GoalContrib
   const { data: wallets } = useWallets()
   const addContribution = useAddContribution()
   const isPending = addContribution.isPending
+  const preset = useMotionPreset()
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
@@ -68,8 +71,14 @@ export function GoalContributionDialog({ goal, open, onOpenChange }: GoalContrib
           {' · '}Progress: {goal.progressPercent}%
         </div>
 
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="space-y-2">
+        <motion.form
+          variants={preset.container}
+          initial="initial"
+          animate="animate"
+          onSubmit={handleSubmit}
+          className="space-y-4"
+        >
+          <motion.div variants={preset.field} className="space-y-2">
             <Label htmlFor="contrib-amount" className="text-xs">Amount (PHP)</Label>
             <Input
               id="contrib-amount"
@@ -83,16 +92,16 @@ export function GoalContributionDialog({ goal, open, onOpenChange }: GoalContrib
               autoFocus
               required
             />
-          </div>
-          <div className="space-y-2">
+          </motion.div>
+          <motion.div variants={preset.field} className="space-y-2">
             <Label htmlFor="contrib-date" className="text-xs">Date</Label>
             <Input id="contrib-date" type="date" value={contributedAt} onChange={(e) => setContributedAt(e.target.value)} className="text-sm" required />
-          </div>
+          </motion.div>
           {wallets && wallets.length > 0 && goal.targetWalletId && (
-            <div className="space-y-2">
+            <motion.div variants={preset.field} className="space-y-2">
               <Label htmlFor="contrib-wallet" className="text-xs">Source Wallet (optional)</Label>
               <Select value={sourceWalletId} onValueChange={setSourceWalletId}>
-                <SelectTrigger className="text-sm">
+                <SelectTrigger className="w-full text-sm">
                   <SelectValue placeholder="Select source wallet" />
                 </SelectTrigger>
                 <SelectContent>
@@ -103,16 +112,18 @@ export function GoalContributionDialog({ goal, open, onOpenChange }: GoalContrib
                 </SelectContent>
               </Select>
               <p className="text-[10px] text-muted-foreground">Auto-creates a transfer from source to goal target wallet</p>
-            </div>
+            </motion.div>
           )}
-          <div className="space-y-2">
+          <motion.div variants={preset.field} className="space-y-2">
             <Label htmlFor="contrib-note" className="text-xs">Note (optional)</Label>
             <Input id="contrib-note" value={note} onChange={(e) => setNote(e.target.value)} className="text-sm" placeholder="First deposit" />
-          </div>
-          <Button type="submit" className="w-full text-sm" disabled={isPending}>
-            {isPending ? 'Saving...' : 'Add Progress'}
-          </Button>
-        </form>
+          </motion.div>
+          <motion.div variants={preset.field}>
+            <Button type="submit" className="w-full text-sm" disabled={isPending}>
+              {isPending ? 'Saving...' : 'Add Progress'}
+            </Button>
+          </motion.div>
+        </motion.form>
       </DialogContent>
     </Dialog>
   )

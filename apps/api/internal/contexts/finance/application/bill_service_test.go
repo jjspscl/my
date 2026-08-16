@@ -113,6 +113,12 @@ func (m *mockBillRepo) FindTransactionByMatch(_ context.Context, _, _ string, _ 
 	return nil, nil
 }
 
+func (m *mockBillRepo) FindPaymentsByTransaction(_ context.Context, _ string) ([]*domain.BillPayment, error) {
+	return nil, nil
+}
+
+func (m *mockBillRepo) DeletePayment(_ context.Context, _ string) error { return nil }
+
 // --- Tests ---
 
 func TestCreateBill_Valid(t *testing.T) {

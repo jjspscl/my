@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react'
+import { AnimatePresence, motion } from 'motion/react'
 import { AlertTriangle, Bot, CheckCircle2, FileUp, Loader2, ShieldCheck } from 'lucide-react'
 import { toast } from 'sonner'
 
@@ -314,52 +315,62 @@ export function ImportWizard() {
         ))}
       </div>
 
-      {state.step === 'upload' && (
-        <UploadStep
-          file={state.file}
-          password={state.password}
-          parsing={state.parsing}
-          onFile={handleFile}
-          onPassword={(password) => set({ password })}
-          onParse={handleParse}
-        />
-      )}
+      <AnimatePresence mode="wait" initial={false}>
+        <motion.div
+          key={state.step}
+          initial={{ opacity: 0, y: 8 }}
+          animate={{ opacity: 1, y: 0 }}
+          exit={{ opacity: 0, y: -4 }}
+          transition={{ duration: 0.18 }}
+        >
+          {state.step === 'upload' && (
+            <UploadStep
+              file={state.file}
+              password={state.password}
+              parsing={state.parsing}
+              onFile={handleFile}
+              onPassword={(password) => set({ password })}
+              onParse={handleParse}
+            />
+          )}
 
-      {state.step === 'wallet' && state.statement && (
-        <WalletStep
-          wallets={phpWallets}
-          walletsLoading={walletsLoading}
-          walletId={state.walletId}
-          createWallet={state.createWallet}
-          newWalletName={state.newWalletName}
-          openingBalanceCents={state.openingBalanceCents}
-          statement={state.statement}
-          netCents={netCents}
-          onChange={(patch) => set(patch)}
-          onBack={() => set({ step: 'upload' })}
-          onNext={() => set({ step: 'review' })}
-        />
-      )}
+          {state.step === 'wallet' && state.statement && (
+            <WalletStep
+              wallets={phpWallets}
+              walletsLoading={walletsLoading}
+              walletId={state.walletId}
+              createWallet={state.createWallet}
+              newWalletName={state.newWalletName}
+              openingBalanceCents={state.openingBalanceCents}
+              statement={state.statement}
+              netCents={netCents}
+              onChange={(patch) => set(patch)}
+              onBack={() => set({ step: 'upload' })}
+              onNext={() => set({ step: 'review' })}
+            />
+          )}
 
-      {state.step === 'review' && state.statement && (
-        <ReviewStep
-          drafts={state.drafts}
-          wallets={phpWallets}
-          sourceWalletId={state.walletId}
-          statement={state.statement}
-          suggestionsByRef={suggestionMap}
-          analyzing={state.analyzing}
-          onAnalyze={handleAnalyze}
-          onDrafts={(drafts) => set({ drafts })}
-          onBack={() => set({ step: 'wallet' })}
-          onImport={handleImport}
-          importing={state.importing}
-        />
-      )}
+          {state.step === 'review' && state.statement && (
+            <ReviewStep
+              drafts={state.drafts}
+              wallets={phpWallets}
+              sourceWalletId={state.walletId}
+              statement={state.statement}
+              suggestionsByRef={suggestionMap}
+              analyzing={state.analyzing}
+              onAnalyze={handleAnalyze}
+              onDrafts={(drafts) => set({ drafts })}
+              onBack={() => set({ step: 'wallet' })}
+              onImport={handleImport}
+              importing={state.importing}
+            />
+          )}
 
-      {state.step === 'result' && state.result && (
-        <ResultStep batch={state.result} onReset={reset} />
-      )}
+          {state.step === 'result' && state.result && (
+            <ResultStep batch={state.result} onReset={reset} />
+          )}
+        </motion.div>
+      </AnimatePresence>
 
       <ImportsHistory imports={imports ?? []} onRollback={(id) => rollback.mutate(id)} />
 

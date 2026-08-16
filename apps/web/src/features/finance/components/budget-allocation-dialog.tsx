@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { motion } from 'motion/react'
 import { useForm, useFieldArray } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
 import { Pencil, Plus, Trash2 } from 'lucide-react'
@@ -23,6 +24,7 @@ import {
 import { Switch } from '@/components/ui/switch'
 import { CategoryCombobox } from './category-combobox'
 import { useUpsertBudget } from '../hooks/use-budgets'
+import { useMotionPreset } from '@/shared/lib/motion'
 import type { BudgetCategorySummary } from '../schemas/budget.schemas'
 import { z } from 'zod'
 
@@ -67,6 +69,8 @@ export function BudgetAllocationDialog({ month, categories }: Props) {
     name: 'categories',
   })
 
+  const preset = useMotionPreset()
+
   const onSubmit = (values: FormValues) => {
     upsert.mutate(
       {
@@ -97,9 +101,15 @@ export function BudgetAllocationDialog({ month, categories }: Props) {
         </DialogHeader>
 
         <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4 pt-2">
+          <motion.form
+            variants={preset.container}
+            initial="initial"
+            animate="animate"
+            onSubmit={form.handleSubmit(onSubmit)}
+            className="space-y-4 pt-2"
+          >
             {fields.map((field, index) => (
-              <div key={field.id} className="flex items-end gap-2">
+              <motion.div key={field.id} variants={preset.field} className="flex items-end gap-2">
                 <FormField
                   control={form.control}
                   name={`categories.${index}.category`}
@@ -148,23 +158,27 @@ export function BudgetAllocationDialog({ month, categories }: Props) {
                 >
                   <Trash2 className="h-3.5 w-3.5" />
                 </Button>
-              </div>
+              </motion.div>
             ))}
 
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              className="w-full gap-1"
-              onClick={() => append({ category: '', amount: '', rolloverEnabled: false })}
-            >
-              <Plus className="h-3.5 w-3.5" /> Add Category
-            </Button>
+            <motion.div variants={preset.field}>
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="w-full gap-1"
+                onClick={() => append({ category: '', amount: '', rolloverEnabled: false })}
+              >
+                <Plus className="h-3.5 w-3.5" /> Add Category
+              </Button>
+            </motion.div>
 
-            <Button type="submit" className="w-full" size="sm" disabled={upsert.isPending}>
-              {upsert.isPending ? 'Saving...' : 'Save Budget'}
-            </Button>
-          </form>
+            <motion.div variants={preset.field}>
+              <Button type="submit" className="w-full" size="sm" disabled={upsert.isPending}>
+                {upsert.isPending ? 'Saving...' : 'Save Budget'}
+              </Button>
+            </motion.div>
+          </motion.form>
         </Form>
       </DialogContent>
     </Dialog>

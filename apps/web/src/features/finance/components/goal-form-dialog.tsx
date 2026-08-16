@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { motion } from 'motion/react'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -6,6 +7,7 @@ import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Plus } from 'lucide-react'
 import { useCreateGoal, useUpdateGoal } from '../hooks/use-goals'
+import { useMotionPreset } from '@/shared/lib/motion'
 import type { GoalSummary } from '../schemas/goal.schemas'
 import type { Wallet } from '../schemas/wallet.schemas'
 
@@ -27,6 +29,7 @@ export function GoalFormDialog({ trigger, goal, open, onOpenChange, wallets, wal
   const createGoal = useCreateGoal()
   const updateGoal = useUpdateGoal()
   const isPending = createGoal.isPending || updateGoal.isPending
+  const preset = useMotionPreset()
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
@@ -62,20 +65,26 @@ export function GoalFormDialog({ trigger, goal, open, onOpenChange, wallets, wal
         <DialogHeader>
           <DialogTitle className="text-sm">{goal ? 'Edit Goal' : 'New Savings Goal'}</DialogTitle>
         </DialogHeader>
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="space-y-2">
+        <motion.form
+          variants={preset.container}
+          initial="initial"
+          animate="animate"
+          onSubmit={handleSubmit}
+          className="space-y-4"
+        >
+          <motion.div variants={preset.field} className="space-y-2">
             <Label htmlFor="goal-name" className="text-xs">Name</Label>
             <Input id="goal-name" value={name} onChange={(e) => setName(e.target.value)} className="text-sm" placeholder="Emergency Fund" required />
-          </div>
-          <div className="space-y-2">
+          </motion.div>
+          <motion.div variants={preset.field} className="space-y-2">
             <Label htmlFor="goal-target" className="text-xs">Target Amount (PHP)</Label>
             <Input id="goal-target" type="number" step="0.01" min="0.01" value={targetAmount} onChange={(e) => setTargetAmount(e.target.value)} className="text-sm" placeholder="500,000" required />
-          </div>
-          <div className="space-y-2">
+          </motion.div>
+          <motion.div variants={preset.field} className="space-y-2">
             <Label htmlFor="goal-date" className="text-xs">Target Date (optional)</Label>
             <Input id="goal-date" type="date" value={targetDate} onChange={(e) => setTargetDate(e.target.value)} className="text-sm" />
-          </div>
-          <div className="space-y-2">
+          </motion.div>
+          <motion.div variants={preset.field} className="space-y-2">
             <Label htmlFor="goal-wallet" className="text-xs">Target Wallet</Label>
             {walletsLoading ? (
               <div className="flex h-9 items-center rounded-md border border-input px-3 text-sm text-muted-foreground">
@@ -87,7 +96,7 @@ export function GoalFormDialog({ trigger, goal, open, onOpenChange, wallets, wal
               </div>
             ) : (
               <Select value={targetWalletId || ''} onValueChange={setTargetWalletId}>
-                <SelectTrigger id="goal-wallet" className="text-sm">
+                <SelectTrigger id="goal-wallet" className="w-full text-sm">
                   <SelectValue placeholder="Select wallet" />
                 </SelectTrigger>
                 <SelectContent>
@@ -97,11 +106,13 @@ export function GoalFormDialog({ trigger, goal, open, onOpenChange, wallets, wal
                 </SelectContent>
               </Select>
             )}
-          </div>
-          <Button type="submit" className="w-full text-sm" disabled={isPending}>
-            {isPending ? 'Saving...' : goal ? 'Update Goal' : 'Create Goal'}
-          </Button>
-        </form>
+          </motion.div>
+          <motion.div variants={preset.field}>
+            <Button type="submit" className="w-full text-sm" disabled={isPending}>
+              {isPending ? 'Saving...' : goal ? 'Update Goal' : 'Create Goal'}
+            </Button>
+          </motion.div>
+        </motion.form>
       </DialogContent>
     </Dialog>
   )

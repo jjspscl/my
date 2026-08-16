@@ -100,15 +100,18 @@ func NewWithOptions(cfg *config.Config, log *slog.Logger, opts Options) (*App, e
 	billSvc := financeapp.NewBillService(billRepo).WithCurrency(cfg.DefaultCurrency).WithClock(clock).WithTransactionSupport(txRepo, walletRepo).WithCoordinator(coordinator)
 	txSvc.WithBillAutoMatcher(billSvc)
 
+	importRepo := financeinfra.NewImportRepoLibSQL(db)
+	// Transaction edits/deletes must reconcile bill links and import
+	// provenance atomically, so the service is wired with both.
+	txSvc.WithCoordinator(coordinator).WithBillLinkRepo(billRepo).WithImportProvenanceMarker(importRepo)
+
 	goalRepo := financeinfra.NewGoalRepoLibSQL(db)
 	transferRepo := financeinfra.NewTransferRepoLibSQL(db)
 	goalSvc := financeapp.NewGoalService(goalRepo, transferRepo, walletRepo).WithClock(clock).WithCoordinator(coordinator)
 	walletSvc := financeapp.NewWalletService(walletRepo)
 	transferSvc := financeapp.NewTransferService(transferRepo, walletRepo)
 
-	importRepo := financeinfra.NewImportRepoLibSQL(db)
 	importSvc := financeapp.NewImportService(importRepo, txRepo, transferRepo, walletRepo, coordinator)
-
 	categoryRepo := financeinfra.NewCategoryRepoLibSQL(db)
 	categorySvc := financeapp.NewCategoryService(categoryRepo)
 

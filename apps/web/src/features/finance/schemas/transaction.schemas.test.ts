@@ -4,6 +4,8 @@ import {
   CreateTransactionSchema,
   DailyTotalSchema,
   TransactionTypeSchema,
+  UpdateTransactionSchema,
+  BulkUpdateRequestSchema,
 } from './transaction.schemas'
 
 describe('TransactionTypeSchema', () => {
@@ -214,6 +216,113 @@ describe('DailyTotalSchema', () => {
       totalCents: 0,
       expenseCents: 0,
       incomeCents: 0,
+    })
+    expect(result.success).toBe(false)
+  })
+})
+describe('UpdateTransactionSchema', () => {
+  it('accepts a partial patch', () => {
+    const patch = UpdateTransactionSchema.parse({ category: 'groceries' })
+    expect(patch.category).toBe('groceries')
+  })
+
+  it('rejects an empty patch', () => {
+    const result = UpdateTransactionSchema.safeParse({})
+    expect(result.success).toBe(false)
+  })
+
+  it('rejects negative amounts', () => {
+    const result = UpdateTransactionSchema.safeParse({ amountCents: -5 })
+    expect(result.success).toBe(false)
+  })
+
+  it('accepts a full patch', () => {
+    const result = UpdateTransactionSchema.safeParse({
+      amountCents: 2500,
+      category: 'food',
+      description: 'x',
+      type: 'expense',
+      walletId: 'w-1',
+      transactionDate: '2026-08-16',
+    })
+    expect(result.success).toBe(true)
+  })
+})
+
+describe('TransactionSchema revision/provenance', () => {
+  it('defaults revision to 1 and imported to false', () => {
+    const tx = TransactionSchema.parse({
+      id: 'tx-1',
+      amountCents: 1000,
+      currency: 'PHP',
+      category: 'food',
+      description: '',
+      type: 'expense',
+      walletId: 'w-1',
+      transactionDate: '2026-01-15',
+      createdAt: '2026-01-15T10:00:00Z',
+    })
+    expect(tx.revision).toBe(1)
+    expect(tx.imported).toBe(false)
+  })
+
+  it('parses imported provenance from the API', () => {
+    const tx = TransactionSchema.parse({
+      id: 'tx-1',
+      amountCents: 1000,
+      currency: 'PHP',
+      category: 'food',
+      description: '',
+      type: 'expense',
+      walletId: 'w-1',
+      transactionDate: '2026-01-15',
+      createdAt: '2026-01-15T10:00:00Z',
+      revision: 3,
+      imported: true,
+      importProvider: 'gcash_pdf',
+      updatedAt: '2026-01-16T10:00:00Z',
+    })
+    expect(tx.revision).toBe(3)
+    expect(tx.imported).toBe(true)
+    expect(tx.importProvider).toBe('gcash_pdf')
+  })
+})
+
+describe('BulkUpdateRequestSchema', () => {
+  it('accepts items with revisions and a patch', () => {
+    const req = BulkUpdateRequestSchema.parse({
+      items: [
+        { id: 'tx-1', revision: 2 },
+        { id: 'tx-2', revision: 3 },
+      ],
+      patch: { category: 'groceries', type: 'income' },
+    })
+    expect(req.items).toHaveLength(2)
+    expect(req.items[0]).toEqual({ id: 'tx-1', revision: 2 })
+    expect(req.patch.type).toBe('income')
+  })
+
+  it('rejects an empty patch', () => {
+    const result = BulkUpdateRequestSchema.safeParse({
+      items: [{ id: 'tx-1', revision: 1 }],
+      patch: {},
+    })
+    expect(result.success).toBe(false)
+  })
+
+  it('rejects items without a positive revision', () => {
+    const result = BulkUpdateRequestSchema.safeParse({
+      items: [{ id: 'tx-1', revision: 0 }],
+      patch: { category: 'x' },
+    })
+    expect(result.success).toBe(false)
+  })
+
+  it('rejects amount in the bulk patch (not bulk-editable)', () => {
+    const result = BulkUpdateRequestSchema.safeParse({
+      items: [{ id: 'tx-1', revision: 1 }],
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      patch: { amountCents: 100 } as any,
     })
     expect(result.success).toBe(false)
   })

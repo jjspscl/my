@@ -282,10 +282,15 @@ func (s *ImportService) Rollback(ctx context.Context, id, userEmail string) (int
 			if e.Outcome != domain.EntryOutcomeImported || e.EntityType == "" {
 				continue
 			}
-			if err := s.importRepo.DeleteTransactionEntity(txCtx, e.EntityType, e.EntityID, userEmail); err != nil {
+			// Individually deleted entities (deleted after import) are
+			// skipped without being counted as removed by this rollback.
+			deleted, err := s.importRepo.DeleteTransactionEntity(txCtx, e.EntityType, e.EntityID, userEmail)
+			if err != nil {
 				return err
 			}
-			removed++
+			if deleted {
+				removed++
+			}
 		}
 
 		if batch.CreatedWalletID != "" {

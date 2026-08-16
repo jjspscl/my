@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { motion } from 'motion/react'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -6,6 +7,7 @@ import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Plus } from 'lucide-react'
 import { useCreateWallet, useUpdateWallet } from '../hooks/use-wallets'
+import { useMotionPreset } from '@/shared/lib/motion'
 import type { Wallet } from '../schemas/wallet.schemas'
 
 interface WalletFormDialogProps {
@@ -25,6 +27,7 @@ export function WalletFormDialog({ trigger, wallet, open, onOpenChange }: Wallet
   const [name, setName] = useState(wallet?.name ?? '')
   const [kind, setKind] = useState<string>(wallet?.kind ?? 'cash')
   const [openingBalance, setOpeningBalance] = useState(wallet ? String(wallet.openingBalanceCents / 100) : '')
+  const preset = useMotionPreset()
 
   const createWallet = useCreateWallet()
   const updateWallet = useUpdateWallet()
@@ -61,15 +64,21 @@ export function WalletFormDialog({ trigger, wallet, open, onOpenChange }: Wallet
         <DialogHeader>
           <DialogTitle className="text-sm">{wallet ? 'Edit Wallet' : 'New Wallet'}</DialogTitle>
         </DialogHeader>
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="space-y-2">
+        <motion.form
+          variants={preset.container}
+          initial="initial"
+          animate="animate"
+          onSubmit={handleSubmit}
+          className="space-y-4"
+        >
+          <motion.div variants={preset.field} className="space-y-2">
             <Label htmlFor="wallet-name" className="text-xs">Name</Label>
             <Input id="wallet-name" value={name} onChange={(e) => setName(e.target.value)} className="text-sm" placeholder="Main Account" required />
-          </div>
-          <div className="space-y-2">
+          </motion.div>
+          <motion.div variants={preset.field} className="space-y-2">
             <Label htmlFor="wallet-kind" className="text-xs">Type</Label>
             <Select value={kind} onValueChange={setKind}>
-              <SelectTrigger id="wallet-kind" className="text-sm">
+              <SelectTrigger id="wallet-kind" className="w-full text-sm">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -78,15 +87,17 @@ export function WalletFormDialog({ trigger, wallet, open, onOpenChange }: Wallet
                 ))}
               </SelectContent>
             </Select>
-          </div>
-          <div className="space-y-2">
+          </motion.div>
+          <motion.div variants={preset.field} className="space-y-2">
             <Label htmlFor="wallet-balance" className="text-xs">Opening Balance (PHP)</Label>
             <Input id="wallet-balance" type="number" step="0.01" min="0" value={openingBalance} onChange={(e) => setOpeningBalance(e.target.value)} className="text-sm" placeholder="0.00" />
-          </div>
-          <Button type="submit" className="w-full text-sm" disabled={isPending}>
-            {isPending ? 'Saving...' : wallet ? 'Update Wallet' : 'Create Wallet'}
-          </Button>
-        </form>
+          </motion.div>
+          <motion.div variants={preset.field}>
+            <Button type="submit" className="w-full text-sm" disabled={isPending}>
+              {isPending ? 'Saving...' : wallet ? 'Update Wallet' : 'Create Wallet'}
+            </Button>
+          </motion.div>
+        </motion.form>
       </DialogContent>
     </Dialog>
   )

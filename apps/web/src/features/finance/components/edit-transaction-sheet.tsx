@@ -1,5 +1,6 @@
 import { useForm } from 'react-hook-form'
 import { zodResolver } from '@hookform/resolvers/zod'
+import { motion } from 'motion/react'
 
 import { Button } from '@/components/ui/button'
 import {
@@ -21,6 +22,7 @@ import {
 } from './transaction-form-fields'
 import { useUpdateTransaction } from '../hooks/use-transactions'
 import { useWallets } from '../hooks/use-wallets'
+import { useMotionPreset } from '@/shared/lib/motion'
 import type { Transaction } from '../schemas/transaction.schemas'
 
 interface EditTransactionSheetProps {
@@ -39,6 +41,7 @@ export function EditTransactionSheet({
 }: EditTransactionSheetProps) {
   const updateTx = useUpdateTransaction()
   const { data: wallets } = useWallets()
+  const preset = useMotionPreset()
 
   const form = useForm<TransactionFormValues>({
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
@@ -96,35 +99,44 @@ export function EditTransactionSheet({
 
   return (
     <Sheet open={open} onOpenChange={handleOpenChange}>
-      <SheetContent side="right" className="w-full gap-6 overflow-y-auto sm:max-w-lg">
-        <SheetHeader>
+      <SheetContent side="right" className="w-full gap-0 p-0 sm:max-w-lg">
+        <SheetHeader className="px-6 py-5 pr-12">
           <SheetTitle>Edit transaction</SheetTitle>
+          {transaction?.imported && (
+            <motion.div
+              initial={preset.item.initial}
+              animate={preset.item.animate}
+              className="flex flex-col gap-1.5"
+            >
+              <Badge variant="outline" className="w-fit gap-1 text-xs">
+                Imported
+                {transaction.importProvider ? ` from ${transaction.importProvider}` : ''}
+              </Badge>
+            </motion.div>
+          )}
           <SheetDescription>
-            {transaction?.imported ? (
-              <span className="flex flex-col gap-2">
-                <Badge variant="outline" className="w-fit gap-1 text-xs">
-                  Imported{transaction.importProvider ? ` from ${transaction.importProvider}` : ''}
-                </Badge>
-                <span>
-                  Changes apply to this transaction only. The original statement
-                  entry is kept unchanged.
-                </span>
-              </span>
-            ) : (
-              'Update the details below. Saving may affect balances and bill matching.'
-            )}
+            {transaction?.imported
+              ? 'Changes apply to this transaction only. The original statement entry is kept unchanged.'
+              : 'Update the details below. Saving may affect balances and bill matching.'}
           </SheetDescription>
         </SheetHeader>
 
         <Form {...form}>
-          <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-            <TransactionFormFields control={form.control} wallets={wallets} />
-            <SheetFooter>
-              <Button
-                type="submit"
-                className="w-full sm:w-auto"
-                disabled={updateTx.isPending}
-              >
+          <form
+            onSubmit={form.handleSubmit(onSubmit)}
+            className="flex min-h-0 flex-1 flex-col"
+          >
+            <motion.div
+              variants={preset.container}
+              initial="initial"
+              animate="animate"
+              className="flex-1 overflow-y-auto px-6 pb-6"
+            >
+              <TransactionFormFields control={form.control} wallets={wallets} />
+            </motion.div>
+
+            <SheetFooter className="border-t px-6 py-4">
+              <Button type="submit" size="sm" disabled={updateTx.isPending}>
                 {updateTx.isPending ? 'Saving...' : 'Save changes'}
               </Button>
             </SheetFooter>

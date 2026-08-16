@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { motion } from 'motion/react'
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
@@ -7,6 +8,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { ArrowRightLeft } from 'lucide-react'
 import { useCreateTransfer } from '../hooks/use-transfers'
 import { useWallets } from '../hooks/use-wallets'
+import { useMotionPreset } from '@/shared/lib/motion'
 import type { Wallet } from '../schemas/wallet.schemas'
 import { todayLocalStr } from '@/shared/lib/utils'
 import { randomUUID } from '@/shared/lib/uuid'
@@ -29,6 +31,7 @@ export function TransferDialog({ trigger }: TransferDialogProps) {
   const { data: wallets } = useWallets()
   const createTransfer = useCreateTransfer()
   const isPending = createTransfer.isPending
+  const preset = useMotionPreset()
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault()
@@ -64,11 +67,17 @@ export function TransferDialog({ trigger }: TransferDialogProps) {
         <DialogHeader>
           <DialogTitle className="text-sm">Transfer Between Wallets</DialogTitle>
         </DialogHeader>
-        <form onSubmit={handleSubmit} className="space-y-4">
-          <div className="space-y-2">
+        <motion.form
+          variants={preset.container}
+          initial="initial"
+          animate="animate"
+          onSubmit={handleSubmit}
+          className="space-y-4"
+        >
+          <motion.div variants={preset.field} className="space-y-2">
             <Label className="text-xs">From Wallet</Label>
             <Select value={fromWalletId} onValueChange={setFromWalletId}>
-              <SelectTrigger className="text-sm">
+              <SelectTrigger className="w-full text-sm">
                 <SelectValue placeholder="Select source" />
               </SelectTrigger>
               <SelectContent>
@@ -77,11 +86,11 @@ export function TransferDialog({ trigger }: TransferDialogProps) {
                 ))}
               </SelectContent>
             </Select>
-          </div>
-          <div className="space-y-2">
+          </motion.div>
+          <motion.div variants={preset.field} className="space-y-2">
             <Label className="text-xs">To Wallet</Label>
             <Select value={toWalletId} onValueChange={setToWalletId}>
-              <SelectTrigger className="text-sm">
+              <SelectTrigger className="w-full text-sm">
                 <SelectValue placeholder="Select destination" />
               </SelectTrigger>
               <SelectContent>
@@ -90,23 +99,25 @@ export function TransferDialog({ trigger }: TransferDialogProps) {
                 ))}
               </SelectContent>
             </Select>
-          </div>
-          <div className="space-y-2">
+          </motion.div>
+          <motion.div variants={preset.field} className="space-y-2">
             <Label htmlFor="transfer-amount" className="text-xs">Amount (PHP)</Label>
             <Input id="transfer-amount" type="number" step="0.01" min="0.01" value={amount} onChange={(e) => setAmount(e.target.value)} className="text-sm" placeholder="1,000" required />
-          </div>
-          <div className="space-y-2">
+          </motion.div>
+          <motion.div variants={preset.field} className="space-y-2">
             <Label htmlFor="transfer-desc" className="text-xs">Description (optional)</Label>
             <Input id="transfer-desc" value={description} onChange={(e) => setDescription(e.target.value)} className="text-sm" placeholder="Savings transfer" />
-          </div>
-          <div className="space-y-2">
+          </motion.div>
+          <motion.div variants={preset.field} className="space-y-2">
             <Label htmlFor="transfer-date" className="text-xs">Date</Label>
             <Input id="transfer-date" type="date" value={transferDate} onChange={(e) => setTransferDate(e.target.value)} className="text-sm" required />
-          </div>
-          <Button type="submit" className="w-full text-sm" disabled={isPending}>
-            {isPending ? 'Sending...' : 'Transfer'}
-          </Button>
-        </form>
+          </motion.div>
+          <motion.div variants={preset.field}>
+            <Button type="submit" className="w-full text-sm" disabled={isPending}>
+              {isPending ? 'Sending...' : 'Transfer'}
+            </Button>
+          </motion.div>
+        </motion.form>
       </DialogContent>
     </Dialog>
   )

@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { AnimatePresence, motion } from 'motion/react'
 import { Loader2, MoreHorizontal, Pencil, Trash2 } from 'lucide-react'
 
 import { Button } from '@/components/ui/button'
@@ -35,6 +36,7 @@ import { EditTransactionSheet } from './edit-transaction-sheet'
 import { formatCents } from '@/features/finance/lib/format'
 import { toLocalDateStr, todayLocalStr } from '@/shared/lib/utils'
 import { useNetworkStatus } from '@/shared/sync/network-status'
+import { useMotionPreset } from '@/shared/lib/motion'
 import type { Transaction } from '../schemas/transaction.schemas'
 
 export function TransactionsPage() {
@@ -51,6 +53,7 @@ export function TransactionsPage() {
   const [deleting, setDeleting] = useState<Transaction | null>(null)
   const [editing, setEditing] = useState<Transaction | null>(null)
   const isOnline = useNetworkStatus((s) => s.isOnline)
+  const preset = useMotionPreset()
 
   const transactions = data ?? []
 
@@ -103,7 +106,11 @@ export function TransactionsPage() {
           <p className="text-xs text-muted-foreground">Add your first transaction to get started</p>
         </div>
       ) : (
-        <div className="rounded-md border">
+        <motion.div
+          initial={preset.item.initial}
+          animate={preset.item.animate}
+          className="rounded-md border"
+        >
           <Table>
             <TableHeader>
               <TableRow>
@@ -115,68 +122,76 @@ export function TransactionsPage() {
               </TableRow>
             </TableHeader>
             <TableBody>
-              {transactions.map((tx) => (
-                <TableRow key={tx.id}>
-                  <TableCell className="text-xs tabular-nums text-muted-foreground">
-                    {tx.transactionDate}
-                  </TableCell>
-                  <TableCell className="text-xs">
-                    {tx.category}
-                    {tx.imported && (
-                      <span className="ml-1.5 text-[10px] uppercase tracking-wide text-muted-foreground">
-                        imported
-                      </span>
-                    )}
-                  </TableCell>
-                  <TableCell className="text-xs text-muted-foreground">
-                    {tx.description || '-'}
-                  </TableCell>
-                  <TableCell
-                    className={`text-xs tabular-nums text-right font-medium ${
-                      tx.type === 'expense' ? 'text-red-600' : 'text-green-600'
-                    }`}
+              <AnimatePresence initial={false}>
+                {transactions.map((tx) => (
+                  <motion.tr
+                    key={tx.id}
+                    data-slot="table-row"
+                    exit={{ opacity: 0 }}
+                    transition={{ duration: 0.15 }}
+                    className="border-b transition-colors hover:bg-muted/50 has-aria-expanded:bg-muted/50 data-[state=selected]:bg-muted"
                   >
-                    {tx.type === 'expense' ? '-' : '+'}
-                    {formatCents(tx.amountCents)}
-                  </TableCell>
-                  <TableCell className="text-right">
-                    <DropdownMenu>
-                      <DropdownMenuTrigger asChild>
-                        <Button
-                          variant="ghost"
-                          size="icon"
-                          className="h-8 w-8"
-                          disabled={!isOnline}
-                          aria-label={`Actions for ${tx.description || tx.category}, ${formatCents(tx.amountCents)}, ${tx.transactionDate}`}
-                        >
-                          {deleting?.id === tx.id && deleteTx.isPending ? (
-                            <Loader2 className="h-3 w-3 animate-spin" />
-                          ) : (
-                            <MoreHorizontal className="h-3.5 w-3.5" />
-                          )}
-                        </Button>
-                      </DropdownMenuTrigger>
-                      <DropdownMenuContent align="end" className="w-40">
-                        <DropdownMenuItem onClick={() => setEditing(tx)}>
-                          <Pencil className="h-3.5 w-3.5" />
-                          Edit transaction
-                        </DropdownMenuItem>
-                        <DropdownMenuItem
-                          variant="destructive"
-                          onClick={() => setDeleting(tx)}
-                          disabled={deleteTx.isPending}
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                          Delete transaction
-                        </DropdownMenuItem>
-                      </DropdownMenuContent>
-                    </DropdownMenu>
-                  </TableCell>
-                </TableRow>
-              ))}
+                    <TableCell className="text-xs tabular-nums text-muted-foreground">
+                      {tx.transactionDate}
+                    </TableCell>
+                    <TableCell className="text-xs">
+                      {tx.category}
+                      {tx.imported && (
+                        <span className="ml-1.5 text-[10px] uppercase tracking-wide text-muted-foreground">
+                          imported
+                        </span>
+                      )}
+                    </TableCell>
+                    <TableCell className="text-xs text-muted-foreground">
+                      {tx.description || '-'}
+                    </TableCell>
+                    <TableCell
+                      className={`text-xs tabular-nums text-right font-medium ${
+                        tx.type === 'expense' ? 'text-red-600' : 'text-green-600'
+                      }`}
+                    >
+                      {tx.type === 'expense' ? '-' : '+'}
+                      {formatCents(tx.amountCents)}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <DropdownMenu>
+                        <DropdownMenuTrigger asChild>
+                          <Button
+                            variant="ghost"
+                            size="icon"
+                            className="h-8 w-8"
+                            disabled={!isOnline}
+                            aria-label={`Actions for ${tx.description || tx.category}, ${formatCents(tx.amountCents)}, ${tx.transactionDate}`}
+                          >
+                            {deleting?.id === tx.id && deleteTx.isPending ? (
+                              <Loader2 className="h-3 w-3 animate-spin" />
+                            ) : (
+                              <MoreHorizontal className="h-3.5 w-3.5" />
+                            )}
+                          </Button>
+                        </DropdownMenuTrigger>
+                        <DropdownMenuContent align="end" className="w-40">
+                          <DropdownMenuItem onClick={() => setEditing(tx)}>
+                            <Pencil className="h-3.5 w-3.5" />
+                            Edit transaction
+                          </DropdownMenuItem>
+                          <DropdownMenuItem
+                            variant="destructive"
+                            onClick={() => setDeleting(tx)}
+                            disabled={deleteTx.isPending}
+                          >
+                            <Trash2 className="h-3.5 w-3.5" />
+                            Delete transaction
+                          </DropdownMenuItem>
+                        </DropdownMenuContent>
+                      </DropdownMenu>
+                    </TableCell>
+                  </motion.tr>
+                ))}
+              </AnimatePresence>
             </TableBody>
           </Table>
-        </div>
+        </motion.div>
       )}
 
       {!isOnline && (

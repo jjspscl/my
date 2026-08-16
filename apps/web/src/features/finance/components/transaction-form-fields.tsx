@@ -1,5 +1,6 @@
 import { type Control } from 'react-hook-form'
 import { z } from 'zod'
+import { motion } from 'motion/react'
 
 import { Input } from '@/components/ui/input'
 import {
@@ -17,6 +18,7 @@ import {
   FormMessage,
 } from '@/components/ui/form'
 import { CategoryCombobox } from './category-combobox'
+import { useMotionPreset } from '@/shared/lib/motion'
 import type { Wallet } from '../schemas/wallet.schemas'
 import { todayLocalStr } from '@/shared/lib/utils'
 
@@ -58,16 +60,18 @@ interface TransactionFormFieldsProps {
 }
 
 // Field group shared by the add-expense dialog and the edit sheet so both
-// surfaces validate and look identical.
+// surfaces validate and look identical. Groups stagger in on mount.
 export function TransactionFormFields({ control, wallets }: TransactionFormFieldsProps) {
+  const preset = useMotionPreset()
+
   return (
-    <div className="space-y-4">
-      <div className="flex gap-2">
+    <div className="space-y-5">
+      <motion.div variants={preset.field} className="grid grid-cols-[1fr_auto] gap-3">
         <FormField
           control={control}
           name="amount"
           render={({ field }) => (
-            <FormItem className="flex-1">
+            <FormItem className="min-w-0">
               <FormLabel className="text-xs text-muted-foreground">Amount (PHP)</FormLabel>
               <FormControl>
                 <Input
@@ -91,7 +95,7 @@ export function TransactionFormFields({ control, wallets }: TransactionFormField
               <FormLabel className="text-xs text-muted-foreground">Type</FormLabel>
               <Select value={field.value} onValueChange={field.onChange}>
                 <FormControl>
-                  <SelectTrigger className="w-[110px]">
+                  <SelectTrigger className="w-[120px]">
                     <SelectValue />
                   </SelectTrigger>
                 </FormControl>
@@ -103,72 +107,80 @@ export function TransactionFormFields({ control, wallets }: TransactionFormField
             </FormItem>
           )}
         />
-      </div>
+      </motion.div>
 
       {wallets && wallets.length > 0 && (
+        <motion.div variants={preset.field}>
+          <FormField
+            control={control}
+            name="walletId"
+            render={({ field }) => (
+              <FormItem>
+                <FormLabel className="text-xs text-muted-foreground">Wallet</FormLabel>
+                <Select value={field.value} onValueChange={field.onChange}>
+                  <FormControl>
+                    <SelectTrigger className="w-full text-sm">
+                      <SelectValue placeholder="Select wallet" />
+                    </SelectTrigger>
+                  </FormControl>
+                  <SelectContent>
+                    {wallets.map((w) => (
+                      <SelectItem key={w.id} value={w.id}>{w.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                <FormMessage />
+              </FormItem>
+            )}
+          />
+        </motion.div>
+      )}
+
+      <motion.div variants={preset.field}>
         <FormField
           control={control}
-          name="walletId"
+          name="category"
           render={({ field }) => (
             <FormItem>
-              <FormLabel className="text-xs text-muted-foreground">Wallet</FormLabel>
-              <Select value={field.value} onValueChange={field.onChange}>
-                <FormControl>
-                  <SelectTrigger className="text-sm">
-                    <SelectValue placeholder="Select wallet" />
-                  </SelectTrigger>
-                </FormControl>
-                <SelectContent>
-                  {wallets.map((w) => (
-                    <SelectItem key={w.id} value={w.id}>{w.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <FormLabel className="text-xs text-muted-foreground">Category</FormLabel>
+              <FormControl>
+                <CategoryCombobox value={field.value} onChange={field.onChange} />
+              </FormControl>
               <FormMessage />
             </FormItem>
           )}
         />
-      )}
+      </motion.div>
 
-      <FormField
-        control={control}
-        name="category"
-        render={({ field }) => (
-          <FormItem>
-            <FormLabel className="text-xs text-muted-foreground">Category</FormLabel>
-            <FormControl>
-              <CategoryCombobox value={field.value} onChange={field.onChange} />
-            </FormControl>
-            <FormMessage />
-          </FormItem>
-        )}
-      />
+      <motion.div variants={preset.field}>
+        <FormField
+          control={control}
+          name="description"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel className="text-xs text-muted-foreground">Description (optional)</FormLabel>
+              <FormControl>
+                <Input placeholder="Coffee, lunch..." {...field} />
+              </FormControl>
+            </FormItem>
+          )}
+        />
+      </motion.div>
 
-      <FormField
-        control={control}
-        name="description"
-        render={({ field }) => (
-          <FormItem>
-            <FormLabel className="text-xs text-muted-foreground">Description (optional)</FormLabel>
-            <FormControl>
-              <Input placeholder="Coffee, lunch..." {...field} />
-            </FormControl>
-          </FormItem>
-        )}
-      />
-
-      <FormField
-        control={control}
-        name="transactionDate"
-        render={({ field }) => (
-          <FormItem>
-            <FormLabel className="text-xs text-muted-foreground">Date</FormLabel>
-            <FormControl>
-              <Input type="date" {...field} />
-            </FormControl>
-          </FormItem>
-        )}
-      />
+      <motion.div variants={preset.field}>
+        <FormField
+          control={control}
+          name="transactionDate"
+          render={({ field }) => (
+            <FormItem>
+              <FormLabel className="text-xs text-muted-foreground">Date</FormLabel>
+              <FormControl>
+                <Input type="date" {...field} />
+              </FormControl>
+            </FormItem>
+          )}
+        />
+      </motion.div>
     </div>
   )
 }
